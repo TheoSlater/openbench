@@ -1,14 +1,64 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use ollama_rs::Ollama;
+use ollama_rs::generation::chat::request::ChatMessageRequest;
+use ollama_rs::generation::chat::ChatMessage;
+use tauri::{AppHandle, Emitter};
+use tokio_stream::StreamExt;
+
+struct AppState {
+    ollama: Ollama,
+}
+
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let models = state.ollama.list_local_models().await
+        .map_err(|e| e.to_string())?;
+    Ok(models.into_iter().map(|m| m.name).collect())
+}
+
+#[derive(serde::Serialize, Clone)]
+struct StreamPayload {
+    content: String,
+    done: bool,
+}
+
+#[tauri::command]
+async fn chat_stream(
+    app_handle: AppHandle,
+    state: tauri::State<'_, AppState>,
+    model: String,
+    message: String,
+) -> Result<(), String> {
+    let msg = ChatMessage::user(message);
+    let request = ChatMessageRequest::new(model, vec![msg]);
+
+    let mut stream = state.ollama.send_chat_messages_stream(request).await
+        .map_err(|e| e.to_string())?;
+
+    while let Some(res) = stream.next().await {
+        match res {
+            Ok(response) => {
+                let _ = app_handle.emit("chat-chunk", StreamPayload {
+                    content: response.message.content,
+                    done: response.done,
+                });
+            }
+            Err(_) => {
+                return Err("Stream encountered an error".to_string());
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(AppState {
+            ollama: Ollama::default(),
+        })
+        .invoke_handler(tauri::generate_handler![get_local_models, chat_stream])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
