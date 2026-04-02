@@ -8,7 +8,6 @@ const TooltipProvider = ({ children, ...props }: { children: React.ReactNode } &
 
 const Tooltip = ({ children }: { children: React.ReactNode }) => {
   const [isOpen, setIsOpen] = React.useState(false)
-  const [isHovered, setIsHovered] = React.useState(false)
   const triggerRef = React.useRef<HTMLDivElement>(null)
 
   const show = () => setIsOpen(true)
@@ -18,16 +17,8 @@ const Tooltip = ({ children }: { children: React.ReactNode }) => {
     <TooltipContext.Provider value={{ isOpen, show, hide }}>
       <div
         ref={triggerRef}
-        onMouseEnter={() => {
-          setIsHovered(true)
-          show()
-        }}
-        onMouseLeave={() => {
-          setIsHovered(false)
-          setTimeout(() => {
-            if (!isHovered) hide()
-          }, 100)
-        }}
+        onPointerEnter={show}
+        onPointerLeave={hide}
         className="relative inline-flex"
       >
         {children}
@@ -43,15 +34,10 @@ const TooltipContext = React.createContext<{
 }>({ isOpen: false, show: () => {}, hide: () => {} })
 
 const TooltipTrigger = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement>
+  HTMLSpanElement,
+  React.HTMLAttributes<HTMLSpanElement>
 >(({ className, ...props }, ref) => (
-  <button
-    ref={ref}
-    type="button"
-    className={cn("inline-flex", className)}
-    {...props}
-  />
+  <span ref={ref} className={cn("inline-flex", className)} {...props} />
 ))
 TooltipTrigger.displayName = "TooltipTrigger"
 

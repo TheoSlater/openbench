@@ -39,49 +39,36 @@
 
 @layer base {
   :root {
-    /* Minimal neutral palette */
-    --background: 0 0% 7%;
-    --foreground: 0 0% 92%;
-
-    /* Surfaces - subtle depth */
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 92%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 92%;
-
-    /* Primary - subtle blue tint */
-    --primary: 217 90% 58%;
+    --background: 0 0% 10%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 210 65% 30%;
     --primary-foreground: 0 0% 100%;
-
-    /* Secondary - subtle elevation */
     --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 88%;
-
-    /* Muted - for subtle text */
+    --secondary-foreground: 0 0% 86%;
     --muted: 0 0% 16%;
-    --muted-foreground: 0 0% 52%;
-
-    /* Accent - used sparingly */
-    --accent: 0 0% 14%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 18%;
     --accent-foreground: 0 0% 92%;
-
-    /* Destructive */
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
-
-    /* Borders - very subtle */
-    --border: 0 0% 16%;
+    --border: 0 0% 18%;
     --input: 0 0% 18%;
-    --ring: 217 90% 58%;
-
-    /* Radius - subtle rounding */
-    --radius: 0.75rem;
+    --ring: 210 65% 45%;
+    --radius: 1rem;
   }
 
   body {
     @apply m-0 p-0 overflow-hidden antialiased;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
   }
 
   /* Subtle scrollbar styling */

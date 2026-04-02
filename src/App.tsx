@@ -1,17 +1,68 @@
 import { useState } from "react";
 import { useModels, useChatStream } from "@/hooks";
-import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
+import {
+  Header,
+  ChatArea,
+  EmptyState,
+  ChatInput,
+} from "@/components/Chat";
+import { modelSupportsReasoning } from "@/lib/model-utils";
 import "./App.css";
 
 function App() {
   const { models, selectedModel, setSelectedModel, isLoading } = useModels();
   const [input, setInput] = useState("");
+  const [devMode, setDevMode] = useState(false);
 
-  const { messages, isStreaming, sendMessage, bottomRef, hasMessages } =
-    useChatStream(selectedModel);
+  const supportsReasoning = devMode || modelSupportsReasoning(selectedModel);
+  const {
+    messages,
+    isStreaming,
+    sendMessage,
+    stopStreaming,
+    appendMessage,
+    bottomRef,
+    hasMessages,
+  } = useChatStream(selectedModel, supportsReasoning, devMode);
+
+  const handleDevCommand = (command: string) => {
+    const [, arg] = command.trim().split(/\s+/);
+    let nextValue = devMode;
+
+    if (arg === "on") {
+      nextValue = true;
+    } else if (arg === "off") {
+      nextValue = false;
+    } else if (arg === "help") {
+      appendMessage({ role: "user", content: command });
+      appendMessage({
+        role: "assistant",
+        content: "Usage: /dev [on|off] — toggles mock responses.",
+      });
+      return;
+    } else {
+      nextValue = !devMode;
+    }
+
+    setDevMode(nextValue);
+    appendMessage({ role: "user", content: command });
+    appendMessage({
+      role: "assistant",
+      content: nextValue
+        ? "Developer mode enabled. Responses are mocked."
+        : "Developer mode disabled. Using the AI backend.",
+    });
+  };
 
   const handleSend = () => {
-    sendMessage(input);
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith("/dev")) {
+      handleDevCommand(trimmed);
+      setInput("");
+      return;
+    }
+    sendMessage(trimmed);
     setInput("");
   };
 
@@ -26,7 +77,10 @@ function App() {
 
       <main className="flex flex-1 flex-col overflow-hidden">
         {hasMessages ? (
-          <ChatArea messages={messages} bottomRef={bottomRef} />
+          <ChatArea
+            messages={messages}
+            bottomRef={bottomRef}
+          />
         ) : (
           <EmptyState />
         )}
@@ -35,8 +89,10 @@ function App() {
           value={input}
           onChange={setInput}
           onSubmit={handleSend}
+          onStop={stopStreaming}
           isStreaming={isStreaming}
-          selectedModel={selectedModel}
+          selectedModel={devMode ? "Dev Mode" : selectedModel}
+          allowEmptyModel={devMode}
         />
       </main>
     </div>
