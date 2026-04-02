@@ -32,6 +32,7 @@ type ChatStore = {
     loadConversations: () => Promise<void>;
     deleteConversation: (id: string) => Promise<void>;
     renameConversation: (id: string, newTitle: string) => Promise<void>;
+    deleteMessagesAfter: (conversationId: string, messageId: string) => Promise<void>;
   };
 };
 export const useChatStore = create<ChatStore>((set) => ({
@@ -130,6 +131,17 @@ export const useChatStore = create<ChatStore>((set) => ({
           c.id === id ? { ...c, title: newTitle, updatedAt: now } : c,
         ),
       }));
+    },
+    // Delete messages after a specific message ID (inclusive)
+    deleteMessagesAfter: async (conversationId, messageId) => {
+      await db.deleteMessagesAfter(conversationId, messageId);
+      set((state) => {
+        const index = state.messages.findIndex((m) => m.id === messageId);
+        if (index === -1) return state;
+        return {
+          messages: state.messages.slice(0, index),
+        };
+      });
     },
   },
 }));

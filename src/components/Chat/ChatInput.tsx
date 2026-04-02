@@ -14,6 +14,7 @@ interface ChatInputProps {
   onStop: () => void;
   isStreaming: boolean;
   selectedModel: string;
+  hasMessages: boolean;
   allowEmptyModel?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function ChatInput({
   onStop,
   isStreaming,
   selectedModel,
+  hasMessages,
   allowEmptyModel = false,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -50,7 +52,7 @@ export function ChatInput({
   };
 
   return (
-    <footer className="shrink-0 bg-background px-4 pb-6 pt-4">
+    <footer className="shrink-0 bg-background px-4 pb-6 pt-4 relative z-10">
       <div className="mx-auto w-full max-w-3xl">
         <PromptInput
           value={value}
@@ -59,12 +61,12 @@ export function ChatInput({
           isLoading={isStreaming}
           maxHeight={200}
           disabled={isStreaming || (!selectedModel && !allowEmptyModel)}
-          className="flex min-h-[64px] w-full flex-col gap-3 overflow-visible rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-[var(--shadow-elev-2)] transition-colors duration-200"
+          className="flex min-h-[64px] w-full flex-col gap-3 overflow-visible rounded-[1.75rem] border-[1px] border-white/10 bg-[#2f2f2f] px-5 py-4 shadow-[0_4px_20px_rgb(0,0,0,0.12)] backdrop-blur-sm transition-all duration-300"
         >
           <PromptInputTextarea
             ref={textareaRef}
-            placeholder="How can I help you today?"
-            className="min-h-[32px] max-h-[200px] w-full overflow-y-auto bg-transparent px-0 py-1 text-[15px] leading-6 text-foreground placeholder:text-muted-foreground/70"
+            placeholder={`Message ${selectedModel || "OpenBench"}`}
+            className="min-h-[32px] max-h-[200px] w-full overflow-y-auto bg-transparent px-0 py-1 text-[15px] leading-6 text-foreground placeholder:text-muted-foreground/60"
           />
           <div className="mt-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -99,9 +101,11 @@ export function ChatInput({
             </PromptInputAction>
           </div>
         </PromptInput>
-        <p className="mt-3 text-center text-xs text-muted-foreground/70">
-          AI can make mistakes. Check important info.
-        </p>
+        {hasMessages && (
+          <p className="mt-3 text-center text-xs text-muted-foreground/70">
+            AI can make mistakes. Check important info.
+          </p>
+        )}
       </div>
     </footer>
   );

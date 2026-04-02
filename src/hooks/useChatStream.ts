@@ -100,7 +100,7 @@ export function useChatStream(
         setIsStreaming(false);
         completeReasoning();
         setStreamingMessage((current) => {
-          if (current) {
+          if (current && current.content.trim()) {
             void addMessage({
               id: current.id,
               conversationId: current.conversationId,

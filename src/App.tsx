@@ -87,6 +87,7 @@ function App() {
     addMessage,
     deleteConversation,
     renameConversation,
+    deleteMessagesAfter,
   } = useChatStore((state) => state.actions);
 
   /**
@@ -163,15 +164,17 @@ function App() {
    * Regenerate a specific assistant response.
    * @param messageIndex - Index of the assistant message to regenerate.
    */
-  const handleRegenerate = (messageIndex: number) => {
-    if (isStreaming) return;
+  const handleRegenerate = async (messageIndex: number) => {
+    if (isStreaming || !activeConversationId) return;
     const previousUserMessage = [...messages]
       .slice(0, messageIndex)
       .reverse()
       .find((message) => message.role === "user");
     const targetMessage = messages[messageIndex];
     if (!previousUserMessage || targetMessage?.role !== "assistant") return;
-    // TODO: implement message deletion for regeneration
+
+    // Delete the assistant response and any following messages
+    await deleteMessagesAfter(activeConversationId, targetMessage.id);
     sendMessage(previousUserMessage.content);
   };
 
@@ -216,26 +219,29 @@ function App() {
           ollamaError={ollamaError}
         />
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {hasMessages ? (
-            <ChatArea
-              messages={messages}
-              bottomRef={bottomRef}
-              onRegenerate={handleRegenerate}
-            />
-          ) : (
-            <EmptyState />
-          )}
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden relative">
+          <div className={`flex-1 flex flex-col overflow-hidden ${!hasMessages ? "justify-center" : ""}`}>
+            {hasMessages ? (
+              <ChatArea
+                messages={messages}
+                bottomRef={bottomRef}
+                onRegenerate={handleRegenerate}
+              />
+            ) : (
+              <EmptyState selectedModel={devMode ? "Dev Mode" : selectedModel} />
+            )}
 
-          <ChatInput
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSend}
-            onStop={stopStreaming}
-            isStreaming={isStreaming}
-            selectedModel={devMode ? "Dev Mode" : selectedModel}
-            allowEmptyModel={devMode}
-          />
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSubmit={handleSend}
+              onStop={stopStreaming}
+              isStreaming={isStreaming}
+              selectedModel={devMode ? "Dev Mode" : selectedModel}
+              hasMessages={hasMessages}
+              allowEmptyModel={devMode}
+            />
+          </div>
         </main>
       </SidebarInset>
 

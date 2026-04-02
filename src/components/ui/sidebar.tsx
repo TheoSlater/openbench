@@ -107,7 +107,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
           <aside
             ref={ref}
             className={cn(
-              "fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-border/60 bg-card text-foreground transition-transform duration-200 ease-in-out",
+              "fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-in-out",
               openMobile ? "translate-x-0" : "-translate-x-full",
               className,
             )}
@@ -122,7 +122,7 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
         ref={ref}
         data-collapsed={collapsed ? "true" : "false"}
         className={cn(
-          "group/sidebar relative flex h-screen shrink-0 flex-col border-r border-border/60 bg-card text-foreground transition-[width] duration-200",
+          "group/sidebar relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
           collapsed ? "w-16" : "w-64",
           className,
         )}

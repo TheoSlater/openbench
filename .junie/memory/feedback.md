@@ -62,3 +62,59 @@
     "NEW INSTRUCTION": "WHEN the SettingsModal renders THEN place a visible Close control in the top-left of the header."
 }
 
+[2026-04-02 18:22] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal layout",
+    "EXPECTATION": "SettingsModal must not be cut off on small windows; header and close control remain visible, right panel is width-constrained, body scrolls independently, delete acts immediately, and successful saves auto-close the modal.",
+    "NEW INSTRUCTION": "WHEN working on the SettingsModal layout or behavior THEN ensure body max-h-85vh overflow-y-auto and visible top-left Close button"
+}
+
+[2026-04-02 19:00] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal layout",
+    "EXPECTATION": "SettingsModal must not be cut off on small windows; header and top-left close remain visible, right panel width-constrained, body scrolls independently, delete acts immediately, and successful saves auto-close the modal.",
+    "NEW INSTRUCTION": "WHEN working on the SettingsModal layout or behavior THEN ensure body max-h-85vh overflow-y-auto and visible top-left Close button."
+}
+
+[2026-04-02 19:09] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Input color regression",
+    "EXPECTATION": "Input fields should retain correct theme colors (text, background, border) and remain readable after layout/style changes.",
+    "NEW INSTRUCTION": "WHEN editing Dialog or shared UI styles THEN avoid overriding input text/background colors; use theme tokens."
+}
+
+[2026-04-02 19:12] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Chat input styling",
+    "EXPECTATION": "The chat input should have a visible outline and subtle elevation to separate it from the background.",
+    "NEW INSTRUCTION": "WHEN rendering the chat input bar THEN add a visible outline and subtle elevation shadow."
+}
+
+[2026-04-02 19:14] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Input styling fidelity",
+    "EXPECTATION": "Input fields should match the reference screenshot’s colors, elevation, and border outline.",
+    "NEW INSTRUCTION": "WHEN implementing or updating inputs with a provided reference screenshot THEN match background/text colors, border outline, and elevation to it."
+}
+
+[2026-04-02 19:15] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Excessive elevation",
+    "EXPECTATION": "UI should use minimal, subtle elevation; avoid heavy or stacked drop shadows.",
+    "NEW INSTRUCTION": "WHEN adding elevation or shadows THEN use a subtle single-layer shadow or none."
+}
+
+[2026-04-02 19:15] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Border radius",
+    "EXPECTATION": "The SettingsModal corners should be less rounded to match the reference.",
+    "NEW INSTRUCTION": "WHEN styling the SettingsModal container THEN reduce the corner radius to a subtler value."
+}
+

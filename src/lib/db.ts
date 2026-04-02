@@ -220,3 +220,30 @@ export async function deleteConversation(conversationId: string) {
     conversationId,
   ]);
 }
+
+export async function deleteMessagesAfter(
+  conversationId: string,
+  messageId: string,
+) {
+  if (inMemoryMode) {
+    const messages = fallbackMessages[conversationId] ?? [];
+    const index = messages.findIndex((m) => m.id === messageId);
+    if (index !== -1) {
+      fallbackMessages[conversationId] = messages.slice(0, index);
+    }
+    return;
+  }
+
+  // Get the creation time of the target message to delete it and everything after
+  const targetMessage = await getDB().select<MessageRow[]>(
+    `SELECT createdAt FROM messages WHERE id = ?`,
+    [messageId],
+  );
+
+  if (targetMessage.length > 0) {
+    await getDB().execute(
+      `DELETE FROM messages WHERE conversationId = ? AND createdAt >= ?`,
+      [conversationId, targetMessage[0].createdAt],
+    );
+  }
+}

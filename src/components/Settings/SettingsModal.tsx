@@ -10,15 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import {
   Settings,
-  Bell,
   UserCircle,
-  LayoutGrid,
-  ShoppingCart,
-  ShieldCheck,
-  Lock,
-  Database,
-  EyeOff,
-  Baby,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,15 +27,7 @@ export interface PersonalizationPanelRef {
 
 const SIDEBAR_ITEMS = [
   { id: "general", label: "General", icon: Settings },
-  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "personalization", label: "Personalization", icon: UserCircle },
-  { id: "apps", label: "Apps", icon: LayoutGrid },
-  { id: "orders", label: "Orders", icon: ShoppingCart },
-  { id: "ads", label: "Ads controls", icon: EyeOff },
-  { id: "data", label: "Data controls", icon: Database },
-  { id: "security", label: "Security", icon: ShieldCheck },
-  { id: "parental", label: "Parental controls", icon: Baby },
-  { id: "account", label: "Account", icon: Lock },
 ];
 
 /**
