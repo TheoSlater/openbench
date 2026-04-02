@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+        "prompt-kit": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "shadcn@canary",
+                "mcp"
+            ],
+            "env": {
+                "REGISTRY_URL": "https://www.prompt-kit.com/c/registry.json"
+            }
+        }
+    }
+}

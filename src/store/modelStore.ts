@@ -12,6 +12,9 @@ export type SystemPrompt = {
   id: string;
   name: string;
   content: string;
+  baseStyle?: string;
+  characteristics?: string[];
+  instantAnswers?: boolean;
 };
 
 type ModelStore = {
@@ -47,6 +50,10 @@ type ModelStore = {
      * @param prompt - The prompt object with updated fields.
      */
     updateSystemPrompt: (prompt: SystemPrompt) => void;
+    /**
+     * Clear all system prompts and reset to default.
+     */
+    resetSystemPrompts: () => void;
   };
 };
 
@@ -100,11 +107,16 @@ export const useModelStore = create<ModelStore>((set) => ({
         };
       }),
     updateSystemPrompt: (prompt) =>
-      set((state) => ({
+        set((state) => ({
         systemPrompts: state.systemPrompts.map((item) =>
           item.id === prompt.id ? prompt : item,
         ),
       })),
+    resetSystemPrompts: () =>
+      set({
+        systemPrompts: [defaultSystemPrompt],
+        activeSystemPromptId: defaultSystemPrompt.id,
+      }),
   },
 }));
 

@@ -8,7 +8,7 @@ import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useChatStore } from "@/store/chatStore";
 import "./App.css";
-
+import * as db from "@/lib/db";
 /**
  * Root application shell and layout.
  */
@@ -29,6 +29,16 @@ function App() {
 
   useModelPicker();
   useSystemPrompts();
+
+  // const { actions } = useChatStore();
+
+  useEffect(() => {
+    async function init() {
+      await db.initDB();
+      await useChatStore.getState().actions.loadConversations();
+    }
+    init();
+  }, []);
 
   /**
    * Open the settings modal.
@@ -71,19 +81,24 @@ function App() {
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-  const { createConversation, setActiveConversationId, addMessage } =
-    useChatStore((state) => state.actions);
+  const {
+    createConversation,
+    setActiveConversationId,
+    addMessage,
+    deleteConversation,
+    renameConversation,
+  } = useChatStore((state) => state.actions);
 
   /**
    * Ensure a conversation exists before sending a message.
    */
-  const ensureConversation = () => {
+  const ensureConversation = async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
-    const created = createConversation();
+    const created = await createConversation();
     return created.id;
   };
 
-  const handleDevCommand = (command: string) => {
+  const handleDevCommand = async (command: string) => {
     const [, arg] = command.trim().split(/\s+/);
     let nextValue = devMode;
 
@@ -92,13 +107,13 @@ function App() {
     } else if (arg === "off") {
       nextValue = false;
     } else if (arg === "help") {
-      const conversationId = ensureConversation();
-      addMessage({
+      const conversationId = await ensureConversation();
+      await addMessage({
         conversationId,
         role: "user",
         content: command,
       });
-      addMessage({
+      await addMessage({
         conversationId,
         role: "assistant",
         content: "Usage: /dev [on|off] — toggles mock responses.",
@@ -109,13 +124,13 @@ function App() {
     }
 
     setDevMode(nextValue);
-    const conversationId = ensureConversation();
-    addMessage({
+    const conversationId = await ensureConversation();
+    await addMessage({
       conversationId,
       role: "user",
       content: command,
     });
-    addMessage({
+    await addMessage({
       conversationId,
       role: "assistant",
       content: nextValue
@@ -127,19 +142,19 @@ function App() {
   /**
    * Submit the current input as a message.
    */
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed) return;
     if (trimmed.startsWith("/dev")) {
-      handleDevCommand(trimmed);
+      await handleDevCommand(trimmed);
       setInput("");
       return;
     }
     if (!selectedModel && !devMode) {
       return;
     }
-    const conversationId = ensureConversation();
-    addMessage({ conversationId, role: "user", content: trimmed });
+    const conversationId = await ensureConversation();
+    await addMessage({ conversationId, role: "user", content: trimmed });
     sendMessage(trimmed);
     setInput("");
   };
@@ -170,12 +185,23 @@ function App() {
     setActiveConversationId(id);
   };
 
+  const handleDeleteConversation = async (id: string) => {
+    stopStreaming();
+    await deleteConversation(id);
+  };
+
+  const handleRenameConversation = async (id: string, newTitle: string) => {
+    await renameConversation(id, newTitle);
+  };
+
   return (
     <SidebarProvider>
       <Sidebar
         onOpenSettings={handleOpenSettings}
         onNewChat={handleNewChat}
         onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
         conversations={conversations}
         activeConversationId={activeConversationId}
       />

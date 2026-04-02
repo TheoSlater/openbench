@@ -1,3 +1,5 @@
+import { SidebarTrigger } from "@/components/ui/sidebar";
+
 interface HeaderProps {
   availableModels: {
     ollama: string[];
@@ -34,10 +36,11 @@ export function Header({
   };
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-6">
-      <div className="flex items-center gap-2.5">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4 md:px-6">
+      <div className="flex items-center gap-2 md:gap-2.5">
+        <SidebarTrigger className="md:hidden mr-1" />
         <span className="text-sm font-medium text-foreground/90">OpenBench</span>
-        <span className="text-xs text-muted-foreground/80">
+        <span className="text-xs text-muted-foreground/80 hidden sm:inline-block">
           {providerLabels[selectedProvider]} · {selectedModel || "No model"}
         </span>
         {ollamaError ? (
@@ -51,7 +54,7 @@ export function Header({
         <select
           value={selectedValue}
           onChange={(e) => handleChange(e.target.value)}
-          className="h-8 appearance-none rounded-md border border-border/60 bg-transparent px-3 pr-8 text-sm text-foreground outline-none ring-0 transition-colors hover:border-border focus:border-ring focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
+          className="h-8 max-w-[120px] sm:max-w-none appearance-none rounded-md border border-border/60 bg-transparent px-3 pr-8 text-sm text-foreground outline-none ring-0 transition-colors hover:border-border focus:border-ring focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
           disabled={isLoading || !hasAnyModels}
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='hsl(var(--muted-foreground))' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,

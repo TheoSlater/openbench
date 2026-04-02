@@ -10,11 +10,11 @@
 - `dist/`: Vite build output (generated; avoid manual edits).
 
 ## Build, Test, and Development Commands
-- `npm install`: install JS dependencies.
-- `npm run dev`: run the Vite dev server for the UI.
-- `npm run build`: type-check (`tsc`) then build the UI with Vite.
-- `npm run preview`: serve the built UI locally.
-- `npm run tauri dev`: run the Tauri app in dev mode (passes args to the Tauri CLI).
+- `bun install`: install JS dependencies.
+- `bun  run dev`: run the Vite dev server for the UI.
+- `bun run build`: type-check (`tsc`) then build the UI with Vite.
+- `bun run preview`: serve the built UI locally.
+- `bun run tauri dev`: run the Tauri app in dev mode (passes args to the Tauri CLI).
 
 ## Coding Style & Naming Conventions
 - TypeScript + React function components; 2-space indentation; double quotes.

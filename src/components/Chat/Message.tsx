@@ -28,7 +28,7 @@ export function Message({
   if (isUser) {
     return (
       <div className="flex w-full justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-[15px] font-semibold text-primary-foreground shadow-sm">
+        <div className="max-w-[85%] sm:max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-[15px] font-semibold text-primary-foreground shadow-sm">
           <p className="whitespace-pre-wrap break-words leading-6">{content}</p>
         </div>
       </div>
@@ -37,7 +37,7 @@ export function Message({
 
   return (
     <div className="flex w-full animate-fade-in">
-      <div className="max-w-[80%]">
+      <div className="max-w-[95%] sm:max-w-[85%] md:max-w-[80%]">
         {content ? (
           <p className="text-[16px] leading-7 text-foreground whitespace-pre-wrap">
             {content}

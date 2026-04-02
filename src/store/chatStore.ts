@@ -1,12 +1,12 @@
+// src/store/chatStore.ts
 import { create } from "zustand";
-
+import * as db from "@/lib/db";
 export type Conversation = {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
 };
-
 export type Message = {
   id: string;
   conversationId: string;
@@ -14,14 +14,13 @@ export type Message = {
   content: string;
   createdAt: string;
 };
-
 type ChatStore = {
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: Message[];
   actions: {
-    createConversation: (title?: string) => Conversation;
-    setActiveConversationId: (id: string | null) => void;
+    createConversation: (title?: string) => Promise<Conversation>;
+    setActiveConversationId: (id: string | null) => Promise<void>;
     setMessages: (messages: Message[]) => void;
     addMessage: (message: {
       conversationId: string;
@@ -29,48 +28,67 @@ type ChatStore = {
       content: string;
       id?: string;
       createdAt?: string;
-    }) => Message;
+    }) => Promise<Message>;
+    loadConversations: () => Promise<void>;
+    deleteConversation: (id: string) => Promise<void>;
+    renameConversation: (id: string, newTitle: string) => Promise<void>;
   };
 };
-
-export const useChatStore = create<ChatStore>((set, get) => ({
+export const useChatStore = create<ChatStore>((set) => ({
   conversations: [],
   activeConversationId: null,
   messages: [],
-
   actions: {
-    createConversation: (title = "New Chat") => {
+    // Load all conversations from DB
+    loadConversations: async () => {
+      const rawConversations = await db.getConversations();
+      const conversations: Conversation[] = rawConversations.map((c) => ({
+        id: c.id,
+        title: c.title,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      }));
+      set({ conversations });
+    },
+    // Create a new conversation
+    createConversation: async (title = "New Chat") => {
+      const id = crypto.randomUUID();
       const now = new Date().toISOString();
+      await db.createConversation(id, title);
       const conversation: Conversation = {
-        id: crypto.randomUUID(),
+        id,
         title,
         createdAt: now,
         updatedAt: now,
       };
-
       set((state) => ({
         conversations: [conversation, ...state.conversations],
-        activeConversationId: conversation.id,
+        activeConversationId: id,
         messages: [],
       }));
-
       return conversation;
     },
-
-    setActiveConversationId: (id) => {
+    // Set active conversation and load its messages
+    setActiveConversationId: async (id) => {
       set({ activeConversationId: id });
       if (id) {
-        const conversation = get().conversations.find((c) => c.id === id);
-        if (conversation) {
-          // Set empty messages for now since we don't persist
-          set({ messages: [] });
-        }
+        const rawMessages = await db.getMessages(id);
+        const messages: Message[] = rawMessages.map((m) => ({
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        }));
+        set({ messages });
+      } else {
+        set({ messages: [] });
       }
     },
-
+    // Replace current messages in state (sync)
     setMessages: (messages) => set({ messages }),
-
-    addMessage: (message) => {
+    // Add a new message to the DB and state
+    addMessage: async (message) => {
       const now = message.createdAt ?? new Date().toISOString();
       const payload: Message = {
         id: message.id ?? crypto.randomUUID(),
@@ -79,12 +97,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         content: message.content,
         createdAt: now,
       };
-
+      await db.addMessage(payload);
       set((state) => ({
         messages: [...state.messages, payload],
       }));
-
       return payload;
+    },
+    // Delete a conversation and its messages
+    deleteConversation: async (id) => {
+      await db.deleteConversation(id);
+      set((state) => {
+        const newConversations = state.conversations.filter((c) => c.id !== id);
+        const newActiveId =
+          state.activeConversationId === id
+            ? (newConversations[0]?.id ?? null)
+            : state.activeConversationId;
+        const newMessages =
+          state.activeConversationId === id ? [] : state.messages;
+        return {
+          conversations: newConversations,
+          activeConversationId: newActiveId,
+          messages: newMessages,
+        };
+      });
+    },
+    // Rename a conversation
+    renameConversation: async (id, newTitle) => {
+      const now = new Date().toISOString();
+      await db.updateConversation(id, { title: newTitle, updatedAt: now });
+      set((state) => ({
+        conversations: state.conversations.map((c) =>
+          c.id === id ? { ...c, title: newTitle, updatedAt: now } : c,
+        ),
+      }));
     },
   },
 }));

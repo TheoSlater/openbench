@@ -8,9 +8,30 @@ type SidebarContextValue = {
   isCollapsed: boolean;
   setCollapsed: (value: boolean) => void;
   toggle: () => void;
+  isMobile: boolean;
+  openMobile: boolean;
+  setOpenMobile: (value: boolean) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
+
+const MOBILE_BREAKPOINT = 768;
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener("change", onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return !!isMobile;
+}
 
 function useSidebar() {
   const context = React.useContext(SidebarContext);
@@ -26,15 +47,29 @@ type SidebarProviderProps = React.HTMLAttributes<HTMLDivElement> & {
 
 const SidebarProvider = React.forwardRef<HTMLDivElement, SidebarProviderProps>(
   ({ className, defaultCollapsed = false, children, ...props }, ref) => {
+    const isMobile = useIsMobile();
+    const [openMobile, setOpenMobile] = React.useState(false);
     const [isCollapsed, setCollapsed] = React.useState(defaultCollapsed);
 
     const toggle = React.useCallback(
-      () => setCollapsed((previous) => !previous),
-      [],
+      () =>
+        isMobile
+          ? setOpenMobile((prev) => !prev)
+          : setCollapsed((previous) => !previous),
+      [isMobile],
     );
 
     return (
-      <SidebarContext.Provider value={{ isCollapsed, setCollapsed, toggle }}>
+      <SidebarContext.Provider
+        value={{
+          isCollapsed,
+          setCollapsed,
+          toggle,
+          isMobile,
+          openMobile,
+          setOpenMobile,
+        }}
+      >
         <div
           ref={ref}
           className={cn(
@@ -57,8 +92,30 @@ type SidebarProps = React.HTMLAttributes<HTMLDivElement> & {
 
 const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
   ({ className, collapsible = "none", ...props }, ref) => {
-    const { isCollapsed } = useSidebar();
+    const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
     const collapsed = collapsible === "icon" && isCollapsed;
+
+    if (isMobile) {
+      return (
+        <>
+          {openMobile && (
+            <div
+              className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
+              onClick={() => setOpenMobile(false)}
+            />
+          )}
+          <aside
+            ref={ref}
+            className={cn(
+              "fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-border/60 bg-card text-foreground transition-transform duration-200 ease-in-out",
+              openMobile ? "translate-x-0" : "-translate-x-full",
+              className,
+            )}
+            {...props}
+          />
+        </>
+      );
+    }
 
     return (
       <aside

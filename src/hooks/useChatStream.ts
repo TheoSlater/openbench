@@ -145,7 +145,9 @@ export function useChatStream(
       }
 
       cancelStreamRef.current = false;
-      if (!activeConversationId) return;
+      const conversationId =
+        useChatStore.getState().activeConversationId ?? activeConversationId;
+      if (!conversationId) return;
       setIsStreaming(true);
       if (supportsReasoning) {
         const start = Date.now();
@@ -167,14 +169,14 @@ export function useChatStream(
             id: messageId,
             role: "assistant",
             content: `Mock response: ${content.trim()}`,
-            conversationId: activeConversationId,
+            conversationId,
             createdAt,
           });
           setIsStreaming(false);
           completeReasoning();
           void addMessage({
             id: messageId,
-            conversationId: activeConversationId,
+            conversationId,
             role: "assistant",
             content: `Mock response: ${content.trim()}`,
             createdAt,

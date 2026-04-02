@@ -25,3 +25,4 @@ serde_json = "1"
 ollama-rs = { version = "0.3.4", features = ["stream"] }
 tokio = "1.50.0"
 tokio-stream = "0.1.18"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }

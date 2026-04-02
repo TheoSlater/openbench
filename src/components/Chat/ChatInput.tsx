@@ -10,7 +10,7 @@ import {
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   onStop: () => void;
   isStreaming: boolean;
   selectedModel: string;
