@@ -1,41 +1,40 @@
-import { Bot, User } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { Bot, User } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Role } from "@/types/chat";
 
-// Simple utility for tailwind class merging
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-export type Role = 'user' | 'assistant';
-
-export interface ChatMessageProps {
+export interface MessageProps {
   role: Role;
   content: string;
 }
 
-export function Message({ role, content }: ChatMessageProps) {
-  const isUser = role === 'user';
-  
+export function Message({ role, content }: MessageProps) {
+  const isUser = role === "user";
+
   return (
-    <div className={cn(
-      "px-4 py-8 flex gap-6 w-full group",
-      isUser ? "bg-neutral-900" : "bg-neutral-800/50"
-    )}>
-      <div className="max-w-3xl mx-auto flex gap-6 w-full">
-        <div className="shrink-0 pt-1">
+    <div
+      className={cn(
+        "group flex w-full animate-fade-in",
+        isUser ? "bg-transparent" : "bg-secondary/30",
+      )}
+    >
+      <div className="mx-auto flex w-full max-w-3xl gap-4 px-4 py-6">
+        {/* Avatar - minimal */}
+        <div className="shrink-0 pt-0.5">
           {isUser ? (
-            <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center">
-              <User size={18} className="text-white" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <User size={14} strokeWidth={2} />
             </div>
           ) : (
-            <div className="w-8 h-8 rounded bg-emerald-600 flex items-center justify-center">
-              <Bot size={18} className="text-white" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-500">
+              <Bot size={14} strokeWidth={2} />
             </div>
           )}
         </div>
-        <div className="prose prose-invert max-w-none w-full">
-          <p className="leading-7 whitespace-pre-wrap">{content}</p>
+
+        <div className="flex-1 min-w-0 pt-0.5">
+          <p className="text-[15px] leading-7 text-foreground whitespace-pre-wrap">
+            {content}
+          </p>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
-use ollama_rs::Ollama;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
 use ollama_rs::generation::chat::ChatMessage;
+use ollama_rs::Ollama;
 use tauri::{AppHandle, Emitter};
 use tokio_stream::StreamExt;
 
@@ -10,7 +10,10 @@ struct AppState {
 
 #[tauri::command]
 async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
-    let models = state.ollama.list_local_models().await
+    let models = state
+        .ollama
+        .list_local_models()
+        .await
         .map_err(|e| e.to_string())?;
     Ok(models.into_iter().map(|m| m.name).collect())
 }
@@ -31,16 +34,22 @@ async fn chat_stream(
     let msg = ChatMessage::user(message);
     let request = ChatMessageRequest::new(model, vec![msg]);
 
-    let mut stream = state.ollama.send_chat_messages_stream(request).await
+    let mut stream = state
+        .ollama
+        .send_chat_messages_stream(request)
+        .await
         .map_err(|e| e.to_string())?;
 
     while let Some(res) = stream.next().await {
         match res {
             Ok(response) => {
-                let _ = app_handle.emit("chat-chunk", StreamPayload {
-                    content: response.message.content,
-                    done: response.done,
-                });
+                let _ = app_handle.emit(
+                    "chat-chunk",
+                    StreamPayload {
+                        content: response.message.content,
+                        done: response.done,
+                    },
+                );
             }
             Err(_) => {
                 return Err("Stream encountered an error".to_string());
