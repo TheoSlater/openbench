@@ -7,6 +7,7 @@ export function useChatStream(
   selectedModel: string,
   supportsReasoning: boolean,
   mockMode = false,
+  systemPrompt = "",
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -21,6 +22,10 @@ export function useChatStream(
 
   const appendMessage = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
+  }, []);
+
+  const removeMessageAt = useCallback((indexToRemove: number) => {
+    setMessages((prev) => prev.filter((_, index) => index !== indexToRemove));
   }, []);
 
   const completeReasoning = useCallback(() => {
@@ -102,13 +107,15 @@ export function useChatStream(
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, options?: { skipUserAppend?: boolean }) => {
       if (!content.trim() || isStreaming || (!selectedModel && !mockMode)) {
         return;
       }
 
       cancelStreamRef.current = false;
-      appendMessage({ role: "user", content: content.trim() });
+      if (!options?.skipUserAppend) {
+        appendMessage({ role: "user", content: content.trim() });
+      }
       setIsStreaming(true);
       if (supportsReasoning) {
         const start = Date.now();
@@ -138,6 +145,7 @@ export function useChatStream(
         await invoke("chat_stream", {
           model: selectedModel,
           message: content.trim(),
+          systemPrompt,
         });
       } catch (error) {
         console.error("Chat error:", error);
@@ -150,6 +158,7 @@ export function useChatStream(
       isStreaming,
       supportsReasoning,
       mockMode,
+      systemPrompt,
       appendMessage,
       completeReasoning,
     ],
@@ -175,6 +184,7 @@ export function useChatStream(
     appendMessage,
     sendMessage,
     stopStreaming,
+    removeMessageAt,
     bottomRef,
     hasMessages: messages.length > 0,
     reasoningElapsedMs,

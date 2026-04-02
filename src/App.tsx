@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useModels, useChatStream } from "@/hooks";
+import { useEffect, useState } from "react";
+import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
 import {
   Header,
   ChatArea,
@@ -7,24 +7,76 @@ import {
   ChatInput,
 } from "@/components/Chat";
 import { modelSupportsReasoning } from "@/lib/model-utils";
+import { useModelStore } from "@/store/modelStore";
+import { Sidebar } from "@/components/Layout/Sidebar";
+import { SettingsModal } from "@/components/Settings/SettingsModal";
 import "./App.css";
 
+/**
+ * Root application shell and layout.
+ */
 function App() {
-  const { models, selectedModel, setSelectedModel, isLoading } = useModels();
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const {
+    availableModels,
+    selectedModel,
+    selectedProvider,
+    setSelectedModel,
+    isLoading,
+    ollamaError,
+    systemPrompts,
+    activeSystemPromptId,
+  } = useModelStore();
+
+  useModelPicker();
+  useSystemPrompts();
+
+  /**
+   * Open the settings modal.
+   */
+  const handleOpenSettings = () => setIsSettingsOpen(true);
+  /**
+   * Close the settings modal.
+   */
+  const handleCloseSettings = () => setIsSettingsOpen(false);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setIsSettingsOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const supportsReasoning = devMode || modelSupportsReasoning(selectedModel);
+  const activeSystemPrompt =
+    systemPrompts.find((prompt) => prompt.id === activeSystemPromptId) ?? null;
+
   const {
     messages,
     isStreaming,
     sendMessage,
     stopStreaming,
     appendMessage,
+    removeMessageAt,
     bottomRef,
     hasMessages,
-  } = useChatStream(selectedModel, supportsReasoning, devMode);
+  } = useChatStream(
+    selectedModel,
+    supportsReasoning,
+    devMode,
+    activeSystemPrompt?.content ?? "",
+  );
 
+  /**
+   * Handle /dev commands for mock responses.
+   * @param command - The raw command string.
+   */
   const handleDevCommand = (command: string) => {
     const [, arg] = command.trim().split(/\s+/);
     let nextValue = devMode;
@@ -54,6 +106,9 @@ function App() {
     });
   };
 
+  /**
+   * Submit the current input as a message.
+   */
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -66,35 +121,60 @@ function App() {
     setInput("");
   };
 
+  /**
+   * Regenerate a specific assistant response.
+   * @param messageIndex - Index of the assistant message to regenerate.
+   */
+  const handleRegenerate = (messageIndex: number) => {
+    if (isStreaming) return;
+    const previousUserMessage = [...messages]
+      .slice(0, messageIndex)
+      .reverse()
+      .find((message) => message.role === "user");
+    const targetMessage = messages[messageIndex];
+    if (!previousUserMessage || targetMessage?.role !== "assistant") return;
+    removeMessageAt(messageIndex);
+    sendMessage(previousUserMessage.content, { skipUserAppend: true });
+  };
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans">
-      <Header
-        models={models}
-        selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
-        isLoading={isLoading}
-      />
+    <div className="flex h-screen w-screen overflow-hidden bg-background font-sans">
+      <Sidebar onOpenSettings={handleOpenSettings} />
 
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {hasMessages ? (
-          <ChatArea
-            messages={messages}
-            bottomRef={bottomRef}
-          />
-        ) : (
-          <EmptyState />
-        )}
-
-        <ChatInput
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSend}
-          onStop={stopStreaming}
-          isStreaming={isStreaming}
-          selectedModel={devMode ? "Dev Mode" : selectedModel}
-          allowEmptyModel={devMode}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <Header
+          selectedModel={selectedModel}
+          selectedProvider={selectedProvider}
+          availableModels={availableModels}
+          onModelChange={setSelectedModel}
+          isLoading={isLoading}
+          ollamaError={ollamaError}
         />
-      </main>
+
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {hasMessages ? (
+            <ChatArea
+              messages={messages}
+              bottomRef={bottomRef}
+              onRegenerate={handleRegenerate}
+            />
+          ) : (
+            <EmptyState />
+          )}
+
+          <ChatInput
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSend}
+            onStop={stopStreaming}
+            isStreaming={isStreaming}
+            selectedModel={devMode ? "Dev Mode" : selectedModel}
+            allowEmptyModel={devMode}
+          />
+        </main>
+      </div>
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
     </div>
   );
 }

@@ -30,9 +30,26 @@ async fn chat_stream(
     state: tauri::State<'_, AppState>,
     model: String,
     message: String,
+    system_prompt: Option<String>,
 ) -> Result<(), String> {
-    let msg = ChatMessage::user(message);
-    let request = ChatMessageRequest::new(model, vec![msg]);
+    if let Some(ref prompt) = system_prompt {
+        println!(
+            "[openbench] system_prompt length={} preview={}",
+            prompt.len(),
+            prompt.chars().take(80).collect::<String>()
+        );
+    } else {
+        println!("[openbench] system_prompt missing");
+    }
+
+    let mut messages = Vec::new();
+    if let Some(prompt) = system_prompt {
+        if !prompt.trim().is_empty() {
+            messages.push(ChatMessage::system(prompt));
+        }
+    }
+    messages.push(ChatMessage::user(message));
+    let request = ChatMessageRequest::new(model, messages);
 
     let mut stream = state
         .ollama
