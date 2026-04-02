@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
-import {
-  Header,
-  ChatArea,
-  EmptyState,
-  ChatInput,
-} from "@/components/Chat";
+import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
 import { modelSupportsReasoning } from "@/lib/model-utils";
 import { useModelStore } from "@/store/modelStore";
 import { Sidebar } from "@/components/Layout/Sidebar";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { useChatStore } from "@/store/chatStore";
 import "./App.css";
 
 /**
@@ -62,8 +59,6 @@ function App() {
     isStreaming,
     sendMessage,
     stopStreaming,
-    appendMessage,
-    removeMessageAt,
     bottomRef,
     hasMessages,
   } = useChatStream(
@@ -72,11 +67,22 @@ function App() {
     devMode,
     activeSystemPrompt?.content ?? "",
   );
+  const conversations = useChatStore((state) => state.conversations);
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const { createConversation, setActiveConversationId, addMessage } =
+    useChatStore((state) => state.actions);
 
   /**
-   * Handle /dev commands for mock responses.
-   * @param command - The raw command string.
+   * Ensure a conversation exists before sending a message.
    */
+  const ensureConversation = () => {
+    if (activeConversationId) return activeConversationId;
+    const created = createConversation();
+    return created.id;
+  };
+
   const handleDevCommand = (command: string) => {
     const [, arg] = command.trim().split(/\s+/);
     let nextValue = devMode;
@@ -86,8 +92,14 @@ function App() {
     } else if (arg === "off") {
       nextValue = false;
     } else if (arg === "help") {
-      appendMessage({ role: "user", content: command });
-      appendMessage({
+      const conversationId = ensureConversation();
+      addMessage({
+        conversationId,
+        role: "user",
+        content: command,
+      });
+      addMessage({
+        conversationId,
         role: "assistant",
         content: "Usage: /dev [on|off] — toggles mock responses.",
       });
@@ -97,8 +109,14 @@ function App() {
     }
 
     setDevMode(nextValue);
-    appendMessage({ role: "user", content: command });
-    appendMessage({
+    const conversationId = ensureConversation();
+    addMessage({
+      conversationId,
+      role: "user",
+      content: command,
+    });
+    addMessage({
+      conversationId,
       role: "assistant",
       content: nextValue
         ? "Developer mode enabled. Responses are mocked."
@@ -117,6 +135,11 @@ function App() {
       setInput("");
       return;
     }
+    if (!selectedModel && !devMode) {
+      return;
+    }
+    const conversationId = ensureConversation();
+    addMessage({ conversationId, role: "user", content: trimmed });
     sendMessage(trimmed);
     setInput("");
   };
@@ -133,15 +156,31 @@ function App() {
       .find((message) => message.role === "user");
     const targetMessage = messages[messageIndex];
     if (!previousUserMessage || targetMessage?.role !== "assistant") return;
-    removeMessageAt(messageIndex);
-    sendMessage(previousUserMessage.content, { skipUserAppend: true });
+    // TODO: implement message deletion for regeneration
+    sendMessage(previousUserMessage.content);
+  };
+
+  const handleNewChat = () => {
+    stopStreaming();
+    createConversation();
+  };
+
+  const handleSelectConversation = (id: string) => {
+    stopStreaming();
+    setActiveConversationId(id);
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background font-sans">
-      <Sidebar onOpenSettings={handleOpenSettings} />
+    <SidebarProvider>
+      <Sidebar
+        onOpenSettings={handleOpenSettings}
+        onNewChat={handleNewChat}
+        onSelectConversation={handleSelectConversation}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+      />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-background font-sans">
         <Header
           selectedModel={selectedModel}
           selectedProvider={selectedProvider}
@@ -151,7 +190,7 @@ function App() {
           ollamaError={ollamaError}
         />
 
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {hasMessages ? (
             <ChatArea
               messages={messages}
@@ -172,10 +211,10 @@ function App() {
             allowEmptyModel={devMode}
           />
         </main>
-      </div>
+      </SidebarInset>
 
       <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
-    </div>
+    </SidebarProvider>
   );
 }
 

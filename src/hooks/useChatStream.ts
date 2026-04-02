@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamPayload } from "@/types/chat";
+import { useChatStore } from "@/store/chatStore";
 
 export function useChatStream(
   selectedModel: string,
@@ -9,24 +10,27 @@ export function useChatStream(
   mockMode = false,
   systemPrompt = "",
 ) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messages = useChatStore((state) => state.messages);
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const { addMessage } = useChatStore((state) => state.actions);
   const [isStreaming, setIsStreaming] = useState(false);
   const [reasoningStartAt, setReasoningStartAt] = useState<number | null>(null);
   const [reasoningElapsedMs, setReasoningElapsedMs] = useState(0);
   const [lastReasoningDurationMs, setLastReasoningDurationMs] = useState<
     number | null
   >(null);
+  const [streamingMessage, setStreamingMessage] = useState<{
+    id: string;
+    role: "assistant";
+    content: string;
+    conversationId: string;
+    createdAt: string;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelStreamRef = useRef(false);
-
-  const appendMessage = useCallback((message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
-  }, []);
-
-  const removeMessageAt = useCallback((indexToRemove: number) => {
-    setMessages((prev) => prev.filter((_, index) => index !== indexToRemove));
-  }, []);
 
   const completeReasoning = useCallback(() => {
     if (!supportsReasoning) return;
@@ -45,47 +49,75 @@ export function useChatStream(
     setLastReasoningDurationMs(null);
   }, [selectedModel]);
 
+  useEffect(() => {
+    cancelStreamRef.current = true;
+    if (mockTimerRef.current) {
+      clearTimeout(mockTimerRef.current);
+      mockTimerRef.current = null;
+    }
+    setStreamingMessage(null);
+    setIsStreaming(false);
+    setReasoningStartAt(null);
+    setReasoningElapsedMs(0);
+    setLastReasoningDurationMs(null);
+  }, [activeConversationId]);
+
   // Scroll to bottom when messages change
+  const displayMessages = useMemo<ChatMessage[]>(() => {
+    if (!streamingMessage) return messages;
+    return [...messages, streamingMessage];
+  }, [messages, streamingMessage]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [displayMessages]);
 
   // Listen for streaming chunks
   useEffect(() => {
     if (mockMode) return;
 
-    const unlistenPromise = listen<StreamPayload>("chat-chunk", (event) => {
+    const unlistenPromise = listen<StreamPayload>("chat-chunk", async (event) => {
       if (cancelStreamRef.current) {
         return;
       }
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        const lastIndex = newMessages.length - 1;
+      if (!activeConversationId) return;
 
-        if (lastIndex >= 0 && newMessages[lastIndex].role === "assistant") {
-          newMessages[lastIndex] = {
-            ...newMessages[lastIndex],
-            content: newMessages[lastIndex].content + event.payload.content,
-          };
-        } else {
-          newMessages.push({
-            role: "assistant",
-            content: event.payload.content,
-          });
+      setStreamingMessage((prev) => {
+        const content = (prev?.content ?? "") + event.payload.content;
+        if (prev) {
+          return { ...prev, content };
         }
-        return newMessages;
+        return {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content,
+          conversationId: activeConversationId,
+          createdAt: new Date().toISOString(),
+        };
       });
 
       if (event.payload.done) {
         setIsStreaming(false);
         completeReasoning();
+        setStreamingMessage((current) => {
+          if (current) {
+            void addMessage({
+              id: current.id,
+              conversationId: current.conversationId,
+              role: current.role,
+              content: current.content,
+              createdAt: current.createdAt,
+            });
+          }
+          return null;
+        });
       }
     });
 
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [mockMode, completeReasoning]);
+  }, [mockMode, completeReasoning, activeConversationId, addMessage]);
 
   useEffect(() => {
     if (!reasoningStartAt) return;
@@ -107,15 +139,13 @@ export function useChatStream(
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string, options?: { skipUserAppend?: boolean }) => {
+    async (content: string) => {
       if (!content.trim() || isStreaming || (!selectedModel && !mockMode)) {
         return;
       }
 
       cancelStreamRef.current = false;
-      if (!options?.skipUserAppend) {
-        appendMessage({ role: "user", content: content.trim() });
-      }
+      if (!activeConversationId) return;
       setIsStreaming(true);
       if (supportsReasoning) {
         const start = Date.now();
@@ -131,12 +161,25 @@ export function useChatStream(
 
         const delayMs = 600 + Math.round(Math.random() * 400);
         mockTimerRef.current = setTimeout(() => {
-          appendMessage({
+          const createdAt = new Date().toISOString();
+          const messageId = crypto.randomUUID();
+          setStreamingMessage({
+            id: messageId,
             role: "assistant",
             content: `Mock response: ${content.trim()}`,
+            conversationId: activeConversationId,
+            createdAt,
           });
           setIsStreaming(false);
           completeReasoning();
+          void addMessage({
+            id: messageId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: `Mock response: ${content.trim()}`,
+            createdAt,
+          });
+          setStreamingMessage(null);
         }, delayMs);
         return;
       }
@@ -159,8 +202,9 @@ export function useChatStream(
       supportsReasoning,
       mockMode,
       systemPrompt,
-      appendMessage,
+      activeConversationId,
       completeReasoning,
+      addMessage,
     ],
   );
 
@@ -176,17 +220,16 @@ export function useChatStream(
     setIsStreaming(false);
     completeReasoning();
     setReasoningStartAt(null);
+    setStreamingMessage(null);
   }, [isStreaming, mockMode, completeReasoning]);
 
   return {
-    messages,
+    messages: displayMessages,
     isStreaming,
-    appendMessage,
     sendMessage,
     stopStreaming,
-    removeMessageAt,
     bottomRef,
-    hasMessages: messages.length > 0,
+    hasMessages: displayMessages.length > 0,
     reasoningElapsedMs,
     lastReasoningDurationMs,
   };

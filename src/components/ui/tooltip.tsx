@@ -35,9 +35,14 @@ const TooltipContext = React.createContext<{
 
 const TooltipTrigger = React.forwardRef<
   HTMLSpanElement,
-  React.HTMLAttributes<HTMLSpanElement>
->(({ className, ...props }, ref) => (
-  <span ref={ref} className={cn("inline-flex", className)} {...props} />
+  React.HTMLAttributes<HTMLSpanElement> & { disabled?: boolean }
+>(({ className, disabled, ...props }, ref) => (
+  <span
+    ref={ref}
+    className={cn("inline-flex", className)}
+    aria-disabled={disabled || undefined}
+    {...props}
+  />
 ))
 TooltipTrigger.displayName = "TooltipTrigger"
 
