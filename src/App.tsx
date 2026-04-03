@@ -19,7 +19,6 @@ function App() {
   const {
     availableModels,
     selectedModel,
-    selectedProvider,
     setSelectedModel,
     isLoading,
     ollamaError,
@@ -198,7 +197,7 @@ function App() {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="bg-[#0d0d0d]">
       <Sidebar
         onOpenSettings={handleOpenSettings}
         onNewChat={handleNewChat}
@@ -209,10 +208,9 @@ function App() {
         activeConversationId={activeConversationId}
       />
 
-      <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-background font-sans">
+      <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-[#0d0d0d] font-sans">
         <Header
           selectedModel={selectedModel}
-          selectedProvider={selectedProvider}
           availableModels={availableModels}
           onModelChange={setSelectedModel}
           isLoading={isLoading}
@@ -220,7 +218,9 @@ function App() {
         />
 
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden relative">
-          <div className={`flex-1 flex flex-col overflow-hidden ${!hasMessages ? "justify-center" : ""}`}>
+          <div
+            className={`flex-1 flex flex-col overflow-hidden ${!hasMessages ? "justify-center" : ""}`}
+          >
             {hasMessages ? (
               <ChatArea
                 messages={messages}
@@ -228,19 +228,37 @@ function App() {
                 onRegenerate={handleRegenerate}
               />
             ) : (
-              <EmptyState selectedModel={devMode ? "Dev Mode" : selectedModel} />
+              <EmptyState
+                selectedModel={devMode ? "Dev Mode" : selectedModel}
+                availableModels={availableModels}
+                onModelChange={setSelectedModel}
+                isLoading={isLoading}
+              >
+                <ChatInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSend}
+                  onStop={stopStreaming}
+                  isStreaming={isStreaming}
+                  selectedModel={devMode ? "Dev Mode" : selectedModel}
+                  hasMessages={hasMessages}
+                  allowEmptyModel={devMode}
+                />
+              </EmptyState>
             )}
 
-            <ChatInput
-              value={input}
-              onChange={setInput}
-              onSubmit={handleSend}
-              onStop={stopStreaming}
-              isStreaming={isStreaming}
-              selectedModel={devMode ? "Dev Mode" : selectedModel}
-              hasMessages={hasMessages}
-              allowEmptyModel={devMode}
-            />
+            {hasMessages && (
+              <ChatInput
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSend}
+                onStop={stopStreaming}
+                isStreaming={isStreaming}
+                selectedModel={devMode ? "Dev Mode" : selectedModel}
+                hasMessages={hasMessages}
+                allowEmptyModel={devMode}
+              />
+            )}
           </div>
         </main>
       </SidebarInset>

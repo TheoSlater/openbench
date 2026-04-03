@@ -7,22 +7,15 @@ interface HeaderProps {
     openai: string[];
   };
   selectedModel: string;
-  selectedProvider: "ollama" | "anthropic" | "openai";
   onModelChange: (provider: "ollama" | "anthropic" | "openai", model: string) => void;
   isLoading: boolean;
   ollamaError?: string | null;
 }
 
-const providerLabels: Record<HeaderProps["selectedProvider"], string> = {
-  ollama: "Ollama",
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-};
 
 export function Header({
   availableModels,
   selectedModel,
-  selectedProvider,
   onModelChange,
   isLoading,
   ollamaError,
@@ -36,15 +29,11 @@ export function Header({
   };
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4 md:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/5 bg-[#0d0d0d] px-4 md:px-6">
       <div className="flex items-center gap-2 md:gap-2.5">
-        <SidebarTrigger className="md:hidden mr-1" />
-        <span className="text-sm font-medium text-foreground/90">OpenBench</span>
-        <span className="text-xs text-muted-foreground/80 hidden sm:inline-block">
-          {providerLabels[selectedProvider]} · {selectedModel || "No model"}
-        </span>
+        <SidebarTrigger className="md:hidden mr-1 text-white/40" />
         {ollamaError ? (
-          <span className="text-xs text-muted-foreground/60">
+          <span className="text-xs text-red-400/60">
             {ollamaError}
           </span>
         ) : null}
@@ -54,10 +43,10 @@ export function Header({
         <select
           value={selectedValue}
           onChange={(e) => handleChange(e.target.value)}
-          className="h-8 max-w-[120px] sm:max-w-none appearance-none rounded-md border border-border/60 bg-transparent px-3 pr-8 text-sm text-foreground outline-none ring-0 transition-colors hover:border-border focus:border-ring focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
+          className="h-9 max-w-[120px] sm:max-w-none appearance-none rounded-xl border border-white/10 bg-[#1a1a1a] px-3 pr-8 text-[14px] font-medium text-white/90 outline-none ring-0 transition-colors hover:border-white/20 focus:border-white/20 disabled:opacity-50"
           disabled={isLoading || !hasAnyModels}
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='hsl(var(--muted-foreground))' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.2)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
             backgroundRepeat: "no-repeat",
             backgroundPosition: "right 10px center",
           }}
@@ -65,7 +54,7 @@ export function Header({
           {!hasAnyModels ? (
             <option value="">No models</option>
           ) : (
-            <optgroup label={providerLabels.ollama}>
+            <optgroup label="Ollama">
               {availableModels.ollama.map((model) => (
                 <option key={model} value={model}>
                   {model}

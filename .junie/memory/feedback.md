@@ -118,3 +118,83 @@
     "NEW INSTRUCTION": "WHEN styling the SettingsModal container THEN reduce the corner radius to a subtler value."
 }
 
+[2026-04-02 19:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar button jump",
+    "EXPECTATION": "Sidebar toggle should not cause header/action buttons to shift or move with the sidebar.",
+    "NEW INSTRUCTION": "WHEN the sidebar opens or closes THEN render it as an overlay and keep header buttons fixed."
+}
+
+[2026-04-02 19:30] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar/header alignment",
+    "EXPECTATION": "The sidebar collapse toggle should fully align to the edge when collapsed, and the New Chat icon button should be visually centered within its container.",
+    "NEW INSTRUCTION": "WHEN rendering the sidebar header controls THEN align collapse toggle flush-left/right and center the New Chat icon."
+}
+
+[2026-04-02 19:32] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar collapse animation",
+    "EXPECTATION": "Sidebar collapse/expand should not cause header/action buttons to snap; movement must be smooth with no layout shift.",
+    "NEW INSTRUCTION": "WHEN collapsing or expanding the sidebar THEN render it as an overlay and animate translateX, not width."
+}
+
+[2026-04-02 23:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal layout",
+    "EXPECTATION": "SettingsModal remains fully usable on small windows: header and top-left Close visible, body scrolls independently, right panel width-constrained; deletes act immediately; successful saves auto-close.",
+    "NEW INSTRUCTION": "WHEN the SettingsModal opens THEN keep header visible and body overflow-y-auto max-h-[85vh]."
+}
+
+[2026-04-02 23:30] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal layout usability",
+    "EXPECTATION": "SettingsModal must remain fully usable on small windows: header with top-left Close always visible, body independently scrollable with max height, right panel width-constrained; deletes act immediately; successful saves auto-close.",
+    "NEW INSTRUCTION": "WHEN implementing SettingsModal THEN fix header with top-left Close and make body scrollable"
+}
+
+[2026-04-02 23:32] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal usability",
+    "EXPECTATION": "SettingsModal must remain fully usable on small windows: header with top-left Close always visible, body independently scrollable with max height, right panel width-constrained; deletes act immediately; successful saves auto-close.",
+    "NEW INSTRUCTION": "WHEN working on SettingsModal layout or behavior THEN keep header/top-left Close visible and body max-h-85vh overflow-y-auto"
+}
+
+[2026-04-02 23:45] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "EmptyState prompts/layout",
+    "EXPECTATION": "EmptyState should not show suggested prompts; only the model name with the chat input centered below until messages exist.",
+    "NEW INSTRUCTION": "WHEN rendering EmptyState with no messages THEN hide suggested prompts and center ChatInput below the model name"
+}
+
+[2026-04-02 23:45] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "EmptyState prompts/layout",
+    "EXPECTATION": "EmptyState should not display suggested prompts; it should show only the model name with the chat input centered below until messages exist.",
+    "NEW INSTRUCTION": "WHEN rendering EmptyState with no messages THEN hide suggested prompts and center ChatInput below the model name"
+}
+
+[2026-04-02 23:46] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Model name casing",
+    "EXPECTATION": "The model name should display in its original casing, not forced to uppercase.",
+    "NEW INSTRUCTION": "WHEN rendering model name text THEN do not transform case; remove uppercase classes/styles."
+}
+
+[2026-04-02 23:47] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "ChatInput overflow",
+    "EXPECTATION": "The ChatInput should not have its own inner scroll; it should expand slightly and let the main content area handle scrolling.",
+    "NEW INSTRUCTION": "WHEN ChatInput text exceeds one line THEN auto-resize textarea and prevent inner scrolling"
+}
+

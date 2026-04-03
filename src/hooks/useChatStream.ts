@@ -14,7 +14,7 @@ export function useChatStream(
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-  const { addMessage } = useChatStore((state) => state.actions);
+  const { addMessage, renameConversation } = useChatStore((state) => state.actions);
   const [isStreaming, setIsStreaming] = useState(false);
   const [reasoningStartAt, setReasoningStartAt] = useState<number | null>(null);
   const [reasoningElapsedMs, setReasoningElapsedMs] = useState(0);
@@ -107,6 +107,34 @@ export function useChatStream(
               role: current.role,
               content: current.content,
               createdAt: current.createdAt,
+            }).then(() => {
+              // Auto-rename if first message
+              const currentMessages = useChatStore.getState().messages;
+              const currentConversation = useChatStore.getState().conversations.find(
+                (c) => c.id === activeConversationId
+              );
+              
+              if (currentMessages.length <= 2 && currentConversation?.title === "New Chat") {
+                const userMessage = currentMessages.find(m => m.role === "user");
+                if (userMessage) {
+                  invoke<string>("chat", {
+                    model: selectedModel,
+                    messages: [
+                      {
+                        role: "user",
+                        content: `Summarize this chat in 2-3 words. Be concise and do not use quotes. Use Title Case.
+Text: ${userMessage.content}`
+                      }
+                    ]
+                  }).then((title) => {
+                    if (title && activeConversationId) {
+                      // Clean up title (remove quotes, etc)
+                      const cleanTitle = title.trim().replace(/^["']|["']$/g, '').slice(0, 40);
+                      void renameConversation(activeConversationId, cleanTitle);
+                    }
+                  }).catch(err => console.error("Auto-rename failed:", err));
+                }
+              }
             });
           }
           return null;

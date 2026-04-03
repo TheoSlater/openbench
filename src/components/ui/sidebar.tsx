@@ -18,7 +18,9 @@ const SidebarContext = React.createContext<SidebarContextValue | null>(null);
 const MOBILE_BREAKPOINT = 768;
 
 function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(
+    undefined,
+  );
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
@@ -133,24 +135,29 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
 );
 Sidebar.displayName = "Sidebar";
 
-const SidebarInset = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={cn("flex h-screen flex-1 flex-col overflow-hidden", className)}
-        {...props}
-      />
-    );
-  },
-);
+const SidebarInset = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      className={cn("flex h-screen flex-1 flex-col overflow-hidden", className)}
+      {...props}
+    />
+  );
+});
 SidebarInset.displayName = "SidebarInset";
 
 const SidebarHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex items-center px-3", className)} {...props} />
+  <div
+    ref={ref}
+    className={cn("flex items-center px-3", className)}
+    {...props}
+  />
 ));
 SidebarHeader.displayName = "SidebarHeader";
 
@@ -182,11 +189,7 @@ const SidebarSeparator = React.forwardRef<
   HTMLHRElement,
   React.HTMLAttributes<HTMLHRElement>
 >(({ className, ...props }, ref) => (
-  <hr
-    ref={ref}
-    className={cn("mx-2 border-border/60", className)}
-    {...props}
-  />
+  <hr ref={ref} className={cn("mx-2 border-border/60", className)} {...props} />
 ));
 SidebarSeparator.displayName = "SidebarSeparator";
 
@@ -223,6 +226,7 @@ SidebarMenu.displayName = "SidebarMenu";
 
 type SidebarMenuButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   isActive?: boolean;
+  tooltip?: string;
 };
 
 const SidebarMenuButton = React.forwardRef<
@@ -231,7 +235,7 @@ const SidebarMenuButton = React.forwardRef<
 >(({ className, isActive, ...props }, ref) => {
   const { isCollapsed } = useSidebar();
 
-  return (
+  const button = (
     <button
       ref={ref}
       data-active={isActive ? "true" : "false"}
@@ -244,6 +248,8 @@ const SidebarMenuButton = React.forwardRef<
       {...props}
     />
   );
+
+  return button;
 });
 SidebarMenuButton.displayName = "SidebarMenuButton";
 

@@ -77,6 +77,22 @@ async fn chat_stream(
     Ok(())
 }
 
+#[tauri::command]
+async fn chat(
+    state: tauri::State<'_, AppState>,
+    model: String,
+    messages: Vec<ChatMessage>,
+) -> Result<String, String> {
+    let request = ChatMessageRequest::new(model, messages);
+    let response = state
+        .ollama
+        .send_chat_messages(request)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(response.message.content)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -86,7 +102,11 @@ pub fn run() {
         .manage(AppState {
             ollama: Ollama::default(),
         })
-        .invoke_handler(tauri::generate_handler![get_local_models, chat_stream])
+        .invoke_handler(tauri::generate_handler![
+            get_local_models,
+            chat_stream,
+            chat
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
