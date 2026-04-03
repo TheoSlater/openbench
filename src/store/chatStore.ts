@@ -17,10 +17,12 @@ export type Message = {
 type ChatStore = {
   conversations: Conversation[];
   activeConversationId: string | null;
+  streamingConversationId: string | null;
   messages: Message[];
   actions: {
     createConversation: (title?: string) => Promise<Conversation>;
     setActiveConversationId: (id: string | null) => Promise<void>;
+    setStreamingConversationId: (id: string | null) => void;
     setMessages: (messages: Message[]) => void;
     addMessage: (message: {
       conversationId: string;
@@ -38,6 +40,7 @@ type ChatStore = {
 export const useChatStore = create<ChatStore>((set) => ({
   conversations: [],
   activeConversationId: null,
+  streamingConversationId: null,
   messages: [],
   actions: {
     // Load all conversations from DB
@@ -51,6 +54,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       }));
       set({ conversations });
     },
+    setStreamingConversationId: (id) => set({ streamingConversationId: id }),
     // Create a new conversation
     createConversation: async (title = "New Chat") => {
       const id = crypto.randomUUID();

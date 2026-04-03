@@ -198,3 +198,59 @@
     "NEW INSTRUCTION": "WHEN ChatInput text exceeds one line THEN auto-resize textarea and prevent inner scrolling"
 }
 
+[2026-04-03 00:00] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Missing chat context",
+    "EXPECTATION": "The AI should retain and use prior messages within the same chat so replies are contextual.",
+    "NEW INSTRUCTION": "WHEN sending a prompt to the AI THEN include the full ordered conversation history for that chat."
+}
+
+[2026-04-03 00:02] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Shimmer visibility",
+    "EXPECTATION": "The sidebar chat title should show a text shimmer whenever the AI is actively processing/streaming.",
+    "NEW INSTRUCTION": "WHEN a conversation is streaming or running THEN wrap its sidebar title with TextShimmer"
+}
+
+[2026-04-03 09:06] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Cancel handling",
+    "EXPECTATION": "Canceling an in-flight AI response should fully stop it so the next send only processes the new message.",
+    "NEW INSTRUCTION": "WHEN a response is canceled THEN abort request, clear streaming state, ignore late events."
+}
+
+[2026-04-03 09:25] - Updated by Junie
+{
+    "TYPE": "negative",
+    "CATEGORY": "Sidebar visual mismatch",
+    "EXPECTATION": "The sidebar should visually match the referenced screenshot precisely.",
+    "NEW INSTRUCTION": "WHEN implementing or updating the sidebar with a provided screenshot THEN match layout, spacing, colors, and alignment to it"
+}
+
+[2026-04-03 09:37] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Revert UI changes",
+    "EXPECTATION": "Restore the previous sidebar design and related UI that existed before the recent minimal cleanup.",
+    "NEW INSTRUCTION": "WHEN working on the Sidebar layout THEN restore original sections and profile footer from earlier version."
+}
+
+[2026-04-03 09:46] - Updated by Junie
+{
+    "TYPE": "negative",
+    "CATEGORY": "Sidebar buttons misalignment",
+    "EXPECTATION": "Sidebar buttons should work correctly and be visually centered/aligned within their containers.",
+    "NEW INSTRUCTION": "WHEN rendering sidebar header and menu buttons THEN center contents and ensure full-width clickable targets."
+}
+
+[2026-04-03 09:48] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar/header alignment",
+    "EXPECTATION": "All sidebar header/buttons should be centered within their containers; icons centered inside buttons.",
+    "NEW INSTRUCTION": "WHEN rendering sidebar header/action buttons THEN center icons with flex items-center justify-center and full hit-area."
+}
+

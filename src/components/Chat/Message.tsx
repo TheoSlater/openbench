@@ -2,6 +2,11 @@ import { cn } from "@/lib/utils";
 import type { Role } from "@/types/chat";
 import { Copy, MoreHorizontal, RotateCcw, Check } from "lucide-react";
 import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,10 +62,13 @@ export function Message({
     <div className="group flex w-full animate-fade-in py-4">
       <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[80%]">
         {content ? (
-          <div className="prose prose-invert max-w-none">
-            <p className="text-[16px] leading-7 text-[#ececec] whitespace-pre-wrap">
+          <div className="prose prose-invert max-w-none prose-p:leading-7 prose-p:text-[16px] prose-p:text-[#ececec] prose-pre:bg-[#2f2f2f] prose-pre:p-4 prose-pre:rounded-xl prose-code:text-[#ececec]">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
               {content}
-            </p>
+            </ReactMarkdown>
           </div>
         ) : null}
         <div

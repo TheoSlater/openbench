@@ -4,6 +4,23 @@ import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamPayload } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 
+const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant.
+
+Formatting and Content Capabilities:
+- You have full support for Markdown formatting. Use bold, italics, code blocks, lists, and tables when appropriate to structure your responses.
+- You have robust support for LaTeX mathematics rendering via KaTeX. 
+  - Always wrap inline mathematical expressions, variables, and symbols in single dollar signs (e.g., $E = mc^2$, $x$, $\\alpha$).
+  - Always wrap display-level equations in double dollar signs on their own lines (e.g., $$f(x) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x} \\,d\\xi$$).
+  - Use standard LaTeX environments like \\frac, \\sum, \\sqrt, and matrices where necessary.
+  - Ensure equations are correctly formatted and mathematically accurate.
+
+Interaction Guidelines:
+- Be clear, concise, and direct in your answers.
+- Organize complex explanations into digestible sections using headings.
+- If you provide code snippets, always specify the language for proper syntax highlighting.
+- When appropriate, break down steps logically and explain your reasoning.
+`;
+
 export function useChatStream(
   selectedModel: string,
   supportsReasoning: boolean,
@@ -14,8 +31,13 @@ export function useChatStream(
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-  const { addMessage, renameConversation } = useChatStore((state) => state.actions);
+  const { addMessage, renameConversation, setStreamingConversationId } = useChatStore((state) => state.actions);
   const [isStreaming, setIsStreaming] = useState(false);
+  
+  useEffect(() => {
+    setStreamingConversationId(isStreaming ? activeConversationId : null);
+  }, [isStreaming, activeConversationId, setStreamingConversationId]);
+
   const [reasoningStartAt, setReasoningStartAt] = useState<number | null>(null);
   const [reasoningElapsedMs, setReasoningElapsedMs] = useState(0);
   const [lastReasoningDurationMs, setLastReasoningDurationMs] = useState<
@@ -215,10 +237,19 @@ Text: ${userMessage.content}`
       }
 
       try {
+        const history = useChatStore.getState().messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const finalSystemPrompt = systemPrompt.trim()
+          ? `${MAIN_SYSTEM_PROMPT}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
+          : MAIN_SYSTEM_PROMPT;
+
         await invoke("chat_stream", {
           model: selectedModel,
-          message: content.trim(),
-          systemPrompt,
+          messages: [...history, { role: "user", content: content.trim() }],
+          systemPrompt: finalSystemPrompt,
         });
       } catch (error) {
         console.error("Chat error:", error);
@@ -238,20 +269,38 @@ Text: ${userMessage.content}`
     ],
   );
 
-  const stopStreaming = useCallback(() => {
+  const stopStreaming = useCallback(async () => {
     if (!isStreaming) return;
     cancelStreamRef.current = true;
+
+    try {
+      await invoke("cancel_chat");
+    } catch (err) {
+      console.error("Failed to cancel chat:", err);
+    }
 
     if (mockMode && mockTimerRef.current) {
       clearTimeout(mockTimerRef.current);
       mockTimerRef.current = null;
     }
 
+    setStreamingMessage((current) => {
+      if (current && current.content.trim()) {
+        void addMessage({
+          id: current.id,
+          conversationId: current.conversationId,
+          role: current.role,
+          content: current.content,
+          createdAt: current.createdAt,
+        });
+      }
+      return null;
+    });
+
     setIsStreaming(false);
     completeReasoning();
     setReasoningStartAt(null);
-    setStreamingMessage(null);
-  }, [isStreaming, mockMode, completeReasoning]);
+  }, [isStreaming, mockMode, completeReasoning, addMessage]);
 
   return {
     messages: displayMessages,

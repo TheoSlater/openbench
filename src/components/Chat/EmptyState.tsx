@@ -30,7 +30,7 @@ export function EmptyState({
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 max-w-3xl mx-auto w-full">
       {/* Model Selector Dropdown */}
-      <div className="mb-8 relative">
+      <div className="mb-4 relative">
         <div className="group relative">
           <button className="flex items-center gap-2 rounded-2xl px-4 py-2 transition-colors hover:bg-white/5 pointer-events-none">
             <span className="text-xl font-bold text-white/90 tracking-tight">

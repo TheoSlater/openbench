@@ -64,7 +64,8 @@ export default {
   		},
   		animation: {
   			'fade-in': 'fadeIn 150ms ease-out',
-  			'slide-up': 'slideUp 150ms ease-out'
+  			'slide-up': 'slideUp 150ms ease-out',
+  			'shimmer': 'shimmer 4s infinite linear'
   		},
   		keyframes: {
   			slideUp: {

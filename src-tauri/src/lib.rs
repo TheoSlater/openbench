@@ -4,8 +4,11 @@ use ollama_rs::Ollama;
 use tauri::{AppHandle, Emitter};
 use tokio_stream::StreamExt;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 struct AppState {
     ollama: Ollama,
+    current_generation_id: AtomicUsize,
 }
 
 #[tauri::command]
@@ -25,11 +28,16 @@ struct StreamPayload {
 }
 
 #[tauri::command]
+fn cancel_chat(state: tauri::State<'_, AppState>) {
+    state.current_generation_id.fetch_add(1, Ordering::SeqCst);
+}
+
+#[tauri::command]
 async fn chat_stream(
     app_handle: AppHandle,
     state: tauri::State<'_, AppState>,
     model: String,
-    message: String,
+    messages: Vec<ollama_rs::generation::chat::ChatMessage>,
     system_prompt: Option<String>,
 ) -> Result<(), String> {
     if let Some(ref prompt) = system_prompt {
@@ -42,14 +50,16 @@ async fn chat_stream(
         println!("[openbench] system_prompt missing");
     }
 
-    let mut messages = Vec::new();
+    let mut all_messages = Vec::new();
     if let Some(prompt) = system_prompt {
         if !prompt.trim().is_empty() {
-            messages.push(ChatMessage::system(prompt));
+            all_messages.push(ChatMessage::system(prompt));
         }
     }
-    messages.push(ChatMessage::user(message));
-    let request = ChatMessageRequest::new(model, messages);
+    all_messages.extend(messages);
+    let request = ChatMessageRequest::new(model, all_messages);
+
+    let current_gen_id = state.current_generation_id.fetch_add(1, Ordering::SeqCst) + 1;
 
     let mut stream = state
         .ollama
@@ -58,6 +68,12 @@ async fn chat_stream(
         .map_err(|e| e.to_string())?;
 
     while let Some(res) = stream.next().await {
+        if state.current_generation_id.load(Ordering::SeqCst) != current_gen_id {
+            // Cancelled or a new generation started. Do NOT emit done: true,
+            // as it could prematurely terminate a new stream on the frontend.
+            break;
+        }
+
         match res {
             Ok(response) => {
                 let _ = app_handle.emit(
@@ -101,11 +117,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             ollama: Ollama::default(),
+            current_generation_id: AtomicUsize::new(0),
         })
         .invoke_handler(tauri::generate_handler![
             get_local_models,
             chat_stream,
-            chat
+            chat,
+            cancel_chat
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
