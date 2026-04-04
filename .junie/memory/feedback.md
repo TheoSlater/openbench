@@ -254,3 +254,35 @@
     "NEW INSTRUCTION": "WHEN rendering sidebar header/action buttons THEN center icons with flex items-center justify-center and full hit-area."
 }
 
+[2026-04-03 11:16] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "MUI refactor safeguards",
+    "EXPECTATION": "During the MUI migration, SettingsModal must retain its small-window usability: fixed header with a visible top-left Close, independently scrollable body with constrained height, and right panel width constraints.",
+    "NEW INSTRUCTION": "WHEN migrating SettingsModal to MUI THEN fix header, top-left Close; body max-h 85vh scroll"
+}
+
+[2026-04-03 11:25] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Broken imports",
+    "EXPECTATION": "After the MUI refactor, legacy ui/* imports must still resolve or be updated so the app runs without missing module errors.",
+    "NEW INSTRUCTION": "WHEN deleting or moving ui components THEN update all import paths or add compatibility wrappers at original paths."
+}
+
+[2026-04-03 11:57] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Missing provider",
+    "EXPECTATION": "Components that call useSidebar (e.g., SidebarTrigger) must be rendered within a SidebarProvider so they don’t throw at runtime.",
+    "NEW INSTRUCTION": "WHEN using SidebarTrigger or useSidebar THEN wrap the tree with SidebarProvider at the app shell."
+}
+
+[2026-04-03 11:58] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar collapse regression",
+    "EXPECTATION": "The sidebar should collapse to an icon-only rail when toggled, reducing width and hiding labels.",
+    "NEW INSTRUCTION": "WHEN the sidebar is collapsed THEN set width to 60px, hide labels, keep icons centered."
+}
+

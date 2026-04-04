@@ -1,41 +1,29 @@
-"use client";
-
 import * as React from "react";
+import {
+  Box,
+  IconButton,
+  Drawer,
+  useMediaQuery,
+  Theme,
+  CSSObject,
+} from "@mui/material";
 import { PanelLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-type SidebarContextValue = {
+interface SidebarContextValue {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
   isCollapsed: boolean;
-  setCollapsed: (value: boolean) => void;
-  toggle: () => void;
+  setIsCollapsed: (collapsed: boolean) => void;
   isMobile: boolean;
   openMobile: boolean;
-  setOpenMobile: (value: boolean) => void;
-};
-
-const SidebarContext = React.createContext<SidebarContextValue | null>(null);
-
-const MOBILE_BREAKPOINT = 768;
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(
-    undefined,
-  );
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-    mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
-
-  return !!isMobile;
+  setOpenMobile: (open: boolean) => void;
 }
 
-function useSidebar() {
+const SidebarContext = React.createContext<SidebarContextValue | undefined>(
+  undefined,
+);
+
+export function useSidebar() {
   const context = React.useContext(SidebarContext);
   if (!context) {
     throw new Error("useSidebar must be used within a SidebarProvider");
@@ -43,272 +31,280 @@ function useSidebar() {
   return context;
 }
 
-type SidebarProviderProps = React.HTMLAttributes<HTMLDivElement> & {
-  defaultCollapsed?: boolean;
-};
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const isMobile = useMediaQuery((theme: Theme) =>
+    theme.breakpoints.down("md"),
+  );
+  const [openMobile, setOpenMobile] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
 
-const SidebarProvider = React.forwardRef<HTMLDivElement, SidebarProviderProps>(
-  ({ className, defaultCollapsed = false, children, ...props }, ref) => {
-    const isMobile = useIsMobile();
-    const [openMobile, setOpenMobile] = React.useState(false);
-    const [isCollapsed, setCollapsed] = React.useState(defaultCollapsed);
+  const value = React.useMemo(
+    () => ({
+      isOpen: !isCollapsed,
+      setIsOpen: (open: boolean) => setIsCollapsed(!open),
+      isCollapsed,
+      setIsCollapsed,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+    }),
+    [isCollapsed, isMobile, openMobile],
+  );
 
-    const toggle = React.useCallback(
-      () =>
-        isMobile
-          ? setOpenMobile((prev) => !prev)
-          : setCollapsed((previous) => !previous),
-      [isMobile],
-    );
-
-    return (
-      <SidebarContext.Provider
-        value={{
-          isCollapsed,
-          setCollapsed,
-          toggle,
-          isMobile,
-          openMobile,
-          setOpenMobile,
+  return (
+    <SidebarContext.Provider value={value}>
+      <Box
+        sx={{
+          display: "flex",
+          width: "100%",
+          height: "100vh",
+          overflow: "hidden",
+          bgcolor: "#0d0d0d",
         }}
       >
-        <div
-          ref={ref}
-          className={cn(
-            "flex h-screen w-full overflow-hidden bg-background text-foreground",
-            className,
-          )}
-          {...props}
-        >
-          {children}
-        </div>
-      </SidebarContext.Provider>
-    );
-  },
-);
-SidebarProvider.displayName = "SidebarProvider";
+        {children}
+      </Box>
+    </SidebarContext.Provider>
+  );
+}
 
-type SidebarProps = React.HTMLAttributes<HTMLDivElement> & {
+export function Sidebar({
+  children,
+  collapsible,
+}: {
+  children: React.ReactNode;
   collapsible?: "icon" | "none";
-};
+}) {
+  const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
 
-const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
-  ({ className, collapsible = "none", ...props }, ref) => {
-    const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
-    const collapsed = collapsible === "icon" && isCollapsed;
-
-    if (isMobile) {
-      return (
-        <>
-          {openMobile && (
-            <div
-              className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm"
-              onClick={() => setOpenMobile(false)}
-            />
-          )}
-          <aside
-            ref={ref}
-            className={cn(
-              "fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-in-out",
-              openMobile ? "translate-x-0" : "-translate-x-full",
-              className,
-            )}
-            {...props}
-          />
-        </>
-      );
-    }
-
+  if (isMobile) {
     return (
-      <aside
-        ref={ref}
-        data-collapsed={collapsed ? "true" : "false"}
-        className={cn(
-          "group/sidebar relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
-          collapsed ? "w-16" : "w-64",
-          className,
-        )}
-        {...props}
-      />
+      <Drawer
+        open={openMobile}
+        onClose={() => setOpenMobile(false)}
+        PaperProps={{
+          sx: {
+            width: 260,
+            bgcolor: "#0d0d0d",
+            borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        {children}
+      </Drawer>
     );
-  },
-);
-Sidebar.displayName = "Sidebar";
+  }
 
-const SidebarInset = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      className={cn("flex h-screen flex-1 flex-col overflow-hidden", className)}
-      {...props}
-    />
-  );
-});
-SidebarInset.displayName = "SidebarInset";
-
-const SidebarHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("flex items-center px-3", className)}
-    {...props}
-  />
-));
-SidebarHeader.displayName = "SidebarHeader";
-
-const SidebarContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("flex flex-1 flex-col px-2", className)}
-    {...props}
-  />
-));
-SidebarContent.displayName = "SidebarContent";
-
-const SidebarFooter = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("flex items-center px-2 pb-3", className)}
-    {...props}
-  />
-));
-SidebarFooter.displayName = "SidebarFooter";
-
-const SidebarSeparator = React.forwardRef<
-  HTMLHRElement,
-  React.HTMLAttributes<HTMLHRElement>
->(({ className, ...props }, ref) => (
-  <hr ref={ref} className={cn("mx-2 border-border/60", className)} {...props} />
-));
-SidebarSeparator.displayName = "SidebarSeparator";
-
-const SidebarGroup = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("space-y-2", className)} {...props} />
-));
-SidebarGroup.displayName = "SidebarGroup";
-
-const SidebarGroupLabel = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => (
-  <p
-    ref={ref}
-    className={cn(
-      "px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/70",
-      className,
-    )}
-    {...props}
-  />
-));
-SidebarGroupLabel.displayName = "SidebarGroupLabel";
-
-const SidebarMenu = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex flex-col gap-1", className)} {...props} />
-));
-SidebarMenu.displayName = "SidebarMenu";
-
-type SidebarMenuButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  isActive?: boolean;
-  tooltip?: string;
-};
-
-const SidebarMenuButton = React.forwardRef<
-  HTMLButtonElement,
-  SidebarMenuButtonProps
->(({ className, isActive, ...props }, ref) => {
-  const { isCollapsed } = useSidebar();
-
-  const button = (
-    <button
-      ref={ref}
-      data-active={isActive ? "true" : "false"}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-foreground/90 transition hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-        isCollapsed ? "justify-center" : "justify-start",
-        isActive ? "bg-accent text-foreground" : "",
-        className,
-      )}
-      {...props}
-    />
-  );
-
-  return button;
-});
-SidebarMenuButton.displayName = "SidebarMenuButton";
-
-const SidebarTrigger = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ className, onClick, ...props }, ref) => {
-  const { toggle } = useSidebar();
+  const width = isCollapsed && collapsible === "icon" ? 60 : 260;
 
   return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={(event) => {
-        onClick?.(event);
-        toggle();
+    <Box
+      sx={{
+        width,
+        flexShrink: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "#0d0d0d",
+        borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+        transition: "width 0.2s ease-in-out",
+        overflowX: "hidden", // Fixes horizontal scroll
       }}
-      className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-        className,
-      )}
-      aria-label="Toggle sidebar"
-      {...props}
     >
-      <PanelLeft className="size-4" />
-    </button>
+      {children}
+    </Box>
   );
-});
-SidebarTrigger.displayName = "SidebarTrigger";
+}
 
-const SidebarIconButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement>
->(({ className, ...props }, ref) => (
-  <button
-    ref={ref}
-    type="button"
-    className={cn(
-      "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-      className,
-    )}
-    {...props}
-  />
-));
-SidebarIconButton.displayName = "SidebarIconButton";
+export function SidebarHeader({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        p: 0,
+        px: isCollapsed ? 0 : 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "space-between",
+        minHeight: 56,
+        ...sx,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
 
-export {
-  SidebarProvider,
-  Sidebar,
-  SidebarInset,
-  SidebarHeader,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarSeparator,
-  SidebarTrigger,
-  SidebarIconButton,
-  useSidebar,
-};
+export function SidebarContent({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        overflowY: "auto",
+        overflowX: "hidden", // Prevent horizontal scroll in content
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarFooter({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        p: 1.5,
+        px: isCollapsed ? 0 : 1.5,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "flex-start",
+        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+        ...sx,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarGroup({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  return <Box sx={{ mb: 2, width: "100%", ...sx }}>{children}</Box>;
+}
+
+export function SidebarGroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Box sx={{ px: 2, mb: 1, mt: 2 }}>
+      <Box
+        component="span"
+        sx={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "rgba(255, 255, 255, 0.3)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
+export function SidebarGroupContent({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box sx={{ px: isCollapsed ? 0 : 0, width: "100%", ...sx }}>{children}</Box>
+  );
+}
+
+export function SidebarMenu({ children }: { children: React.ReactNode }) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 0.25,
+        px: isCollapsed ? 0 : 1.5,
+        alignItems: isCollapsed ? "center" : "stretch",
+        width: "100%",
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarMenuButton({
+  children,
+  isActive,
+  onClick,
+}: {
+  children: React.ReactNode;
+  isActive?: boolean;
+  onClick?: () => void;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "flex-start",
+        gap: isCollapsed ? 0 : 2,
+        px: isCollapsed ? 0 : 1.5,
+        width: isCollapsed ? 36 : "100%",
+        height: 36,
+        borderRadius: "8px",
+        cursor: "pointer",
+        transition: "all 0.2s",
+        bgcolor: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
+        color: isActive ? "#fff" : "rgba(255, 255, 255, 0.6)",
+        fontSize: "13px",
+        fontWeight: 500,
+        overflow: "hidden",
+        "&:hover": {
+          bgcolor: "rgba(255, 255, 255, 0.05)",
+          color: "#fff",
+        },
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarTrigger({ sx }: { sx?: CSSObject }) {
+  const { isCollapsed, setIsCollapsed, isMobile, setOpenMobile } = useSidebar();
+
+  const handleClick = () => {
+    if (isMobile) {
+      setOpenMobile(true);
+    } else {
+      setIsCollapsed(!isCollapsed);
+    }
+  };
+
+  return (
+    <IconButton
+      onClick={handleClick}
+      size="small"
+      sx={{
+        color: "rgba(255, 255, 255, 0.4)",
+        "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" },
+        ...sx,
+      }}
+    >
+      <PanelLeft size={18} />
+    </IconButton>
+  );
+}

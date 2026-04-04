@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { ChatMessage } from "@/types/chat";
 import { Message } from "./Message";
+import { Box } from "@mui/material";
 
 interface ChatAreaProps {
   messages: ChatMessage[];
@@ -10,8 +11,20 @@ interface ChatAreaProps {
 
 export function ChatArea({ messages, bottomRef, onRegenerate }: ChatAreaProps) {
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pb-16 pt-8 sm:px-6">
+    <Box sx={{ flex: 1, overflowY: "auto" }}>
+      <Box
+        sx={{
+          mx: "auto",
+          display: "flex",
+          width: "100%",
+          maxWidth: 768,
+          flexDirection: "column",
+          gap: 3,
+          px: { xs: 2, sm: 3 },
+          pb: 8,
+          pt: 4,
+        }}
+      >
         {messages.map((msg, i) => (
           <Message
             key={i}
@@ -21,8 +34,8 @@ export function ChatArea({ messages, bottomRef, onRegenerate }: ChatAreaProps) {
             onRegenerate={onRegenerate}
           />
         ))}
-        <div ref={bottomRef} className="h-20" />
-      </div>
-    </div>
+        <Box ref={bottomRef} sx={{ h: 80 }} />
+      </Box>
+    </Box>
   );
 }

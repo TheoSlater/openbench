@@ -1,11 +1,6 @@
-// Design: Dark minimal chat input — soft surface, muted icons, spacious two-row layout.
 import { ArrowUp, Square } from "lucide-react";
-import { useRef } from "react";
-import { cn } from "@/lib/utils";
-import {
-  PromptInput,
-  PromptInputTextarea,
-} from "@/components/ui/prompt-input";
+import { useRef, useEffect } from "react";
+import { Box, InputBase, IconButton, Typography } from "@mui/material";
 
 interface ChatInputProps {
   value: string;
@@ -43,52 +38,112 @@ export function ChatInput({
     handleSubmit();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [value]);
+
   return (
-    <div className={cn("shrink-0 bg-transparent px-4 pb-6 pt-4 relative z-10", hasMessages ? "bg-[#0d0d0d]" : "bg-transparent")}>
-      <div className="mx-auto w-full max-w-3xl">
-        <PromptInput
-          value={value}
-          onValueChange={onChange}
-          onSubmit={handleSubmit}
-          isLoading={isStreaming}
-          maxHeight={200}
-          disabled={isStreaming || (!selectedModel && !allowEmptyModel)}
-          className="flex min-h-[56px] w-full flex-col gap-2 overflow-visible rounded-[2rem] border border-white/5 bg-[#1a1a1a] px-5 py-3 transition-all duration-300"
+    <Box
+      sx={{
+        shrink: 0,
+        bgcolor: hasMessages ? "#0d0d0d" : "transparent",
+        px: 2,
+        pb: 3,
+        pt: 2,
+        position: "relative",
+        zIndex: 10,
+      }}
+    >
+      <Box sx={{ mx: "auto", width: "100%", maxWidth: 768 }}>
+        <Box
+          sx={{
+            display: "flex",
+            minHeight: 56,
+            width: "100%",
+            flexDirection: "column",
+            gap: 1,
+            borderRadius: "2rem",
+            border: "1px solid rgba(255, 255, 255, 0.05)",
+            bgcolor: "#1a1a1a",
+            px: 2.5,
+            py: 1.5,
+            transition: "all 0.3s",
+          }}
         >
-          <PromptInputTextarea
-            ref={textareaRef}
+          <InputBase
+            multiline
+            inputRef={textareaRef}
             placeholder="How can I help you today?"
-            className="min-h-[24px] max-h-[200px] w-full bg-transparent px-0 py-1 text-[16px] leading-relaxed text-white/90 placeholder:text-white/20"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isStreaming || (!selectedModel && !allowEmptyModel)}
+            sx={{
+              width: "100%",
+              color: "rgba(255, 255, 255, 0.9)",
+              fontSize: "16px",
+              lineHeight: 1.6,
+              "& .MuiInputBase-input": {
+                p: 0,
+                "&::placeholder": {
+                  color: "rgba(255, 255, 255, 0.2)",
+                  opacity: 1,
+                }
+              }
+            }}
           />
-          <div className="flex items-center justify-end mt-1">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-all duration-200",
-                  (value.trim() || isStreaming)
-                    ? "bg-white text-black hover:bg-white/90" 
-                    : "bg-white/5 text-white/10 cursor-not-allowed"
-                )}
-                onClick={handleAction}
-                disabled={isStreaming ? false : !value.trim() || (!selectedModel && !allowEmptyModel)}
-                aria-label={isStreaming ? "Stop generation" : "Send message"}
-              >
-                {isStreaming ? (
-                  <Square className="size-3.5 fill-current" />
-                ) : (
-                  <ArrowUp className="size-4 stroke-[2.5px]" />
-                )}
-              </button>
-            </div>
-          </div>
-        </PromptInput>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", mt: 0.5 }}>
+            <IconButton
+              onClick={handleAction}
+              disabled={isStreaming ? false : !value.trim() || (!selectedModel && !allowEmptyModel)}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: (value.trim() || isStreaming) ? "#fff" : "rgba(255, 255, 255, 0.05)",
+                color: (value.trim() || isStreaming) ? "#000" : "rgba(255, 255, 255, 0.1)",
+                "&:hover": {
+                  bgcolor: (value.trim() || isStreaming) ? "rgba(255, 255, 255, 0.9)" : "rgba(255, 255, 255, 0.05)",
+                },
+                "&.Mui-disabled": {
+                  bgcolor: "rgba(255, 255, 255, 0.05)",
+                  color: "rgba(255, 255, 255, 0.1)",
+                }
+              }}
+            >
+              {isStreaming ? (
+                <Square size={14} fill="currentColor" />
+              ) : (
+                <ArrowUp size={16} strokeWidth={2.5} />
+              )}
+            </IconButton>
+          </Box>
+        </Box>
         {!hasMessages && (
-          <p className="mt-3 text-center text-[11px] font-medium text-white/20">
+          <Typography
+            variant="caption"
+            sx={{
+              display: "block",
+              mt: 1.5,
+              textAlign: "center",
+              fontSize: "11px",
+              fontWeight: 500,
+              color: "rgba(255, 255, 255, 0.2)"
+            }}
+          >
             OpenBench can make mistakes. Check important info.
-          </p>
+          </Typography>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

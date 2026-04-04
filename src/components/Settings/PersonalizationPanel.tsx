@@ -7,6 +7,7 @@ import {
 } from "react";
 import { SystemPrompt, useModelStore } from "@/store/modelStore";
 import type { PersonalizationPanelRef } from "./SettingsModal";
+import { Box, Typography, TextField } from "@mui/material";
 
 /**
  * System prompt management panel - simplified to only Custom Instructions.
@@ -62,29 +63,59 @@ export const PersonalizationPanel = forwardRef<PersonalizationPanelRef>(
     }));
 
     return (
-      <div className="flex w-full flex-col">
+      <Box sx={{ display: "flex", width: "100%", flexDirection: "column" }}>
         {/* Custom Instructions */}
-        <section className="py-0">
-          <div className="mb-6 space-y-1">
-            <label
+        <Box component="section" sx={{ py: 0 }}>
+          <Box sx={{ mb: 3, display: "flex", flexDirection: "column", gap: 0.5 }}>
+            <Typography
+              component="label"
               htmlFor="prompt-content"
-              className="text-sm font-bold tracking-tight text-foreground"
+              sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#fff" }}
             >
               Custom instructions
-            </label>
-            <p className="text-xs text-muted-foreground/60 leading-relaxed">
+            </Typography>
+            <Typography variant="caption" sx={{ color: "rgba(255, 255, 255, 0.4)", lineHeight: 1.6 }}>
               What would you like the AI to know to provide better responses?
-            </p>
-          </div>
-          <textarea
+            </Typography>
+          </Box>
+          <TextField
             id="prompt-content"
+            multiline
+            minRows={12}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="min-h-[300px] w-full rounded-2xl border-2 border-border/30 bg-muted/10 px-6 py-5 text-sm font-medium leading-relaxed focus:border-foreground/20 focus:bg-background focus:ring-8 focus:ring-foreground/5 outline-none transition-all resize-y placeholder:text-muted-foreground/30"
             placeholder="Example: I'm a developer working with React and Rust. Keep explanations concise..."
+            fullWidth
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: "16px",
+                bgcolor: "rgba(255, 255, 255, 0.02)",
+                fontSize: "14px",
+                color: "#fff",
+                lineHeight: 1.6,
+                transition: "all 0.2s",
+                "& fieldset": {
+                  borderColor: "rgba(255, 255, 255, 0.1)",
+                  borderWidth: "1px",
+                },
+                "&:hover fieldset": {
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                },
+                "&.Mui-focused": {
+                  bgcolor: "background.default",
+                  "& fieldset": {
+                    borderColor: "rgba(255, 255, 255, 0.2)",
+                  },
+                }
+              },
+              "& .MuiInputBase-input::placeholder": {
+                color: "rgba(255, 255, 255, 0.2)",
+                opacity: 1,
+              }
+            }}
           />
-        </section>
-      </div>
+        </Box>
+      </Box>
     );
   },
 );

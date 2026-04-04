@@ -1,65 +1,86 @@
-"use client";
-
-// Design: Compact, utilitarian sidebar with icon-first controls and muted surfaces.
-
 import * as React from "react";
-import { MoreHorizontal, SquarePen, Pencil, Trash, Settings } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Sidebar as SidebarRoot,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
-import type { Conversation } from "@/store/chatStore";
+  Box,
+  IconButton,
+  Drawer,
+  useMediaQuery,
+  Theme,
+  CSSObject,
+  Typography,
+} from "@mui/material";
+import { PanelLeft, Plus, Settings, Trash2, Edit2, Check, X } from "lucide-react";
+import { Conversation } from "@/store/chatStore";
 
-type SidebarProps = {
+interface SidebarContextValue {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  isCollapsed: boolean;
+  setIsCollapsed: (collapsed: boolean) => void;
+  isMobile: boolean;
+  openMobile: boolean;
+  setOpenMobile: (open: boolean) => void;
+}
+
+const SidebarContext = React.createContext<SidebarContextValue | undefined>(
+  undefined,
+);
+
+export function useSidebar() {
+  const context = React.useContext(SidebarContext);
+  if (!context) {
+    throw new Error("useSidebar must be used within a SidebarProvider");
+  }
+  return context;
+}
+
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const isMobile = useMediaQuery((theme: Theme) =>
+    theme.breakpoints.down("md"),
+  );
+  const [openMobile, setOpenMobile] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+  const value = React.useMemo(
+    () => ({
+      isOpen: !isCollapsed,
+      setIsOpen: (open: boolean) => setIsCollapsed(!open),
+      isCollapsed,
+      setIsCollapsed,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+    }),
+    [isCollapsed, isMobile, openMobile],
+  );
+
+  return (
+    <SidebarContext.Provider value={value}>
+      <Box
+        sx={{
+          display: "flex",
+          width: "100%",
+          height: "100vh",
+          overflow: "hidden",
+          bgcolor: "#0d0d0d",
+        }}
+      >
+        {children}
+      </Box>
+    </SidebarContext.Provider>
+  );
+}
+
+interface SidebarProps {
   onOpenSettings: () => void;
   onNewChat: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
-  onRenameConversation: (id: string, newTitle: string) => void;
+  onRenameConversation: (id: string, newTitle: string) => Promise<void>;
   conversations: Conversation[];
   activeConversationId: string | null;
-};
+  collapsible?: "icon" | "none";
+}
 
-const getConversationGroupLabel = (updatedAt: string) => {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setDate(todayStart.getDate() - 1);
-  const weekStart = new Date(todayStart);
-  weekStart.setDate(todayStart.getDate() - ((todayStart.getDay() + 6) % 7));
-  const lastWeekStart = new Date(weekStart);
-  lastWeekStart.setDate(weekStart.getDate() - 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const updated = new Date(updatedAt);
-
-  if (updated >= todayStart) return "Today";
-  if (updated >= yesterdayStart) return "Yesterday";
-  if (updated >= weekStart) return "This Week";
-  if (updated >= lastWeekStart) return "Last Week";
-  if (updated >= monthStart) return "This Month";
-  return "Earlier";
-};
-
-/**
- * Persistent left sidebar with primary actions.
- * @param onOpenSettings - Handler to open the settings modal.
- */
 export function Sidebar({
   onOpenSettings,
   onNewChat,
@@ -68,166 +89,379 @@ export function Sidebar({
   onRenameConversation,
   conversations,
   activeConversationId,
+  collapsible,
 }: SidebarProps) {
-  const { isCollapsed, setOpenMobile, isMobile } = useSidebar();
+  const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
   const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [editTitle, setEditTitle] = React.useState("");
-  const editInputRef = React.useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = React.useState("");
 
-  React.useEffect(() => {
-    if (editingId && editInputRef.current) {
-      editInputRef.current.focus();
-      editInputRef.current.select();
-    }
-  }, [editingId]);
-
-  const handleStartRename = (conversation: Conversation) => {
-    setEditingId(conversation.id);
-    setEditTitle(conversation.title);
+  const handleStartRename = (e: React.MouseEvent, conv: Conversation) => {
+    e.stopPropagation();
+    setEditingId(conv.id);
+    setEditValue(conv.title || "Untitled");
   };
 
-  const handleSaveRename = () => {
-    if (editingId && editTitle.trim()) {
-      onRenameConversation(editingId, editTitle.trim());
+  const handleConfirmRename = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (editValue.trim()) {
+      await onRenameConversation(id, editValue.trim());
     }
     setEditingId(null);
   };
 
-  const handleCancelRename = () => {
+  const handleCancelRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
     setEditingId(null);
   };
 
-  const grouped = conversations.reduce<Record<string, Conversation[]>>(
-    (groups, conversation) => {
-      const label = getConversationGroupLabel(conversation.updatedAt);
-      groups[label] = groups[label]
-        ? [...groups[label], conversation]
-        : [conversation];
-      return groups;
-    },
-    {},
-  );
-  const groupOrder = [
-    "Today",
-    "Yesterday",
-    "This Week",
-    "Last Week",
-    "This Month",
-    "Earlier",
-  ];
-  const groupEntries = Object.entries(grouped).sort(
-    ([a], [b]) => groupOrder.indexOf(a) - groupOrder.indexOf(b),
-  );
-
-  return (
-    <SidebarRoot collapsible="icon" className="border-r border-white/5 bg-[#0d0d0d]">
-      <SidebarHeader className="h-14 px-3 flex flex-row items-center justify-between">
-        <div className={cn("flex items-center gap-2", isCollapsed && "sr-only")}>
-          <div className="size-6 rounded-md bg-[#10a37f] flex items-center justify-center">
-            <div className="size-3.5 rounded-full border-[1.5px] border-white/90" />
-          </div>
-          <span className="font-semibold text-[15px] text-white/90 tracking-tight">OpenBench</span>
-        </div>
-        {!isCollapsed && (
-          <button 
-            onClick={onNewChat}
-            className="flex size-8 items-center justify-center rounded-lg hover:bg-white/5 text-white/60 transition-colors"
-            aria-label="New chat"
-          >
-            <SquarePen className="size-[18px]" />
-          </button>
-        )}
-        {isCollapsed && <SidebarTrigger className="mx-auto" />}
+  const sidebarContent = (
+    <>
+      <SidebarHeader>
+        <SidebarMenuButton onClick={onNewChat} isActive={false}>
+          <Plus size={18} />
+          {!isCollapsed && <Box component="span" sx={{ ml: 1 }}>New Chat</Box>}
+        </SidebarMenuButton>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 py-2 space-y-6 overflow-x-hidden">
-        {/* Conversation History */}
-        {!isCollapsed && groupEntries.length > 0 && (
-          <div className="space-y-4">
-            {groupEntries.map(([label, items]) => (
-              <SidebarGroup key={label} className="p-0">
-                <SidebarGroupLabel className="px-2 text-[11px] font-bold text-white/30 uppercase tracking-wider">{label}</SidebarGroupLabel>
-                <SidebarMenu className="mt-1">
-                  {items.map((conversation) => (
-                    <div key={conversation.id} className="group relative">
-                      {editingId === conversation.id ? (
-                        <div className="px-2 py-1">
+      <SidebarContent>
+        {!isCollapsed && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Recent</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {conversations.map((conv) => (
+                  <SidebarMenuButton
+                    key={conv.id}
+                    isActive={activeConversationId === conv.id}
+                    onClick={() => {
+                      onSelectConversation(conv.id);
+                      if (isMobile) setOpenMobile(false);
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", width: "100%", minWidth: 0 }}>
+                      {editingId === conv.id ? (
+                        <Box sx={{ display: "flex", alignItems: "center", width: "100%", gap: 0.5 }}>
                           <input
-                            ref={editInputRef}
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            onBlur={handleSaveRename}
+                            autoFocus
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveRename();
-                              if (e.key === "Escape") handleCancelRename();
+                              if (e.key === "Enter") handleConfirmRename(e as any, conv.id);
+                              if (e.key === "Escape") handleCancelRename(e as any);
                             }}
-                            className="h-8 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-2 text-[13px] text-white outline-hidden focus:border-[#10a37f]/50"
+                            style={{
+                              flex: 1,
+                              background: "transparent",
+                              border: "none",
+                              color: "inherit",
+                              outline: "none",
+                              fontSize: "inherit",
+                              padding: 0,
+                            }}
                           />
-                        </div>
+                          <IconButton size="small" onClick={(e) => handleConfirmRename(e, conv.id)} sx={{ p: 0.5, color: "rgba(255,255,255,0.6)" }}>
+                            <Check size={14} />
+                          </IconButton>
+                          <IconButton size="small" onClick={handleCancelRename} sx={{ p: 0.5, color: "rgba(255,255,255,0.6)" }}>
+                            <X size={14} />
+                          </IconButton>
+                        </Box>
                       ) : (
                         <>
-                          <SidebarMenuButton
-                            isActive={conversation.id === activeConversationId}
-                            className={cn(
-                              "h-9 w-full justify-start px-2 text-[14px] font-medium transition-all duration-200",
-                              conversation.id === activeConversationId 
-                                ? "bg-white/10 text-white" 
-                                : "text-white/70 hover:bg-white/5 hover:text-white"
-                            )}
-                            onClick={() => {
-                              onSelectConversation(conversation.id);
-                              if (isMobile) setOpenMobile(false);
-                            }}
+                          <Typography
+                            variant="body2"
+                            noWrap
+                            sx={{ flex: 1, color: activeConversationId === conv.id ? "#fff" : "inherit" }}
                           >
-                            <span className="flex-1 truncate">{conversation.title}</span>
-                          </SidebarMenuButton>
-                          
-                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger>
-                                <button className="size-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors">
-                                  <MoreHorizontal className="size-4" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-40 bg-[#1a1a1a] border-white/10 text-white/90">
-                                <DropdownMenuItem onClick={() => handleStartRename(conversation)} className="hover:bg-white/5 focus:bg-white/5 cursor-pointer">
-                                  <Pencil className="mr-2 size-4 opacity-60" />
-                                  <span>Rename</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  variant="destructive" 
-                                  onClick={() => onDeleteConversation(conversation.id)}
-                                  className="text-red-400 hover:bg-red-400/10 focus:bg-red-400/10 cursor-pointer"
-                                >
-                                  <Trash className="mr-2 size-4" />
-                                  <span>Delete</span>
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                            {conv.title || "Untitled"}
+                          </Typography>
+                          {!isCollapsed && activeConversationId === conv.id && (
+                            <Box sx={{ display: "flex", gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => handleStartRename(e, conv)}
+                                sx={{ p: 0.5, color: "rgba(255,255,255,0.4)", "&:hover": { color: "#fff" } }}
+                              >
+                                <Edit2 size={14} />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteConversation(conv.id);
+                                }}
+                                sx={{ p: 0.5, color: "rgba(255,255,255,0.4)", "&:hover": { color: "#f44336" } }}
+                              >
+                                <Trash2 size={14} />
+                              </IconButton>
+                            </Box>
+                          )}
                         </>
                       )}
-                    </div>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroup>
-            ))}
-          </div>
+                    </Box>
+                  </SidebarMenuButton>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <button
-          onClick={onOpenSettings}
-          className={cn(
-            "flex size-10 items-center justify-center rounded-xl text-white/40 transition-all hover:bg-white/5 hover:text-white",
-            isCollapsed && "mx-auto"
-          )}
-          title="Settings"
-        >
-          <Settings className="size-5" />
-        </button>
+      <SidebarFooter>
+        <SidebarMenuButton onClick={onOpenSettings} isActive={false}>
+          <Settings size={18} />
+          {!isCollapsed && <Box component="span" sx={{ ml: 1 }}>Settings</Box>}
+        </SidebarMenuButton>
       </SidebarFooter>
-    </SidebarRoot>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer
+        open={openMobile}
+        onClose={() => setOpenMobile(false)}
+        PaperProps={{
+          sx: {
+            width: 260,
+            bgcolor: "#0d0d0d",
+            borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  const width = isCollapsed && collapsible === "icon" ? 60 : 260;
+
+  return (
+    <Box
+      sx={{
+        width,
+        flexShrink: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "#0d0d0d",
+        borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+        transition: "width 0.2s ease-in-out",
+        overflowX: "hidden",
+      }}
+    >
+      {sidebarContent}
+    </Box>
+  );
+}
+
+export function SidebarHeader({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        p: 0,
+        px: isCollapsed ? 0 : 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "space-between",
+        minHeight: 56,
+        ...sx,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarContent({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        overflowY: "auto",
+        overflowX: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarFooter({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        p: 1.5,
+        px: isCollapsed ? 0 : 1.5,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "flex-start",
+        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+        ...sx,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarGroup({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  return <Box sx={{ mb: 2, width: "100%", ...sx }}>{children}</Box>;
+}
+
+export function SidebarGroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Box sx={{ px: 2, mb: 1, mt: 2 }}>
+      <Box
+        component="span"
+        sx={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "rgba(255, 255, 255, 0.3)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
+export function SidebarGroupContent({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box sx={{ px: isCollapsed ? 0 : 0, width: "100%", ...sx }}>{children}</Box>
+  );
+}
+
+export function SidebarMenu({ children }: { children: React.ReactNode }) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 0.25,
+        px: isCollapsed ? 0 : 1.5,
+        alignItems: isCollapsed ? "center" : "stretch",
+        width: "100%",
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarMenuButton({
+  children,
+  isActive,
+  onClick,
+}: {
+  children: React.ReactNode;
+  isActive?: boolean;
+  onClick?: () => void;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isCollapsed ? "center" : "flex-start",
+        gap: isCollapsed ? 0 : 2,
+        px: isCollapsed ? 0 : 1.5,
+        width: isCollapsed ? 36 : "100%",
+        height: 36,
+        borderRadius: "8px",
+        cursor: "pointer",
+        transition: "all 0.2s",
+        bgcolor: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
+        color: isActive ? "#fff" : "rgba(255, 255, 255, 0.6)",
+        fontSize: "13px",
+        fontWeight: 500,
+        overflow: "hidden",
+        "&:hover": {
+          bgcolor: "rgba(255, 255, 255, 0.05)",
+          color: "#fff",
+        },
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function SidebarTrigger({ sx }: { sx?: CSSObject }) {
+  const { isCollapsed, setIsCollapsed, isMobile, setOpenMobile } = useSidebar();
+
+  const handleClick = () => {
+    if (isMobile) {
+      setOpenMobile(true);
+    } else {
+      setIsCollapsed(!isCollapsed);
+    }
+  };
+
+  return (
+    <IconButton
+      onClick={handleClick}
+      size="small"
+      sx={{
+        color: "rgba(255, 255, 255, 0.4)",
+        "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" },
+        ...sx,
+      }}
+    >
+      <PanelLeft size={18} />
+    </IconButton>
+  );
+}
+
+export function SidebarInset({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      {children}
+    </Box>
   );
 }

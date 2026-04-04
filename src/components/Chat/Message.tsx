@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import type { Role } from "@/types/chat";
 import { Copy, MoreHorizontal, RotateCcw, Check } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -7,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,72 +50,112 @@ export function Message({
 
   if (isUser) {
     return (
-      <div className="flex w-full justify-end py-2">
-        <div className="max-w-[85%] sm:max-w-[70%] rounded-[1.5rem] bg-[#2f2f2f] px-5 py-3 text-[15.5px] text-[#ececec] shadow-sm">
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{content}</p>
-        </div>
-      </div>
+      <Box sx={{ display: "flex", w: "100%", justifyContent: "flex-end", py: 1 }}>
+        <Box
+          sx={{
+            maxWidth: { xs: "85%", sm: "70%" },
+            borderRadius: "1.5rem",
+            bgcolor: "#2f2f2f",
+            px: 2.5,
+            py: 1.5,
+            boxShadow: 1,
+          }}
+        >
+          <Typography
+            sx={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              lineHeight: 1.6,
+              fontSize: "15.5px",
+              color: "#ececec",
+            }}
+          >
+            {content}
+          </Typography>
+        </Box>
+      </Box>
     );
   }
 
   return (
-    <div className="group flex w-full animate-fade-in py-4">
-      <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[80%]">
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        w: "100%",
+        py: 2,
+        "& .action-bar": {
+          opacity: 0,
+          transition: "opacity 0.3s",
+        },
+        "&:hover .action-bar": {
+          opacity: 1,
+        }
+      }}
+    >
+      <Box sx={{ w: "100%", maxWidth: { xs: "95%", sm: "85%", md: "80%" } }}>
         {content ? (
-          <div className="prose prose-invert max-w-none prose-p:leading-7 prose-p:text-[16px] prose-p:text-[#ececec] prose-pre:bg-[#2f2f2f] prose-pre:p-4 prose-pre:rounded-xl prose-code:text-[#ececec]">
+          <Box
+            sx={{
+              "& p": { lineHeight: 1.75, fontSize: "16px", color: "#ececec", mb: 2 },
+              "& pre": { bgcolor: "#2f2f2f", p: 2, borderRadius: "12px", overflowX: "auto", mb: 2 },
+              "& code": { color: "#ececec", fontFamily: "monospace" },
+              "& ul, & ol": { color: "#ececec", pl: 3, mb: 2 },
+              "& li": { mb: 1 },
+            }}
+          >
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
             >
               {content}
             </ReactMarkdown>
-          </div>
+          </Box>
         ) : null}
-        <div
-          className={cn(
-            "mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground/50",
-            "opacity-0 group-hover:opacity-100 transition-all duration-300",
-          )}
+        
+        <Box
+          className="action-bar"
+          sx={{
+            mt: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
         >
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-md p-1.5 transition-all hover:bg-white/5 hover:text-foreground/80 active:scale-95"
-            aria-label="Copy"
-            onClick={handleCopy}
-          >
-            <div className="relative size-3.5 flex items-center justify-center">
-              {copied ? (
-                <Check className="size-3.5 text-green-500 animate-in zoom-in-50 duration-200" />
-              ) : (
-                <Copy className="size-3.5 animate-in fade-in duration-200" />
-              )}
-            </div>
-          </button>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-md p-1.5 transition-all hover:bg-white/5 hover:text-foreground/80 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Regenerate"
-            onClick={() => {
-              if (!canRegenerate) return;
-              onRegenerate(messageIndex);
-            }}
-            disabled={!canRegenerate}
-          >
-            <RotateCcw className="size-3.5" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="flex items-center gap-1.5 rounded-md p-1.5 transition-all hover:bg-white/5 hover:text-foreground/80 active:scale-95 outline-none"
-              aria-label="More options"
+          <Tooltip title={copied ? "Copied" : "Copy"}>
+            <IconButton
+              size="small"
+              onClick={handleCopy}
+              sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}
             >
-              <MoreHorizontal className="size-3.5" />
+              {copied ? <Check size={14} style={{ color: "#4caf50" }} /> : <Copy size={14} />}
+            </IconButton>
+          </Tooltip>
+
+          {canRegenerate && (
+            <Tooltip title="Regenerate">
+              <IconButton
+                size="small"
+                onClick={() => onRegenerate(messageIndex)}
+                sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}
+              >
+                <RotateCcw size={14} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <IconButton size="small" sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}>
+                <MoreHorizontal size={14} />
+              </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem disabled>More options soon</DropdownMenuItem>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => {}}>More options soon</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }

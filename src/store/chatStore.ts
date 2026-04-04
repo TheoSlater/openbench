@@ -1,4 +1,3 @@
-// src/store/chatStore.ts
 import { create } from "zustand";
 import * as db from "@/lib/db";
 export type Conversation = {
@@ -34,7 +33,10 @@ type ChatStore = {
     loadConversations: () => Promise<void>;
     deleteConversation: (id: string) => Promise<void>;
     renameConversation: (id: string, newTitle: string) => Promise<void>;
-    deleteMessagesAfter: (conversationId: string, messageId: string) => Promise<void>;
+    deleteMessagesAfter: (
+      conversationId: string,
+      messageId: string,
+    ) => Promise<void>;
   };
 };
 export const useChatStore = create<ChatStore>((set) => ({

@@ -1,4 +1,5 @@
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/components/Layout/Sidebar";
+import { Box, Select, MenuItem, Typography, FormControl } from "@mui/material";
 
 interface HeaderProps {
   availableModels: {
@@ -29,41 +30,97 @@ export function Header({
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/5 bg-[#0d0d0d] px-4 md:px-6">
-      <div className="flex items-center gap-2 md:gap-2.5">
-        <SidebarTrigger className="md:hidden mr-1 text-white/40" />
-        {ollamaError ? (
-          <span className="text-xs text-red-400/60">
+    <Box
+      component="header"
+      sx={{
+        display: "flex",
+        height: 56,
+        flexShrink: 0,
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+        bgcolor: "#0d0d0d",
+        px: { xs: 2, md: 3 },
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ display: { xs: "block", md: "block" } }}>
+          <SidebarTrigger sx={{ mr: 1, color: "rgba(255, 255, 255, 0.4)" }} />
+        </Box>
+        {ollamaError && (
+          <Typography variant="caption" sx={{ color: "rgba(248, 113, 113, 0.6)" }}>
             {ollamaError}
-          </span>
-        ) : null}
-      </div>
+          </Typography>
+        )}
+      </Box>
 
-      <div className="flex items-center gap-3">
-        <select
-          value={selectedValue}
-          onChange={(e) => handleChange(e.target.value)}
-          className="h-9 max-w-[120px] sm:max-w-none appearance-none rounded-xl border border-white/10 bg-[#1a1a1a] px-3 pr-8 text-[14px] font-medium text-white/90 outline-none ring-0 transition-colors hover:border-white/20 focus:border-white/20 disabled:opacity-50"
-          disabled={isLoading || !hasAnyModels}
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.2)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 10px center",
-          }}
-        >
-          {!hasAnyModels ? (
-            <option value="">No models</option>
-          ) : (
-            <optgroup label="Ollama">
-              {availableModels.ollama.map((model) => (
-                <option key={model} value={model}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <FormControl size="small">
+          <Select
+            value={selectedValue}
+            onChange={(e) => handleChange(e.target.value as string)}
+            disabled={isLoading || !hasAnyModels}
+            displayEmpty
+            sx={{
+              height: 36,
+              minWidth: { xs: 120, sm: 180 },
+              borderRadius: "12px",
+              bgcolor: "#1a1a1a",
+              color: "rgba(255, 255, 255, 0.9)",
+              fontSize: "14px",
+              fontWeight: 500,
+              "& .MuiOutlinedInput-notchedOutline": {
+                borderColor: "rgba(255, 255, 255, 0.1)",
+              },
+              "&:hover .MuiOutlinedInput-notchedOutline": {
+                borderColor: "rgba(255, 255, 255, 0.2)",
+              },
+              "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                borderColor: "rgba(255, 255, 255, 0.2)",
+                borderWidth: "1px",
+              },
+              "& .MuiSelect-icon": {
+                color: "rgba(255, 255, 255, 0.2)",
+                right: 8,
+              },
+              "& .MuiSelect-select": {
+                pr: "32px !important",
+              }
+            }}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  bgcolor: "#1a1a1a",
+                  color: "#fff",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  "& .MuiMenuItem-root": {
+                    fontSize: "14px",
+                    "&:hover": {
+                      bgcolor: "rgba(255, 255, 255, 0.05)",
+                    },
+                    "&.Mui-selected": {
+                      bgcolor: "rgba(255, 255, 255, 0.1)",
+                      "&:hover": {
+                        bgcolor: "rgba(255, 255, 255, 0.15)",
+                      }
+                    }
+                  }
+                }
+              }
+            }}
+          >
+            {!hasAnyModels ? (
+              <MenuItem value="">No models</MenuItem>
+            ) : (
+              availableModels.ollama.map((model) => (
+                <MenuItem key={model} value={model}>
                   {model}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </div>
-    </header>
+                </MenuItem>
+              ))
+            )}
+          </Select>
+        </FormControl>
+      </Box>
+    </Box>
   );
 }

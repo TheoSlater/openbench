@@ -3,10 +3,9 @@ import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
 import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
 import { modelSupportsReasoning } from "@/lib/model-utils";
 import { useModelStore } from "@/store/modelStore";
-import { Sidebar } from "@/components/Layout/Sidebar";
+import { Sidebar, SidebarInset, SidebarProvider } from "@/components/Layout/Sidebar";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Box } from "@mui/material";
 import { useChatStore } from "@/store/chatStore";
 import "./App.css";
 import * as db from "@/lib/db";
@@ -198,58 +197,50 @@ function App() {
   };
 
   return (
-    <TooltipProvider>
-      <SidebarProvider className="bg-[#0d0d0d]">
-        <Sidebar
-          onOpenSettings={handleOpenSettings}
-          onNewChat={handleNewChat}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={handleDeleteConversation}
-          onRenameConversation={handleRenameConversation}
-          conversations={conversations}
-          activeConversationId={activeConversationId}
+    <SidebarProvider>
+      <Sidebar
+        onOpenSettings={handleOpenSettings}
+        onNewChat={handleNewChat}
+        onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        collapsible="icon"
+      />
+
+      <SidebarInset>
+        <Header
+          selectedModel={selectedModel}
+          availableModels={availableModels}
+          onModelChange={setSelectedModel}
+          isLoading={isLoading}
+          ollamaError={ollamaError}
         />
 
-        <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-[#0d0d0d] font-sans">
-          <Header
-            selectedModel={selectedModel}
-            availableModels={availableModels}
-            onModelChange={setSelectedModel}
-            isLoading={isLoading}
-            ollamaError={ollamaError}
-          />
-
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden relative">
-            <div
-              className={`flex-1 flex flex-col overflow-hidden ${!hasMessages ? "justify-center" : ""}`}
-            >
-              {hasMessages ? (
-                <ChatArea
-                  messages={messages}
-                  bottomRef={bottomRef}
-                  onRegenerate={handleRegenerate}
-                />
-              ) : (
-                <EmptyState
-                  selectedModel={devMode ? "Dev Mode" : selectedModel}
-                  availableModels={availableModels}
-                  onModelChange={setSelectedModel}
-                  isLoading={isLoading}
-                >
-                  <ChatInput
-                    value={input}
-                    onChange={setInput}
-                    onSubmit={handleSend}
-                    onStop={stopStreaming}
-                    isStreaming={isStreaming}
-                    selectedModel={devMode ? "Dev Mode" : selectedModel}
-                    hasMessages={hasMessages}
-                    allowEmptyModel={devMode}
-                  />
-                </EmptyState>
-              )}
-
-              {hasMessages && (
+        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              justifyContent: !hasMessages ? "center" : "flex-start",
+            }}
+          >
+            {hasMessages ? (
+              <ChatArea
+                messages={messages}
+                bottomRef={bottomRef}
+                onRegenerate={handleRegenerate}
+              />
+            ) : (
+              <EmptyState
+                selectedModel={devMode ? "Dev Mode" : selectedModel}
+                availableModels={availableModels}
+                onModelChange={setSelectedModel}
+                isLoading={isLoading}
+              >
                 <ChatInput
                   value={input}
                   onChange={setInput}
@@ -260,14 +251,27 @@ function App() {
                   hasMessages={hasMessages}
                   allowEmptyModel={devMode}
                 />
-              )}
-            </div>
-          </main>
-        </SidebarInset>
+              </EmptyState>
+            )}
 
-        <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
-      </SidebarProvider>
-    </TooltipProvider>
+            {hasMessages && (
+              <ChatInput
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSend}
+                onStop={stopStreaming}
+                isStreaming={isStreaming}
+                selectedModel={devMode ? "Dev Mode" : selectedModel}
+                hasMessages={hasMessages}
+                allowEmptyModel={devMode}
+              />
+            )}
+          </Box>
+        </Box>
+      </SidebarInset>
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
+    </SidebarProvider>
   );
 }
 

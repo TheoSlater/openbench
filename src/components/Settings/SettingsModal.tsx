@@ -2,7 +2,6 @@ import { PersonalizationPanel } from "./PersonalizationPanel";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -13,7 +12,7 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Box, Typography, IconButton } from "@mui/material";
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -47,92 +46,129 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
         showCloseButton={false}
-        className="fixed top-1/2 left-1/2 z-50 flex h-[92vh] w-[95vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-row overflow-hidden rounded-[1.25rem] border border-border/40 bg-background p-0 shadow-2xl transition-all sm:h-[80vh] min-w-0"
       >
-        {/* Custom Close Button Top Left */}
-        <div className="absolute top-4 left-4 z-50 md:hidden">
-          <DialogClose render={<Button variant="ghost" size="icon" className="rounded-full" />}>
-            <X className="size-5" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
-        </div>
-
-        {/* Left Sidebar */}
-        <aside className="hidden w-64 shrink-0 border-r border-border/10 bg-muted/10 px-3 py-6 md:block overflow-y-auto min-w-0 relative">
-          <div className="mb-6 px-3">
-            <DialogClose render={<Button variant="ghost" size="icon" className="rounded-full" />}>
-              <X className="size-5" />
-              <span className="sr-only">Close</span>
+        <Box sx={{ display: "flex", flexDirection: "row", height: "85vh", width: "95vw", maxWidth: 1024, overflow: "hidden" }}>
+          {/* Custom Close Button Top Left (Header) - ALWAYS VISIBLE */}
+          <Box sx={{ position: "absolute", top: 16, left: 16, zIndex: 50 }}>
+            <DialogClose render={<IconButton size="small" sx={{ bgcolor: "rgba(255,255,255,0.05)", "&:hover": { bgcolor: "rgba(255,255,255,0.1)" } }} />}>
+              <X size={20} />
             </DialogClose>
-          </div>
-          <nav className="space-y-1">
-            {SIDEBAR_ITEMS.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                  activeTab === item.id
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                )}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
+          </Box>
 
-        {/* Main Content Area */}
-        <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          <header className="flex shrink-0 flex-col items-start justify-between gap-4 border-b border-border/10 px-6 py-4 sm:flex-row sm:items-center sm:gap-6 sm:px-10 sm:py-6">
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <DialogTitle className="text-lg font-bold tracking-tight text-foreground sm:text-2xl">
-                {SIDEBAR_ITEMS.find((i) => i.id === activeTab)?.label}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground/60 sm:text-sm">
-                Manage your {activeTab} preferences and configuration.
-              </DialogDescription>
-            </div>
-            <div className="flex w-full shrink-0 items-center justify-end gap-3 sm:w-auto">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="rounded-xl px-4 text-xs font-semibold sm:px-6"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleSave}
-                className="rounded-xl bg-foreground px-5 text-xs font-bold text-background shadow-sm hover:bg-foreground/90 sm:px-8"
-              >
-                Save
-              </Button>
-            </div>
-          </header>
+          {/* Left Sidebar */}
+          <Box
+            component="aside"
+            sx={{
+              display: { xs: "none", md: "flex" },
+              width: 256,
+              flexShrink: 0,
+              flexDirection: "column",
+              borderRight: "1px solid",
+              borderColor: "rgba(255, 255, 255, 0.05)",
+              bgcolor: "rgba(255, 255, 255, 0.02)",
+              px: 1.5,
+              pt: 8, // Make room for close button
+              pb: 3,
+              overflowY: "auto",
+            }}
+          >
+            <Box component="nav" sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+              {SIDEBAR_ITEMS.map((item) => (
+                <Box
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                    width: "100%",
+                    borderRadius: "12px",
+                    px: 1.5,
+                    py: 1.25,
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    bgcolor: activeTab === item.id ? "rgba(255, 255, 255, 0.05)" : "transparent",
+                    color: activeTab === item.id ? "#fff" : "rgba(255, 255, 255, 0.6)",
+                    "&:hover": {
+                      bgcolor: "rgba(255, 255, 255, 0.05)",
+                      color: "#fff",
+                    },
+                  }}
+                >
+                  <item.icon size={16} />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.label}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
 
-          <main className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10 sm:py-10">
-            {activeTab === "personalization" ? (
-              <PersonalizationPanel ref={personalizationRef} />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center">
-                <div className="rounded-full bg-muted/30 p-5">
-                  <Settings className="size-10 text-muted-foreground/30" />
-                </div>
-                <h3 className="mt-5 text-base font-bold text-foreground">
-                  Section under development
-                </h3>
-                <p className="mt-1.5 text-sm text-muted-foreground/50">
-                  This part of the settings is coming soon.
-                </p>
-              </div>
-            )}
-          </main>
-        </div>
+          {/* Main Content Area */}
+          <Box sx={{ display: "flex", height: "100%", minWidth: 0, flex: 1, flexDirection: "column", overflow: "hidden", bgcolor: "background.default", maxWidth: { md: "calc(1024px - 256px)" } }}>
+            <Box
+              component="header"
+              sx={{
+                display: "flex",
+                flexShrink: 0,
+                flexDirection: { xs: "column", sm: "row" },
+                alignItems: { xs: "flex-start", sm: "center" },
+                justifyContent: "space-between",
+                gap: { xs: 2, sm: 3 },
+                borderBottom: "1px solid",
+                borderColor: "rgba(255, 255, 255, 0.05)",
+                px: { xs: 3, sm: 5 },
+                pt: { xs: 8, md: 3 }, // More padding on mobile for close button
+                pb: { xs: 2, sm: 3 },
+              }}
+            >
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <DialogTitle>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: "#fff", fontSize: { xs: "1.125rem", sm: "1.5rem" } }}>
+                    {SIDEBAR_ITEMS.find((i) => i.id === activeTab)?.label}
+                  </Typography>
+                </DialogTitle>
+                <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.4)", fontSize: { xs: "0.75rem", sm: "0.875rem" } }}>
+                  Manage your {activeTab} preferences and configuration.
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", width: "100%", shrink: 0, alignItems: "center", justifyContent: "flex-end", gap: 1.5, sm: { width: "auto" } }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  sx={{ borderRadius: "12px", px: 3 }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSave}
+                  sx={{ borderRadius: "12px", px: 4, bgcolor: "#fff", color: "#000", fontWeight: 700, "&:hover": { bgcolor: "rgba(255, 255, 255, 0.9)" } }}
+                >
+                  Save
+                </Button>
+              </Box>
+            </Box>
+
+            <Box component="main" sx={{ minHeight: 0, flex: 1, overflowY: "auto", px: { xs: 3, sm: 5 }, py: { xs: 4, sm: 5 } }}>
+              {activeTab === "personalization" ? (
+                <PersonalizationPanel ref={personalizationRef} />
+              ) : (
+                <Box sx={{ display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                  <Box sx={{ borderRadius: "50%", bgcolor: "rgba(255, 255, 255, 0.02)", p: 2.5 }}>
+                    <Settings size={40} style={{ color: "rgba(255, 255, 255, 0.1)" }} />
+                  </Box>
+                  <Typography variant="subtitle1" sx={{ mt: 2.5, fontWeight: 700, color: "#fff" }}>
+                    Section under development
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 1, color: "rgba(255, 255, 255, 0.3)" }}>
+                    This part of the settings is coming soon.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </Box>
       </DialogContent>
     </Dialog>
   );

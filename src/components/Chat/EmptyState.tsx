@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { Box, Typography, MenuItem, Select, FormControl } from "@mui/material";
 
 interface EmptyStateProps {
   selectedModel: string;
@@ -28,42 +28,66 @@ export function EmptyState({
   };
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-4 max-w-3xl mx-auto w-full">
+    <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 2, maxWidth: 768, mx: "auto", width: "100%" }}>
       {/* Model Selector Dropdown */}
-      <div className="mb-4 relative">
-        <div className="group relative">
-          <button className="flex items-center gap-2 rounded-2xl px-4 py-2 transition-colors hover:bg-white/5 pointer-events-none">
-            <span className="text-xl font-bold text-white/90 tracking-tight">
-              {selectedModel || "gpt-4.1-nano"}
-            </span>
-            <ChevronDown className="size-5 text-white/20 group-hover:text-white/40 transition-colors" />
-          </button>
-          <select
-            value={selectedValue}
-            onChange={(e) => handleChange(e.target.value)}
-            disabled={isLoading || !hasAnyModels}
-            className="absolute inset-0 w-full cursor-pointer opacity-0"
-            aria-label="Select model"
-          >
-            {!hasAnyModels ? (
-              <option value="">No models</option>
-            ) : (
-              <optgroup label="Ollama">
-                {availableModels.ollama.map((model) => (
-                  <option key={model} value={model}>
+      <Box sx={{ mb: 2, position: "relative" }}>
+        <Box sx={{ position: "relative" }}>
+          <FormControl size="small">
+            <Select
+              value={selectedValue}
+              onChange={(e) => handleChange(e.target.value as string)}
+              disabled={isLoading || !hasAnyModels}
+              displayEmpty
+              renderValue={(selected) => (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, pr: 3 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: "rgba(255, 255, 255, 0.9)", letterSpacing: "-0.01em" }}>
+                    {selected || "gpt-4.1-nano"}
+                  </Typography>
+                </Box>
+              )}
+              sx={{
+                "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                "& .MuiSelect-select": { p: 1, borderRadius: "16px", "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" } },
+                "& .MuiSelect-icon": { 
+                  display: "block",
+                  color: "rgba(255, 255, 255, 0.2)",
+                  right: 4,
+                  fontSize: "24px",
+                },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    bgcolor: "#1a1a1a",
+                    color: "#fff",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    "& .MuiMenuItem-root": {
+                      fontSize: "14px",
+                      "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" },
+                      "&.Mui-selected": { bgcolor: "rgba(255, 255, 255, 0.1)" }
+                    }
+                  }
+                }
+              }}
+            >
+              {!hasAnyModels ? (
+                <MenuItem value="">No models</MenuItem>
+              ) : (
+                availableModels.ollama.map((model) => (
+                  <MenuItem key={model} value={model}>
                     {model}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
-      </div>
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+          </FormControl>
+        </Box>
+      </Box>
 
       {/* Input area rendered here when in empty state */}
-      <div className="w-full">
+      <Box sx={{ width: "100%", mt: 1 }}>
         {children}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
