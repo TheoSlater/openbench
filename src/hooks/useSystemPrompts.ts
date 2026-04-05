@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { SystemPrompt, useModelStore } from "@/store/modelStore";
 
 const STORAGE_KEY = "openbench.systemPrompts";
@@ -12,6 +12,8 @@ type StoredPrompts = {
  * Persist system prompts to localStorage and restore on startup.
  */
 export function useSystemPrompts() {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -28,24 +30,34 @@ export function useSystemPrompts() {
           });
         }
       }
-    } catch (error) {
-      console.error("Failed to load system prompts:", error);
+    } catch {
+      // Ignore parse errors
     }
 
     const unsubscribe = useModelStore.subscribe((state) => {
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            systemPrompts: state.systemPrompts,
-            activeSystemPromptId: state.activeSystemPromptId,
-          }),
-        );
-      } catch (error) {
-        console.error("Failed to save system prompts:", error);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
+      timeoutRef.current = setTimeout(() => {
+        try {
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              systemPrompts: state.systemPrompts,
+              activeSystemPromptId: state.activeSystemPromptId,
+            }),
+          );
+        } catch {
+          // Ignore storage errors
+        }
+      }, 300);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, []);
 }

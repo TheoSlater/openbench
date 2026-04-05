@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isImageAttachment, createDataUrl, formatFileSize } from "@/lib/utils";
 
 export interface MessageProps {
   role: Role;
@@ -75,9 +76,9 @@ export function Message({
               <Box
                 key={att.id}
                 sx={{
-                  width: att.type.startsWith("image/") ? 120 : "auto",
-                  height: att.type.startsWith("image/") ? 120 : "auto",
-                  minWidth: att.type.startsWith("image/") ? 0 : 200,
+                  width: isImageAttachment(att.type) ? 120 : "auto",
+                  height: isImageAttachment(att.type) ? 120 : "auto",
+                  minWidth: isImageAttachment(att.type) ? 0 : 200,
                   borderRadius: "12px",
                   overflow: "hidden",
                   border: "1px solid",
@@ -85,13 +86,13 @@ export function Message({
                   bgcolor: "secondary.main",
                   display: "flex",
                   alignItems: "center",
-                  p: att.type.startsWith("image/") ? 0 : 1.5,
+                  p: isImageAttachment(att.type) ? 0 : 1.5,
                   gap: 1.5,
                 }}
               >
-                {att.type.startsWith("image/") ? (
+                {isImageAttachment(att.type) ? (
                   <img
-                    src={`data:${att.type};base64,${att.content}`}
+                    src={createDataUrl(att.type, att.content || "")}
                     alt={att.name}
                     style={{
                       width: "100%",
@@ -113,7 +114,7 @@ export function Message({
                         flexShrink: 0,
                       }}
                     >
-                      <Paperclip size={20} style={{ color: "text.secondary" }} />
+                      <Paperclip size={20} />
                     </Box>
                     <Box sx={{ overflow: "hidden" }}>
                       <Typography
@@ -132,7 +133,7 @@ export function Message({
                         variant="caption"
                         sx={{ color: "text.secondary" }}
                       >
-                        {(att.size / 1024).toFixed(1)} KB
+                        {formatFileSize(att.size)}
                       </Typography>
                     </Box>
                   </>
@@ -218,7 +219,7 @@ export function Message({
               onClick={handleCopy}
               sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}
             >
-              {copied ? <Check size={14} style={{ color: "var(--mui-palette-success-main)" }} /> : <Copy size={14} />}
+              {copied ? <Check size={14} color="green" /> : <Copy size={14} />}
             </IconButton>
           </Tooltip>
 

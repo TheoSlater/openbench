@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useChatStore } from "@/store/chatStore";
 import { Attachment } from "@/types/chat";
+import { isImageAttachment, createDataUrl } from "@/lib/utils";
 
 interface ChatInputProps {
   value: string;
@@ -87,7 +88,7 @@ export function ChatInput({
         size: file.size,
       };
 
-      if (file.type.startsWith("image/")) {
+      if (isImageAttachment(file.type)) {
         reader.onload = (e) => {
           const base64 = e.target?.result as string;
           // Ollama expects base64 without prefix
@@ -188,7 +189,7 @@ export function ChatInput({
                 >
                   {att.type.startsWith("image/") ? (
                     <img
-                      src={`data:${att.type};base64,${att.content}`}
+                      src={createDataUrl(att.type, att.content || "")}
                       alt={att.name}
                       style={{
                         width: "100%",

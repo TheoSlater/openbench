@@ -13,9 +13,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { AuthModal } from "@/components/Auth/AuthModal";
 import "./App.css";
 import * as db from "@/lib/db";
-/**
- * Root application shell and layout.
- */
+
 function App() {
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
@@ -43,62 +41,23 @@ function App() {
 
   useEffect(() => {
     async function init() {
-      console.log("[App] init starting...");
-      
-      // Set a global timeout as a safety net
       const timeoutId = setTimeout(() => {
         const { isLoading } = useAuthStore.getState();
         if (isLoading) {
-          console.warn("[App] Initialization timeout reached, forcing useAuthStore.isLoading to false");
           useAuthStore.setState({ isLoading: false });
         }
-      }, 8000); // 8 seconds global safety timeout
+      }, 8000);
 
       try {
-        // Step 1: Initialize Database
-        console.log("[App] initializing DB...");
-        try {
-          await db.initDB();
-        } catch (dbErr) {
-          console.error("[App] DB init failed:", dbErr);
-        }
-
-        // Step 2: Sync settings to backend
-        // This is important for the Ollama client configuration
-        console.log("[App] syncing settings to backend...");
-        try {
-          // Add a per-step timeout to prevent hanging
-          await Promise.race([
-            useSettingsStore.getState().actions.syncToBackend(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout syncing settings")), 3000))
-          ]);
-        } catch (settingsErr) {
-          console.error("[App] Settings sync failed or timed out:", settingsErr);
-        }
-
-        // Step 3: Restore session
-        // This MUST run to show the profile
-        console.log("[App] restoring session...");
-        try {
-          await useAuthStore.getState().actions.restoreSession();
-        } catch (authErr) {
-          console.error("[App] Session restoration failed:", authErr);
-        }
-
-        // Step 4: Load conversations
-        console.log("[App] loading conversations...");
-        try {
-          await useChatStore.getState().actions.loadConversations();
-        } catch (chatErr) {
-          console.error("[App] Loading conversations failed:", chatErr);
-        }
-
-        console.log("[App] init sequence finished");
-      } catch (err) {
-        console.error("[App] Unexpected init error:", err);
+        await db.initDB().catch(() => {});
+        await Promise.race([
+          useSettingsStore.getState().actions.syncToBackend(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout syncing settings")), 3000))
+        ]).catch(() => {});
+        await useAuthStore.getState().actions.restoreSession().catch(() => {});
+        await useChatStore.getState().actions.loadConversations().catch(() => {});
       } finally {
         clearTimeout(timeoutId);
-        // Ensure isLoading is false if we finished the sequence (successfully or with errors)
         const { isLoading } = useAuthStore.getState();
         if (isLoading) {
           useAuthStore.setState({ isLoading: false });
@@ -108,13 +67,7 @@ function App() {
     init();
   }, []);
 
-  /**
-   * Open the settings modal.
-   */
   const handleOpenSettings = () => setIsSettingsOpen(true);
-  /**
-   * Close the settings modal.
-   */
   const handleCloseSettings = () => setIsSettingsOpen(false);
 
   useEffect(() => {
@@ -161,9 +114,6 @@ function App() {
 
   const currentAttachments = useChatStore((state) => state.currentAttachments);
 
-  /**
-   * Ensure a conversation exists before sending a message.
-   */
   const ensureConversation = async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
     const created = await createConversation();
@@ -211,9 +161,6 @@ function App() {
     });
   };
 
-  /**
-   * Submit the current input as a message.
-   */
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed && currentAttachments.length === 0) return;
@@ -231,20 +178,20 @@ function App() {
     clearCurrentAttachments();
   };
 
-  /**
-   * Regenerate a specific assistant response.
-   * @param messageIndex - Index of the assistant message to regenerate.
-   */
   const handleRegenerate = async (messageIndex: number) => {
     if (isStreaming || !activeConversationId) return;
-    const previousUserMessage = [...messages]
-      .slice(0, messageIndex)
-      .reverse()
-      .find((message) => message.role === "user");
+
+    let previousUserMessage: ChatMessage | null = null;
+    for (let i = messageIndex - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        previousUserMessage = messages[i];
+        break;
+      }
+    }
+
     const targetMessage = messages[messageIndex];
     if (!previousUserMessage || targetMessage?.role !== "assistant") return;
 
-    // Delete the assistant response and any following messages
     await deleteMessagesAfter(activeConversationId, targetMessage.id);
     sendMessage(previousUserMessage.content);
   };

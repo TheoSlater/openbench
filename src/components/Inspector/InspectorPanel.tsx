@@ -250,10 +250,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
         <Stack direction="row" spacing={0.5} alignItems="center">
           <IconButton
             size="small"
-            onClick={() => {
-              console.log("Clearing logs...");
-              clearLogs();
-            }}
+            onClick={() => clearLogs()}
             title="Clear Logs"
             sx={{ borderRadius: 1, px: 1, height: 28 }}
           >

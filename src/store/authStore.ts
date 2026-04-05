@@ -72,19 +72,15 @@ export const useAuthStore = create<AuthStore>((set) => ({
     },
     restoreSession: async () => {
       const token = localStorage.getItem("session_token");
-      console.log("[authStore] restoreSession - token:", token ? "exists" : "missing");
       if (!token) {
         set({ isLoading: false });
         return;
       }
       set({ isLoading: true });
       try {
-        console.log("[authStore] auth_get_current_user calling...");
         const user = await invoke<User>("auth_get_current_user", { token });
-        console.log("[authStore] user retrieved:", user.email);
         set({ user, isAuthenticated: true, isLoading: false });
-      } catch (err) {
-        console.warn("[authStore] Failed to restore session:", err);
+      } catch {
         localStorage.removeItem("session_token");
         set({ user: null, isAuthenticated: false, isLoading: false });
       }
