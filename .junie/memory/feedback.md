@@ -286,3 +286,115 @@
     "NEW INSTRUCTION": "WHEN the sidebar is collapsed THEN set width to 60px, hide labels, keep icons centered."
 }
 
+[2026-04-03 22:50] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Chat input adjustments",
+    "EXPECTATION": "The chat input should only show an outline when focused, be less rounded and shorter, and the settings (cog) icon should be removed.",
+    "NEW INSTRUCTION": "WHEN rendering ChatInput THEN show outline only on focus and remove settings icon"
+}
+
+[2026-04-03 22:53] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "ChatInput rounding",
+    "EXPECTATION": "The chat input should be slightly more rounded than the last revision and any resulting errors should be resolved.",
+    "NEW INSTRUCTION": "WHEN styling ChatInput container THEN set borderRadius to 14px."
+}
+
+[2026-04-03 22:58] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Theme tokens usage",
+    "EXPECTATION": "Colors should come from src/theme.ts (MUI theme tokens) instead of hardcoded hex values.",
+    "NEW INSTRUCTION": "WHEN needing a new color in UI THEN add it to src/theme.ts and reference theme tokens."
+}
+
+[2026-04-03 23:09] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Sidebar layout controls",
+    "EXPECTATION": "In expanded view, show a New Chat button above RECENT; place the collapse icon at the top-right next to the OpenBench title. In collapsed view, show only New Chat, Settings, and Uncollapse icons.",
+    "NEW INSTRUCTION": "WHEN the sidebar is expanded THEN place New Chat above RECENT and collapse control top-right"
+}
+
+[2026-04-03 23:13] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "No hardcoded colors",
+    "EXPECTATION": "All frontend colors must come from src/theme.ts; no hex or rgba literals anywhere.",
+    "NEW INSTRUCTION": "WHEN specifying a color in frontend styles THEN use theme tokens from src/theme.ts and avoid literals."
+}
+
+[2026-04-03 23:15] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "Light mode support",
+    "EXPECTATION": "Light mode should function correctly after the theme refactor with safe defaults.",
+    "NEW INSTRUCTION": "WHEN running the app in light mode THEN verify all surfaces use theme tokens and maintain contrast."
+}
+
+[2026-04-03 23:20] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "SettingsModal size consistency",
+    "EXPECTATION": "SettingsModal should keep a consistent width and height across tabs; only the inner body should scroll.",
+    "NEW INSTRUCTION": "WHEN SettingsModal tab changes THEN preserve modal dimensions; scroll body content instead of resizing."
+}
+
+[2026-04-03 23:24] - Updated by Junie
+{
+    "TYPE": "preference",
+    "CATEGORY": "Theme tokens usage",
+    "EXPECTATION": "Use white color at 100% opacity and source it from src/theme.ts, not hardcoded.",
+    "NEW INSTRUCTION": "WHEN specifying white in UI styles THEN use theme token and set opacity to 1"
+}
+
+[2026-04-04 17:30] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Ollama LocalModel fields",
+    "EXPECTATION": "Use actual ollama-rs types; do not access a non-existent `details` field on `LocalModel` when detecting vision support.",
+    "NEW INSTRUCTION": "WHEN determining vision support for a local model THEN call model info/show API and read families."
+}
+
+[2026-04-04 21:04] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Vision image handling",
+    "EXPECTATION": "When an image is uploaded, the multimodal model should receive it and respond using the image content, not say it can't see it.",
+    "NEW INSTRUCTION": "WHEN a message has image attachments THEN include base64 images and route to a vision-capable model"
+}
+
+[2026-04-04 21:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Rust dependency conflict",
+    "EXPECTATION": "The Tauri app should build and run without sqlx/libsqlite3-sys version conflicts.",
+    "NEW INSTRUCTION": "WHEN adding or updating sqlx or tauri-plugin-sql deps THEN align on one sqlx major and avoid duplicate links"
+}
+
+[2026-04-04 21:51] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Login theming issues",
+    "EXPECTATION": "The Login/Auth page should use MUI-only styling with colors from theme.ts and no hardcoded color literals or shadcn-style appearance.",
+    "NEW INSTRUCTION": "WHEN rendering Auth/Login components THEN use MUI-only styling and theme.ts colors"
+}
+
+[2026-04-04 22:03] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "Modal size consistency",
+    "EXPECTATION": "The Archived Chats modal should not be narrow; modal dimensions should be consistent across the app via a shared modal component.",
+    "NEW INSTRUCTION": "WHEN implementing any modal THEN use a shared Modal with consistent width and max-h 85vh, scrollable body"
+}
+
+[2026-04-05 08:41] - Updated by Junie
+{
+    "TYPE": "negative",
+    "CATEGORY": "Login modal broken UI",
+    "EXPECTATION": "The Login modal should render in a portal with a fixed overlay, be centered, use correct z-index, avoid overlapping background elements, and have tabs that switch content via state.",
+    "NEW INSTRUCTION": "WHEN implementing or fixing the Login modal THEN use a portal with fixed overlay, center container, set z-index 1000/1001, and switch tabs via state."
+}
+

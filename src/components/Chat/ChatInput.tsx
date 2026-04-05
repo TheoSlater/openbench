@@ -1,6 +1,14 @@
-import { ArrowUp, Square } from "lucide-react";
-import { useRef, useEffect } from "react";
+import { Square, Plus, ArrowUp, Paperclip, X, Image as ImageIcon } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
 import { Box, InputBase, IconButton, Typography } from "@mui/material";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useChatStore } from "@/store/chatStore";
+import { Attachment } from "@/types/chat";
 
 interface ChatInputProps {
   value: string;
@@ -11,6 +19,7 @@ interface ChatInputProps {
   selectedModel: string;
   hasMessages: boolean;
   allowEmptyModel?: boolean;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export function ChatInput({
@@ -20,13 +29,31 @@ export function ChatInput({
   onStop,
   isStreaming,
   selectedModel,
-  hasMessages,
   allowEmptyModel = false,
+  onFocusChange,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileAccept, setFileAccept] = useState<string>("*");
+
+  const currentAttachments = useChatStore((state) => state.currentAttachments);
+  const { addCurrentAttachment, removeCurrentAttachment } = useChatStore(
+    (state) => state.actions,
+  );
+
+  const canUploadImages = true;
+
+  const handleFileClick = (accept: string) => {
+    setFileAccept(accept);
+    // Use a small delay to ensure state update before triggering click
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 0);
+  };
 
   const handleSubmit = () => {
-    if (!value.trim() || isStreaming) return;
+    if ((!value.trim() && currentAttachments.length === 0) || isStreaming)
+      return;
     onSubmit();
   };
 
@@ -45,18 +72,59 @@ export function ChatInput({
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+
+      const attachment: Attachment = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      };
+
+      if (file.type.startsWith("image/")) {
+        reader.onload = (e) => {
+          const base64 = e.target?.result as string;
+          // Ollama expects base64 without prefix
+          attachment.content = base64.split(",")[1];
+          addCurrentAttachment(attachment);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        reader.onload = (e) => {
+          attachment.content = e.target?.result as string;
+          addCurrentAttachment(attachment);
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+      textareaRef.current.style.height = `${Math.max(40, Math.min(textareaRef.current.scrollHeight, 200))}px`;
     }
   }, [value]);
+
+  const canSubmit =
+    value.trim() || currentAttachments.length > 0 || isStreaming;
+  const isInputDisabled = isStreaming || (!selectedModel && !allowEmptyModel);
 
   return (
     <Box
       sx={{
         shrink: 0,
-        bgcolor: hasMessages ? "#0d0d0d" : "transparent",
+        bgcolor: "transparent",
         px: 2,
         pb: 3,
         pt: 2,
@@ -64,22 +132,93 @@ export function ChatInput({
         zIndex: 10,
       }}
     >
-      <Box sx={{ mx: "auto", width: "100%", maxWidth: 768 }}>
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        accept={fileAccept}
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <Box sx={{ mx: "auto", width: "100%", maxWidth: 840 }}>
         <Box
           sx={{
             display: "flex",
-            minHeight: 56,
-            width: "100%",
             flexDirection: "column",
-            gap: 1,
-            borderRadius: "2rem",
-            border: "1px solid rgba(255, 255, 255, 0.05)",
-            bgcolor: "#1a1a1a",
-            px: 2.5,
-            py: 1.5,
-            transition: "all 0.3s",
+            minHeight: currentAttachments.length > 0 ? 160 : 120,
+            width: "100%",
+            borderRadius: "24px",
+            bgcolor: "background.paper",
+            p: 1.5,
+            transition: "all 0.2s",
+            border: "1px solid",
+            borderColor: "divider",
+            "&:focus-within": {
+              borderColor: "border.main",
+            },
           }}
         >
+          {currentAttachments.length > 0 && (
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 1.5,
+                px: 1.5,
+                pt: 1,
+                pb: 1,
+              }}
+            >
+              {currentAttachments.map((att) => (
+                <Box
+                  key={att.id}
+                  sx={{
+                    position: "relative",
+                    width: 64,
+                    height: 64,
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {att.type.startsWith("image/") ? (
+                    <img
+                      src={`data:${att.type};base64,${att.content}`}
+                      alt={att.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <Paperclip size={24} style={{ color: "text.secondary" }} />
+                  )}
+                  <IconButton
+                    size="small"
+                    onClick={() => removeCurrentAttachment(att.id)}
+                    sx={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      bgcolor: "background.paper",
+                      boxShadow: 1,
+                      p: 0.5,
+                      "&:hover": { bgcolor: "action.selected" },
+                    }}
+                  >
+                    <X size={12} />
+                  </IconButton>
+                </Box>
+              ))}
+            </Box>
+          )}
+
           <InputBase
             multiline
             inputRef={textareaRef}
@@ -87,62 +226,101 @@ export function ChatInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isStreaming || (!selectedModel && !allowEmptyModel)}
+            onFocus={() => onFocusChange?.(true)}
+            onBlur={() => onFocusChange?.(false)}
+            disabled={isInputDisabled}
             sx={{
-              width: "100%",
-              color: "rgba(255, 255, 255, 0.9)",
-              fontSize: "16px",
-              lineHeight: 1.6,
+              flex: 1,
+              color: "text.primary",
+              fontSize: "17px",
+              px: 1.5,
+              pt: 1,
               "& .MuiInputBase-input": {
                 p: 0,
                 "&::placeholder": {
-                  color: "rgba(255, 255, 255, 0.2)",
+                  color: "text.secondary",
                   opacity: 1,
-                }
-              }
+                },
+              },
             }}
           />
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", mt: 0.5 }}>
-            <IconButton
-              onClick={handleAction}
-              disabled={isStreaming ? false : !value.trim() || (!selectedModel && !allowEmptyModel)}
-              sx={{
-                width: 32,
-                height: 32,
-                bgcolor: (value.trim() || isStreaming) ? "#fff" : "rgba(255, 255, 255, 0.05)",
-                color: (value.trim() || isStreaming) ? "#000" : "rgba(255, 255, 255, 0.1)",
-                "&:hover": {
-                  bgcolor: (value.trim() || isStreaming) ? "rgba(255, 255, 255, 0.9)" : "rgba(255, 255, 255, 0.05)",
-                },
-                "&.Mui-disabled": {
-                  bgcolor: "rgba(255, 255, 255, 0.05)",
-                  color: "rgba(255, 255, 255, 0.1)",
-                }
-              }}
-            >
-              {isStreaming ? (
-                <Square size={14} fill="currentColor" />
-              ) : (
-                <ArrowUp size={16} strokeWidth={2.5} />
-              )}
-            </IconButton>
-          </Box>
-        </Box>
-        {!hasMessages && (
-          <Typography
-            variant="caption"
+
+          <Box
             sx={{
-              display: "block",
-              mt: 1.5,
-              textAlign: "center",
-              fontSize: "11px",
-              fontWeight: 500,
-              color: "rgba(255, 255, 255, 0.2)"
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              mt: 1,
+              px: 0.5,
             }}
           >
-            OpenBench can make mistakes. Check important info.
-          </Typography>
-        )}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <IconButton
+                    size="small"
+                    sx={{ color: "text.secondary", p: 1 }}
+                    disabled={isStreaming}
+                  >
+                    <Plus size={20} />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {canUploadImages && (
+                    <DropdownMenuItem
+                      onClick={() => handleFileClick("image/*")}
+                      className="flex items-center gap-2"
+                    >
+                      <ImageIcon size={16} />
+                      <Typography variant="body2">Upload images</Typography>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    onClick={() => handleFileClick("*")}
+                    className="flex items-center gap-2"
+                  >
+                    <Paperclip size={16} />
+                    <Typography variant="body2">Upload files</Typography>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <IconButton
+                onClick={handleAction}
+                disabled={isStreaming ? false : !canSubmit || isInputDisabled}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  bgcolor:
+                    canSubmit || isStreaming ? "primary.main" : "action.hover",
+                  color:
+                    canSubmit || isStreaming
+                      ? "primary.contrastText"
+                      : "text.secondary",
+                  "&:hover": {
+                    bgcolor:
+                      canSubmit || isStreaming
+                        ? "primary.main"
+                        : "action.selected",
+                    opacity: 0.9,
+                  },
+                  "&.Mui-disabled": {
+                    bgcolor: "action.hover",
+                    color: "border.main",
+                  },
+                }}
+              >
+                {isStreaming ? (
+                  <Square size={14} fill="currentColor" />
+                ) : (
+                  <ArrowUp size={20} strokeWidth={2.5} />
+                )}
+              </IconButton>
+            </Box>
+          </Box>
+        </Box>
       </Box>
     </Box>
   );

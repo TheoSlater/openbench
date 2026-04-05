@@ -1,12 +1,6 @@
 import { useEffect } from "react";
-import { useModelStore } from "@/store/modelStore";
-
-const OLLAMA_URL =
-  import.meta.env.VITE_OLLAMA_URL ?? "http://localhost:11434";
-
-type OllamaTagsResponse = {
-  models?: { name?: string }[];
-};
+import { invoke } from "@tauri-apps/api/core";
+import { useModelStore, type OllamaModel } from "@/store/modelStore";
 
 export function useModelPicker() {
   const setAvailableModels = useModelStore((state) => state.setAvailableModels);
@@ -14,6 +8,7 @@ export function useModelPicker() {
   const setIsLoading = useModelStore((state) => state.setIsLoading);
   const setOllamaError = useModelStore((state) => state.setOllamaError);
   const selectedModel = useModelStore((state) => state.selectedModel);
+  const defaultModel = useModelStore((state) => state.defaultModel);
 
   useEffect(() => {
     let isMounted = true;
@@ -22,20 +17,18 @@ export function useModelPicker() {
       setIsLoading(true);
       setOllamaError(null);
       try {
-        const response = await fetch(`${OLLAMA_URL}/api/tags`);
-        if (!response.ok) {
-          throw new Error(`Ollama error: ${response.status}`);
-        }
-        const data: OllamaTagsResponse = await response.json();
-        const models =
-          data.models
-            ?.map((model) => model.name)
-            .filter((name): name is string => Boolean(name)) ?? [];
+        const models = await invoke<OllamaModel[]>("get_local_models");
 
         if (!isMounted) return;
         setAvailableModels({ ollama: models });
+        
+        const modelNames = models.map(m => m.name.toString());
         if (!selectedModel && models.length > 0) {
-          setSelectedModel("ollama", models[0]);
+          // Priority: 1. Default model if available, 2. First available model
+          const modelToSelect = (defaultModel && modelNames.includes(defaultModel)) 
+            ? defaultModel 
+            : modelNames[0];
+          setSelectedModel("ollama", modelToSelect);
         }
       } catch (error) {
         console.error("Failed to load Ollama models:", error);

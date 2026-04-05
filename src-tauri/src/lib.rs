@@ -1,5 +1,9 @@
+mod auth;
+mod db;
+
 use ollama_rs::generation::chat::request::ChatMessageRequest;
-use ollama_rs::generation::chat::ChatMessage;
+use ollama_rs::generation::chat::ChatMessage as OllamaChatMessage;
+use ollama_rs::generation::images::Image;
 use ollama_rs::Ollama;
 use tauri::{AppHandle, Emitter};
 use tokio_stream::StreamExt;
@@ -11,20 +15,90 @@ struct AppState {
     current_generation_id: AtomicUsize,
 }
 
+#[derive(serde::Serialize, Clone)]
+struct StreamPayload {
+    content: String,
+    done: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct PullProgressPayload {
+    status: String,
+    digest: Option<String>,
+    total: Option<u64>,
+    completed: Option<u64>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct ModelDetails {
+    pub name: String,
+    pub families: Vec<String>,
+    pub supports_vision: bool,
+}
+
 #[tauri::command]
-async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<ModelDetails>, String> {
     let models = state
         .ollama
         .list_local_models()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(models.into_iter().map(|m| m.name).collect())
+
+    let mut details = Vec::new();
+    for model in models {
+        let name_lower = model.name.to_lowercase();
+        let supports_vision = name_lower.contains("llava")
+            || name_lower.contains("moondream")
+            || name_lower.contains("vision")
+            || name_lower.contains("bakllava")
+            || name_lower.contains("llama3.2")
+            || name_lower.contains("minicpm-v")
+            || name_lower.contains("pixtral")
+            || name_lower.contains("molmo")
+            || name_lower.contains("internvl");
+
+        details.push(ModelDetails {
+            name: model.name,
+            families: Vec::new(), // families not available on LocalModel in this version
+            supports_vision,
+        });
+    }
+
+    Ok(details)
 }
 
-#[derive(serde::Serialize, Clone)]
-struct StreamPayload {
-    content: String,
-    done: bool,
+#[tauri::command]
+async fn pull_model(
+    app_handle: AppHandle,
+    state: tauri::State<'_, AppState>,
+    model: String,
+) -> Result<(), String> {
+    let mut stream = state
+        .ollama
+        .pull_model_stream(model, false)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    while let Some(res) = stream.next().await {
+        match res {
+            Ok(response) => {
+                let _ = app_handle.emit(
+                    "pull-progress",
+                    PullProgressPayload {
+                        status: response.message,
+                        digest: response.digest,
+                        total: response.total,
+                        completed: response.completed,
+                    },
+                );
+            }
+            Err(e) => {
+                return Err(e.to_string());
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -32,12 +106,33 @@ fn cancel_chat(state: tauri::State<'_, AppState>) {
     state.current_generation_id.fetch_add(1, Ordering::SeqCst);
 }
 
+#[derive(serde::Deserialize)]
+struct ChatAttachment {
+    #[allow(dead_code)]
+    id: String,
+    #[allow(dead_code)]
+    name: String,
+    #[allow(dead_code)]
+    #[serde(rename = "type")]
+    content_type: String,
+    #[allow(dead_code)]
+    size: u64,
+    content: Option<String>, // base64 for images
+}
+
+#[derive(serde::Deserialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+    attachments: Option<Vec<ChatAttachment>>,
+}
+
 #[tauri::command]
 async fn chat_stream(
     app_handle: AppHandle,
     state: tauri::State<'_, AppState>,
     model: String,
-    messages: Vec<ollama_rs::generation::chat::ChatMessage>,
+    messages: Vec<ChatMessage>,
     system_prompt: Option<String>,
 ) -> Result<(), String> {
     if let Some(ref prompt) = system_prompt {
@@ -53,10 +148,36 @@ async fn chat_stream(
     let mut all_messages = Vec::new();
     if let Some(prompt) = system_prompt {
         if !prompt.trim().is_empty() {
-            all_messages.push(ChatMessage::system(prompt));
+            all_messages.push(OllamaChatMessage::system(prompt));
         }
     }
-    all_messages.extend(messages);
+
+    for msg in messages {
+        let mut ollama_msg = match msg.role.as_str() {
+            "user" => OllamaChatMessage::user(msg.content),
+            "assistant" => OllamaChatMessage::assistant(msg.content),
+            _ => OllamaChatMessage::user(msg.content),
+        };
+
+        if let Some(attachments) = msg.attachments {
+            let mut images = Vec::new();
+
+            for att in attachments {
+                if att.content_type.starts_with("image/") {
+                    if let Some(content) = att.content {
+                        // content is base64
+                        images.push(Image::from_base64(&content));
+                    }
+                }
+            }
+
+            if !images.is_empty() {
+                ollama_msg.images = Some(images);
+            }
+        }
+        all_messages.push(ollama_msg);
+    }
+
     let request = ChatMessageRequest::new(model, all_messages);
 
     let current_gen_id = state.current_generation_id.fetch_add(1, Ordering::SeqCst) + 1;
@@ -99,7 +220,37 @@ async fn chat(
     model: String,
     messages: Vec<ChatMessage>,
 ) -> Result<String, String> {
-    let request = ChatMessageRequest::new(model, messages);
+    let mut all_messages = Vec::new();
+    for msg in messages {
+        let mut ollama_msg = match msg.role.as_str() {
+            "user" => OllamaChatMessage::user(msg.content),
+            "assistant" => OllamaChatMessage::assistant(msg.content),
+            _ => OllamaChatMessage::user(msg.content),
+        };
+
+        if let Some(attachments) = msg.attachments {
+            let mut images = Vec::new();
+            let model_lower = model.to_lowercase();
+            let is_vision_model = model_lower.contains("llava") 
+                || model_lower.contains("moondream")
+                || model_lower.contains("vision")
+                || model_lower.contains("bakllava");
+
+            if is_vision_model {
+                for att in attachments {
+                    if let Some(content) = att.content {
+                        images.push(Image::from_base64(&content));
+                    }
+                }
+            }
+            if !images.is_empty() {
+                ollama_msg.images = Some(images);
+            }
+        }
+        all_messages.push(ollama_msg);
+    }
+
+    let request = ChatMessageRequest::new(model, all_messages);
     let response = state
         .ollama
         .send_chat_messages(request)
@@ -121,9 +272,15 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_local_models,
+            pull_model,
             chat_stream,
             chat,
-            cancel_chat
+            cancel_chat,
+            auth::auth_signup,
+            auth::auth_login,
+            auth::auth_logout,
+            auth::auth_get_current_user,
+            auth::auth_update_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

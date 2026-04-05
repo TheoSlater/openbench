@@ -8,8 +8,25 @@ import {
   CSSObject,
   Typography,
 } from "@mui/material";
-import { PanelLeft, Plus, Settings, Trash2, Edit2, Check, X } from "lucide-react";
-import { Conversation } from "@/store/chatStore";
+import {
+  PanelLeft,
+  Plus,
+  Trash2,
+  Edit2,
+  Check,
+  X,
+  MoreHorizontal,
+  Archive,
+} from "lucide-react";
+import { Conversation, useChatStore } from "@/store/chatStore";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DeleteConversationDialog } from "@/components/Chat/DeleteConversationDialog";
+import { ProfileMenu } from "@/components/Profile/ProfileMenu";
 
 interface SidebarContextValue {
   isOpen: boolean;
@@ -61,7 +78,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
           width: "100%",
           height: "100vh",
           overflow: "hidden",
-          bgcolor: "#0d0d0d",
+          bgcolor: "background.default",
         }}
       >
         {children}
@@ -92,8 +109,26 @@ export function Sidebar({
   collapsible,
 }: SidebarProps) {
   const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
+  const { actions: chatActions } = useChatStore();
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editValue, setEditValue] = React.useState("");
+  const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [deleteTitle, setDeleteTitle] = React.useState("");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+
+  const handleStartDelete = (conv: Conversation) => {
+    setDeleteId(conv.id);
+    setDeleteTitle(conv.title || "Untitled");
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteId) {
+      onDeleteConversation(deleteId);
+      setDeleteId(null);
+      setDeleteTitle("");
+    }
+  };
 
   const handleStartRename = (e: React.MouseEvent, conv: Conversation) => {
     e.stopPropagation();
@@ -114,22 +149,74 @@ export function Sidebar({
     setEditingId(null);
   };
 
+  const handleArchive = async (id: string) => {
+    await chatActions.archiveConversation(id);
+  };
+
   const sidebarContent = (
     <>
       <SidebarHeader>
-        <SidebarMenuButton onClick={onNewChat} isActive={false}>
-          <Plus size={18} />
-          {!isCollapsed && <Box component="span" sx={{ ml: 1 }}>New Chat</Box>}
-        </SidebarMenuButton>
+        {!isCollapsed ? (
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", px: 2 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 600,
+                color: "primary.main",
+                letterSpacing: "0.01em",
+                opacity: 1,
+              }}
+            >
+              OpenBench
+            </Typography>
+            <SidebarTrigger />
+          </Box>
+        ) : (
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", pt: 2, gap: 2 }}>
+            <SidebarTrigger />
+            <IconButton
+              onClick={onNewChat}
+              size="small"
+              sx={{
+                color: "text.secondary",
+                "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+              }}
+            >
+              <Plus size={18} />
+            </IconButton>
+          </Box>
+        )}
       </SidebarHeader>
 
       <SidebarContent>
+        {!isCollapsed && (
+          <Box sx={{ px: 1.5, mb: 2, mt: 1, display: "flex", justifyContent: "center" }}>
+            <SidebarMenuButton
+              onClick={onNewChat}
+              isActive={false}
+              sx={{
+                width: "100%",
+                justifyContent: "flex-start",
+                bgcolor: "transparent",
+                border: "1px solid",
+                borderColor: "divider",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <Plus size={18} />
+              <Box component="span" sx={{ ml: 1 }}>
+                New Chat
+              </Box>
+            </SidebarMenuButton>
+          </Box>
+        )}
+
         {!isCollapsed && (
           <SidebarGroup>
             <SidebarGroupLabel>Recent</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {conversations.map((conv) => (
+                {conversations.filter(c => !c.isArchived).map((conv) => (
                   <SidebarMenuButton
                     key={conv.id}
                     isActive={activeConversationId === conv.id}
@@ -160,10 +247,10 @@ export function Sidebar({
                               padding: 0,
                             }}
                           />
-                          <IconButton size="small" onClick={(e) => handleConfirmRename(e, conv.id)} sx={{ p: 0.5, color: "rgba(255,255,255,0.6)" }}>
+                          <IconButton size="small" onClick={(e) => handleConfirmRename(e, conv.id)} sx={{ p: 0.5, color: "text.secondary" }}>
                             <Check size={14} />
                           </IconButton>
-                          <IconButton size="small" onClick={handleCancelRename} sx={{ p: 0.5, color: "rgba(255,255,255,0.6)" }}>
+                          <IconButton size="small" onClick={handleCancelRename} sx={{ p: 0.5, color: "text.secondary" }}>
                             <X size={14} />
                           </IconButton>
                         </Box>
@@ -172,30 +259,59 @@ export function Sidebar({
                           <Typography
                             variant="body2"
                             noWrap
-                            sx={{ flex: 1, color: activeConversationId === conv.id ? "#fff" : "inherit" }}
+                            sx={{
+                              flex: 1,
+                              color:
+                                activeConversationId === conv.id
+                                  ? "text.primary"
+                                  : "inherit",
+                            }}
                           >
                             {conv.title || "Untitled"}
                           </Typography>
-                          {!isCollapsed && activeConversationId === conv.id && (
-                            <Box sx={{ display: "flex", gap: 0.5 }}>
-                              <IconButton
-                                size="small"
-                                onClick={(e) => handleStartRename(e, conv)}
-                                sx={{ p: 0.5, color: "rgba(255,255,255,0.4)", "&:hover": { color: "#fff" } }}
-                              >
-                                <Edit2 size={14} />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteConversation(conv.id);
-                                }}
-                                sx={{ p: 0.5, color: "rgba(255,255,255,0.4)", "&:hover": { color: "#f44336" } }}
-                              >
-                                <Trash2 size={14} />
-                              </IconButton>
-                            </Box>
+                          {!isCollapsed && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => e.stopPropagation()}
+                                  sx={{
+                                    p: 0.5,
+                                    color: "text.secondary",
+                                    "&:hover": {
+                                      color: "text.primary",
+                                      bgcolor: "action.selected",
+                                    },
+                                    opacity:
+                                      activeConversationId === conv.id ? 1 : 0,
+                                    ".MuiBox-root:hover &": { opacity: 1 },
+                                  }}
+                                >
+                                  <MoreHorizontal size={14} />
+                                </IconButton>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleStartRename({ stopPropagation: () => {} } as any, conv)}
+                                >
+                                  <Edit2 size={14} />
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleArchive(conv.id)}
+                                >
+                                  <Archive size={14} />
+                                  Archive
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => handleStartDelete(conv)}
+                                >
+                                  <Trash2 size={14} />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </>
                       )}
@@ -208,12 +324,16 @@ export function Sidebar({
         )}
       </SidebarContent>
 
-      <SidebarFooter>
-        <SidebarMenuButton onClick={onOpenSettings} isActive={false}>
-          <Settings size={18} />
-          {!isCollapsed && <Box component="span" sx={{ ml: 1 }}>Settings</Box>}
-        </SidebarMenuButton>
+      <SidebarFooter sx={{ flexDirection: "column", gap: 1, p: 1.5 }}>
+        <ProfileMenu onOpenSettings={onOpenSettings} />
       </SidebarFooter>
+
+      <DeleteConversationDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={handleConfirmDelete}
+        title={deleteTitle}
+      />
     </>
   );
 
@@ -225,8 +345,9 @@ export function Sidebar({
         PaperProps={{
           sx: {
             width: 260,
-            bgcolor: "#0d0d0d",
-            borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+            bgcolor: "background.sidebar",
+            borderRight: "1px solid",
+            borderColor: "divider",
             backgroundImage: "none",
           },
         }}
@@ -246,8 +367,9 @@ export function Sidebar({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        bgcolor: "#0d0d0d",
-        borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+        bgcolor: "background.sidebar",
+        borderRight: "1px solid",
+        borderColor: "divider",
         transition: "width 0.2s ease-in-out",
         overflowX: "hidden",
       }}
@@ -269,10 +391,9 @@ export function SidebarHeader({
     <Box
       sx={{
         p: 0,
-        px: isCollapsed ? 0 : 2,
         display: "flex",
         alignItems: "center",
-        justifyContent: isCollapsed ? "center" : "space-between",
+        justifyContent: isCollapsed ? "center" : "flex-start",
         minHeight: 56,
         ...sx,
       }}
@@ -314,7 +435,8 @@ export function SidebarFooter({
         display: "flex",
         alignItems: "center",
         justifyContent: isCollapsed ? "center" : "flex-start",
-        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+        borderTop: "1px solid",
+        borderColor: "divider",
         ...sx,
       }}
     >
@@ -341,7 +463,7 @@ export function SidebarGroupLabel({ children }: { children: React.ReactNode }) {
         sx={{
           fontSize: "11px",
           fontWeight: 600,
-          color: "rgba(255, 255, 255, 0.3)",
+          color: "text.secondary",
           textTransform: "uppercase",
           letterSpacing: "0.05em",
         }}
@@ -387,10 +509,12 @@ export function SidebarMenuButton({
   children,
   isActive,
   onClick,
+  sx,
 }: {
   children: React.ReactNode;
   isActive?: boolean;
   onClick?: () => void;
+  sx?: CSSObject;
 }) {
   const { isCollapsed } = useSidebar();
   return (
@@ -407,15 +531,16 @@ export function SidebarMenuButton({
         borderRadius: "8px",
         cursor: "pointer",
         transition: "all 0.2s",
-        bgcolor: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
-        color: isActive ? "#fff" : "rgba(255, 255, 255, 0.6)",
+        bgcolor: isActive ? "action.hover" : "transparent",
+        color: isActive ? "text.primary" : "text.secondary",
         fontSize: "13px",
         fontWeight: 500,
         overflow: "hidden",
         "&:hover": {
-          bgcolor: "rgba(255, 255, 255, 0.05)",
-          color: "#fff",
+          bgcolor: "action.hover",
+          color: "text.primary",
         },
+        ...sx,
       }}
     >
       {children}
@@ -426,7 +551,8 @@ export function SidebarMenuButton({
 export function SidebarTrigger({ sx }: { sx?: CSSObject }) {
   const { isCollapsed, setIsCollapsed, isMobile, setOpenMobile } = useSidebar();
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (isMobile) {
       setOpenMobile(true);
     } else {
@@ -439,8 +565,8 @@ export function SidebarTrigger({ sx }: { sx?: CSSObject }) {
       onClick={handleClick}
       size="small"
       sx={{
-        color: "rgba(255, 255, 255, 0.4)",
-        "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" },
+        color: "text.secondary",
+        "&:hover": { color: "text.primary", bgcolor: "action.hover" },
         ...sx,
       }}
     >

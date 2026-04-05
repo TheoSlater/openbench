@@ -1,5 +1,31 @@
 import { createTheme, ThemeOptions } from "@mui/material/styles";
 
+declare module "@mui/material/styles" {
+  interface TypeBackground {
+    sidebar: string;
+  }
+  interface Palette {
+    border: {
+      light: string;
+      main: string;
+    };
+    chat: {
+      bubble: string;
+      bubbleUser: string;
+    }
+  }
+  interface PaletteOptions {
+    border?: {
+      light?: string;
+      main?: string;
+    };
+    chat?: {
+      bubble?: string;
+      bubbleUser?: string;
+    }
+  }
+}
+
 const baseThemeOptions: ThemeOptions = {
   typography: {
     fontFamily: '"Geist Variable", "Inter", "system-ui", "sans-serif"',
@@ -47,20 +73,33 @@ export const darkTheme = createTheme({
       contrastText: "#000000",
     },
     secondary: {
-      main: "#292929",
+      main: "#2f2f2f", // From reference design (message bubbles, active states)
       contrastText: "#ffffff",
     },
     background: {
-      default: "#0d0d0d",
-      paper: "#1a1a1a",
+      default: "#171717", // Subtle dark grey from reference
+      paper: "#1a1a1a",   // Slightly lighter for inputs/cards
+      sidebar: "#121212", // Darker background for sidebar
     },
     text: {
-      primary: "#f5f5f5",
-      secondary: "#a6a6a6",
+      primary: "#ececec",   // Soft white for better readability
+      secondary: "rgba(255, 255, 255, 0.4)", // Muted text
     },
-    divider: "#2e2e2e",
+    divider: "rgba(255, 255, 255, 0.05)",
     action: {
-      hover: "rgba(255, 255, 255, 0.08)",
+      hover: "rgba(255, 255, 255, 0.05)",
+      selected: "rgba(255, 255, 255, 0.1)",
+    },
+    border: {
+      main: "rgba(255, 255, 255, 0.1)",
+      light: "rgba(255, 255, 255, 0.05)",
+    },
+    chat: {
+      bubble: "#262626",
+      bubbleUser: "#2f2f2f",
+    },
+    success: {
+      main: "#4ade80",
     },
   },
 });
@@ -80,11 +119,24 @@ export const lightTheme = createTheme({
     background: {
       default: "#ffffff",
       paper: "#f9f9f9",
+      sidebar: "#f3f3f3",
     },
     text: {
       primary: "#1a1a1a",
-      secondary: "#666666",
+      secondary: "rgba(0, 0, 0, 0.4)",
     },
-    divider: "#e5e5e5",
+    divider: "rgba(0, 0, 0, 0.05)",
+    action: {
+      hover: "rgba(0, 0, 0, 0.05)",
+      selected: "rgba(0, 0, 0, 0.1)",
+    },
+    border: {
+      main: "rgba(0, 0, 0, 0.1)",
+      light: "rgba(0, 0, 0, 0.05)",
+    },
+    chat: {
+      bubble: "#f3f3f3",
+      bubbleUser: "#e5e5e5",
+    },
   },
 });

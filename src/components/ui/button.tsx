@@ -10,27 +10,28 @@ export function Button({ variant = "default", size = "default", sx, ...props }: 
     switch (variant) {
       case "ghost":
         return {
-          color: "rgba(255, 255, 255, 0.6)",
+          color: "text.secondary",
           bgcolor: "transparent",
-          "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)", color: "#fff" },
+          "&:hover": { bgcolor: "action.hover", color: "text.primary" },
         };
       case "outline":
         return {
-          border: "1px solid rgba(255, 255, 255, 0.1)",
+          border: "1px solid",
+          borderColor: "divider",
           bgcolor: "transparent",
-          "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" },
+          "&:hover": { bgcolor: "action.hover" },
         };
       case "destructive":
         return {
-          bgcolor: "#ef4444",
-          color: "#fff",
-          "&:hover": { bgcolor: "#dc2626" },
+          bgcolor: "error.main",
+          color: "error.contrastText",
+          "&:hover": { bgcolor: "error.dark" },
         };
       default:
         return {
-          bgcolor: "#fff",
-          color: "#000",
-          "&:hover": { bgcolor: "rgba(255, 255, 255, 0.9)" },
+          bgcolor: "primary.main",
+          color: "primary.contrastText",
+          "&:hover": { opacity: 0.9 },
         };
     }
   };

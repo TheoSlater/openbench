@@ -1,93 +1,44 @@
-import { Box, Typography, MenuItem, Select, FormControl } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 
 interface EmptyStateProps {
-  selectedModel: string;
-  availableModels: {
-    ollama: string[];
-    anthropic: string[];
-    openai: string[];
-  };
-  onModelChange: (provider: "ollama" | "anthropic" | "openai", model: string) => void;
-  isLoading: boolean;
   children?: React.ReactNode;
+  selectedModel: string;
 }
 
-export function EmptyState({
-  selectedModel,
-  availableModels,
-  onModelChange,
-  isLoading,
-  children,
-}: EmptyStateProps) {
-  const hasAnyModels = availableModels.ollama.length > 0;
-  const selectedValue = selectedModel || "";
-
-  const handleChange = (value: string) => {
-    if (!value) return;
-    onModelChange("ollama", value);
-  };
-
+export function EmptyState({ children, selectedModel }: EmptyStateProps) {
   return (
-    <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 2, maxWidth: 768, mx: "auto", width: "100%" }}>
-      {/* Model Selector Dropdown */}
-      <Box sx={{ mb: 2, position: "relative" }}>
-        <Box sx={{ position: "relative" }}>
-          <FormControl size="small">
-            <Select
-              value={selectedValue}
-              onChange={(e) => handleChange(e.target.value as string)}
-              disabled={isLoading || !hasAnyModels}
-              displayEmpty
-              renderValue={(selected) => (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, pr: 3 }}>
-                  <Typography variant="h5" sx={{ fontWeight: 700, color: "rgba(255, 255, 255, 0.9)", letterSpacing: "-0.01em" }}>
-                    {selected || "gpt-4.1-nano"}
-                  </Typography>
-                </Box>
-              )}
-              sx={{
-                "& .MuiOutlinedInput-notchedOutline": { border: "none" },
-                "& .MuiSelect-select": { p: 1, borderRadius: "16px", "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" } },
-                "& .MuiSelect-icon": { 
-                  display: "block",
-                  color: "rgba(255, 255, 255, 0.2)",
-                  right: 4,
-                  fontSize: "24px",
-                },
-              }}
-              MenuProps={{
-                PaperProps: {
-                  sx: {
-                    bgcolor: "#1a1a1a",
-                    color: "#fff",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    "& .MuiMenuItem-root": {
-                      fontSize: "14px",
-                      "&:hover": { bgcolor: "rgba(255, 255, 255, 0.05)" },
-                      "&.Mui-selected": { bgcolor: "rgba(255, 255, 255, 0.1)" }
-                    }
-                  }
-                }
-              }}
-            >
-              {!hasAnyModels ? (
-                <MenuItem value="">No models</MenuItem>
-              ) : (
-                availableModels.ollama.map((model) => (
-                  <MenuItem key={model} value={model}>
-                    {model}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </FormControl>
-        </Box>
+    <Box
+      sx={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        px: 2,
+        maxWidth: 840,
+        mx: "auto",
+        width: "100%",
+        height: "100%",
+        mt: -8,
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 6 }}>
+        <Typography
+          variant="h3"
+          sx={{
+            fontWeight: 600,
+            color: "primary.main",
+            fontSize: "36px",
+            letterSpacing: "-0.5px",
+            opacity: 1,
+          }}
+        >
+          {selectedModel || "gpt-oss:20b-cloud"}
+        </Typography>
       </Box>
 
-      {/* Input area rendered here when in empty state */}
-      <Box sx={{ width: "100%", mt: 1 }}>
-        {children}
-      </Box>
+      {/* Input area */}
+      <Box sx={{ width: "100%", maxWidth: 768 }}>{children}</Box>
     </Box>
   );
 }

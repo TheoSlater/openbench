@@ -1,42 +1,42 @@
 import { create } from "zustand";
 import * as db from "@/lib/db";
-export type Conversation = {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-};
-export type Message = {
-  id: string;
-  conversationId: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-};
+import { Message, Conversation, Attachment } from "@/types/chat";
+
+export type { Conversation, Message };
+
 type ChatStore = {
   conversations: Conversation[];
   activeConversationId: string | null;
   streamingConversationId: string | null;
   messages: Message[];
+  hasMoreMessages: boolean;
+  currentAttachments: Attachment[];
   actions: {
     createConversation: (title?: string) => Promise<Conversation>;
     setActiveConversationId: (id: string | null) => Promise<void>;
     setStreamingConversationId: (id: string | null) => void;
     setMessages: (messages: Message[]) => void;
+    loadMoreMessages: () => Promise<void>;
     addMessage: (message: {
       conversationId: string;
       role: "user" | "assistant";
       content: string;
       id?: string;
       createdAt?: string;
+      attachments?: Attachment[];
     }) => Promise<Message>;
     loadConversations: () => Promise<void>;
     deleteConversation: (id: string) => Promise<void>;
+    archiveConversation: (id: string) => Promise<void>;
+    unarchiveConversation: (id: string) => Promise<void>;
     renameConversation: (id: string, newTitle: string) => Promise<void>;
     deleteMessagesAfter: (
       conversationId: string,
       messageId: string,
     ) => Promise<void>;
+    addCurrentAttachment: (attachment: Attachment) => void;
+    removeCurrentAttachment: (id: string) => void;
+    clearCurrentAttachments: () => void;
   };
 };
 export const useChatStore = create<ChatStore>((set) => ({
@@ -44,6 +44,8 @@ export const useChatStore = create<ChatStore>((set) => ({
   activeConversationId: null,
   streamingConversationId: null,
   messages: [],
+  hasMoreMessages: false,
+  currentAttachments: [],
   actions: {
     // Load all conversations from DB
     loadConversations: async () => {
@@ -53,6 +55,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         title: c.title,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
+        isArchived: !!c.isArchived,
       }));
       set({ conversations });
     },
@@ -67,11 +70,13 @@ export const useChatStore = create<ChatStore>((set) => ({
         title,
         createdAt: now,
         updatedAt: now,
+        isArchived: false,
       };
       set((state) => ({
         conversations: [conversation, ...state.conversations],
         activeConversationId: id,
         messages: [],
+        hasMoreMessages: false,
       }));
       return conversation;
     },
@@ -79,17 +84,49 @@ export const useChatStore = create<ChatStore>((set) => ({
     setActiveConversationId: async (id) => {
       set({ activeConversationId: id });
       if (id) {
-        const rawMessages = await db.getMessages(id);
+        const pageSize = 50;
+        const rawMessages = await db.getMessages(id, pageSize, 0);
         const messages: Message[] = rawMessages.map((m) => ({
           id: m.id,
           conversationId: m.conversationId,
           role: m.role,
           content: m.content,
           createdAt: m.createdAt,
+          attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
         }));
-        set({ messages });
+        set({ messages, hasMoreMessages: messages.length === pageSize });
       } else {
-        set({ messages: [] });
+        set({ messages: [], hasMoreMessages: false });
+      }
+    },
+    // Load more messages for the active conversation
+    loadMoreMessages: async () => {
+      const { activeConversationId, messages } = useChatStore.getState();
+      if (!activeConversationId) return;
+
+      const pageSize = 50;
+      const offset = messages.length;
+      const rawMessages = await db.getMessages(
+        activeConversationId,
+        pageSize,
+        offset,
+      );
+
+      if (rawMessages.length > 0) {
+        const newMessages: Message[] = rawMessages.map((m) => ({
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+          attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+        }));
+        set({
+          messages: [...newMessages, ...messages],
+          hasMoreMessages: newMessages.length === pageSize,
+        });
+      } else {
+        set({ hasMoreMessages: false });
       }
     },
     // Replace current messages in state (sync)
@@ -103,6 +140,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         role: message.role,
         content: message.content,
         createdAt: now,
+        attachments: message.attachments,
       };
       await db.addMessage(payload);
       set((state) => ({
@@ -117,7 +155,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         const newConversations = state.conversations.filter((c) => c.id !== id);
         const newActiveId =
           state.activeConversationId === id
-            ? (newConversations[0]?.id ?? null)
+            ? (newConversations.find(c => !c.isArchived)?.id ?? null)
             : state.activeConversationId;
         const newMessages =
           state.activeConversationId === id ? [] : state.messages;
@@ -127,6 +165,35 @@ export const useChatStore = create<ChatStore>((set) => ({
           messages: newMessages,
         };
       });
+    },
+    // Archive a conversation
+    archiveConversation: async (id) => {
+      await db.updateConversation(id, { isArchived: true });
+      set((state) => {
+        const newConversations = state.conversations.map((c) =>
+          c.id === id ? { ...c, isArchived: true } : c,
+        );
+        const newActiveId =
+          state.activeConversationId === id
+            ? (newConversations.find(c => !c.isArchived)?.id ?? null)
+            : state.activeConversationId;
+        const newMessages =
+          state.activeConversationId === id ? [] : state.messages;
+        return {
+          conversations: newConversations,
+          activeConversationId: newActiveId,
+          messages: newMessages,
+        };
+      });
+    },
+    // Unarchive a conversation
+    unarchiveConversation: async (id) => {
+      await db.updateConversation(id, { isArchived: false });
+      set((state) => ({
+        conversations: state.conversations.map((c) =>
+          c.id === id ? { ...c, isArchived: false } : c,
+        ),
+      }));
     },
     // Rename a conversation
     renameConversation: async (id, newTitle) => {
@@ -149,5 +216,14 @@ export const useChatStore = create<ChatStore>((set) => ({
         };
       });
     },
+    addCurrentAttachment: (attachment) =>
+      set((state) => ({
+        currentAttachments: [...state.currentAttachments, attachment],
+      })),
+    removeCurrentAttachment: (id) =>
+      set((state) => ({
+        currentAttachments: state.currentAttachments.filter((a) => a.id !== id),
+      })),
+    clearCurrentAttachments: () => set({ currentAttachments: [] }),
   },
 }));

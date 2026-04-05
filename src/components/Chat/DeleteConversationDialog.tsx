@@ -1,9 +1,5 @@
 import { Box, Typography } from "@mui/material";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 
 interface DeleteConversationDialogProps {
@@ -20,55 +16,52 @@ export function DeleteConversationDialog({
   title,
 }: DeleteConversationDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <Box sx={{ p: 4, minWidth: { xs: "90vw", sm: 400 }, maxWidth: 500 }}>
-          <DialogTitle>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#fff", mb: 2 }}>
-              Delete chat?
-            </Typography>
-          </DialogTitle>
-          
-          <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.6)", mb: 4, lineHeight: 1.6 }}>
-            This will delete <Box component="span" sx={{ fontWeight: 600, color: "rgba(255, 255, 255, 0.9)" }}>{title}</Box>. This action cannot be undone.
-          </Typography>
-
-          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5 }}>
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              sx={{
-                bgcolor: "transparent",
-                borderColor: "rgba(255, 255, 255, 0.1)",
-                color: "rgba(255, 255, 255, 0.8)",
-                "&:hover": {
-                  bgcolor: "rgba(255, 255, 255, 0.05)",
-                  borderColor: "rgba(255, 255, 255, 0.2)",
-                  color: "#fff",
-                },
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                onConfirm();
-                onOpenChange(false);
-              }}
-              sx={{
-                bgcolor: "#ef4444",
-                color: "#fff",
-                "&:hover": {
-                  bgcolor: "#dc2626",
-                },
-              }}
-            >
-              Delete
-            </Button>
-          </Box>
+    <Modal 
+      open={open} 
+      onOpenChange={onOpenChange} 
+      title="Delete chat?"
+      maxWidth={400}
+      contentSx={{ p: 3 }}
+      footer={
+        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1.5 }}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            sx={{
+              bgcolor: "transparent",
+              borderColor: "divider",
+              color: "text.secondary",
+              "&:hover": {
+                bgcolor: "action.hover",
+                borderColor: "border.main",
+                color: "text.primary",
+              },
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
+            sx={{
+              bgcolor: "error.main",
+              color: "error.contrastText",
+              "&:hover": {
+                bgcolor: "error.dark",
+              },
+            }}
+          >
+            Delete
+          </Button>
         </Box>
-      </DialogContent>
-    </Dialog>
+      }
+    >
+      <Typography variant="body2" sx={{ color: "text.secondary", lineHeight: 1.6 }}>
+        This will delete <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>{title}</Box>. This action cannot be undone.
+      </Typography>
+    </Modal>
   );
 }

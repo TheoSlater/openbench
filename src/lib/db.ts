@@ -5,6 +5,26 @@ export type ConversationRow = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  isArchived: number; // 0 or 1
+};
+
+export type UserRow = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  fullName?: string;
+  status: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SessionRow = {
+  id: string;
+  userId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
 };
 
 export type MessageRow = {
@@ -13,6 +33,7 @@ export type MessageRow = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  attachments?: string; // JSON string
 };
 
 let db: Database | null = null;
@@ -25,6 +46,8 @@ console.log("[db] Environment check:", {
 });
 const fallbackConversations: Record<string, ConversationRow> = {};
 const fallbackMessages: Record<string, MessageRow[]> = {};
+const fallbackUsers: Record<string, UserRow> = {};
+const fallbackSessions: Record<string, SessionRow> = {};
 
 export async function initDB() {
   console.log("[db] initDB called - db:", db, "inMemoryMode:", inMemoryMode);
@@ -37,32 +60,77 @@ export async function initDB() {
     return;
   }
 
-  // Try to load the Tauri database - if it fails, fall back to memory
-  try {
-    console.log("[db] Attempting to load SQLite database...");
-    db = await Database.load("sqlite:chat.db");
-    console.log("[db] SQLite database loaded successfully");
+    // Try to load the Tauri database - if it fails, fall back to memory
+    try {
+      console.log("[db] Attempting to load SQLite database...");
+      db = await Database.load("sqlite:chat.db");
+      console.log("[db] SQLite database loaded successfully");
 
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS conversations (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        createdAt TEXT,
-        updatedAt TEXT
-      )
-    `);
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          createdAt TEXT,
+          updatedAt TEXT,
+          isArchived INTEGER DEFAULT 0
+        )
+      `);
 
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        conversationId TEXT,
-        role TEXT,
-        content TEXT,
-        createdAt TEXT
-      )
-    `);
-    console.log("[db] Database initialized successfully");
-  } catch (error) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          conversationId TEXT,
+          role TEXT,
+          content TEXT,
+          createdAt TEXT,
+          attachments TEXT
+        )
+      `);
+
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          passwordHash TEXT NOT NULL,
+          fullName TEXT,
+          status TEXT DEFAULT 'Active',
+          avatarUrl TEXT,
+          createdAt TEXT,
+          updatedAt TEXT
+        )
+      `);
+
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          token TEXT UNIQUE NOT NULL,
+          expiresAt TEXT NOT NULL,
+          createdAt TEXT,
+          FOREIGN KEY (userId) REFERENCES users (id)
+        )
+      `);
+
+      // Migration: Add attachments column if it doesn't exist
+      try {
+        await db.execute(`ALTER TABLE messages ADD COLUMN attachments TEXT`);
+        console.log("[db] Migration: Added attachments column to messages table");
+      } catch (e) {
+        // Column likely already exists
+        console.log("[db] Migration: attachments column already exists or other error:", e);
+      }
+
+      // Migration: Add isArchived column to conversations if it doesn't exist
+      try {
+        await db.execute(`ALTER TABLE conversations ADD COLUMN isArchived INTEGER DEFAULT 0`);
+        console.log("[db] Migration: Added isArchived column to conversations table");
+      } catch (e) {
+        // Column likely already exists
+        console.log("[db] Migration: isArchived column already exists or other error:", e);
+      }
+
+      console.log("[db] Database initialized successfully");
+    } catch (error) {
     console.warn(
       "[db] SQL plugin unavailable (not in Tauri or plugin not ready), falling back to in-memory storage.",
       error,
@@ -97,13 +165,14 @@ export async function createConversation(id: string, title: string) {
       title,
       createdAt: now,
       updatedAt: now,
+      isArchived: 0,
     };
     fallbackMessages[id] = fallbackMessages[id] ?? [];
     return;
   }
 
   await getDB().execute(
-    `INSERT INTO conversations (id, title, createdAt, updatedAt) VALUES (?, ?, ?, ?)`,
+    `INSERT INTO conversations (id, title, createdAt, updatedAt, isArchived) VALUES (?, ?, ?, ?, 0)`,
     [id, title, now, now],
   );
 }
@@ -126,6 +195,7 @@ export async function addMessage(msg: {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  attachments?: any[];
 }) {
   if (inMemoryMode) {
     const messageList = fallbackMessages[msg.conversationId] ?? [];
@@ -137,6 +207,7 @@ export async function addMessage(msg: {
         role: msg.role,
         content: msg.content,
         createdAt: msg.createdAt,
+        attachments: msg.attachments ? JSON.stringify(msg.attachments) : undefined,
       },
     ];
     const conversation = fallbackConversations[msg.conversationId];
@@ -147,8 +218,15 @@ export async function addMessage(msg: {
   }
 
   await getDB().execute(
-    `INSERT INTO messages (id, conversationId, role, content, createdAt) VALUES (?, ?, ?, ?, ?)`,
-    [msg.id, msg.conversationId, msg.role, msg.content, msg.createdAt],
+    `INSERT INTO messages (id, conversationId, role, content, createdAt, attachments) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      msg.id,
+      msg.conversationId,
+      msg.role,
+      msg.content,
+      msg.createdAt,
+      msg.attachments ? JSON.stringify(msg.attachments) : null,
+    ],
   );
 
   // also update conversation updatedAt
@@ -160,9 +238,29 @@ export async function addMessage(msg: {
 
 export async function getMessages(
   conversationId: string,
+  limit?: number,
+  offset?: number,
 ): Promise<MessageRow[]> {
   if (inMemoryMode) {
-    return [...(fallbackMessages[conversationId] ?? [])];
+    const all = [...(fallbackMessages[conversationId] ?? [])];
+    if (limit !== undefined && offset !== undefined) {
+      // For pagination we usually want the latest messages, 
+      // but the API returns them in ASC order.
+      // If we use OFFSET/LIMIT on ASC, we get the oldest ones first.
+      // To get the latest ones, we should order by createdAt DESC, apply limit/offset, then reverse.
+      all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const paged = all.slice(offset, offset + limit);
+      return paged.reverse();
+    }
+    return all;
+  }
+
+  if (limit !== undefined && offset !== undefined) {
+    const results = await getDB().select<MessageRow[]>(
+      `SELECT * FROM messages WHERE conversationId = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?`,
+      [conversationId, limit, offset],
+    );
+    return results.reverse();
   }
 
   return await getDB().select<MessageRow[]>(
@@ -173,7 +271,7 @@ export async function getMessages(
 
 export async function updateConversation(
   id: string,
-  updates: { title?: string; updatedAt?: string },
+  updates: { title?: string; updatedAt?: string; isArchived?: boolean },
 ) {
   if (inMemoryMode) {
     const conversation = fallbackConversations[id];
@@ -181,12 +279,14 @@ export async function updateConversation(
       if (updates.title !== undefined) conversation.title = updates.title;
       if (updates.updatedAt !== undefined)
         conversation.updatedAt = updates.updatedAt;
+      if (updates.isArchived !== undefined)
+        conversation.isArchived = updates.isArchived ? 1 : 0;
     }
     return;
   }
 
   const setClauses: string[] = [];
-  const values: (string | undefined)[] = [];
+  const values: (string | number | undefined)[] = [];
 
   if (updates.title !== undefined) {
     setClauses.push("title = ?");
@@ -195,6 +295,10 @@ export async function updateConversation(
   if (updates.updatedAt !== undefined) {
     setClauses.push("updatedAt = ?");
     values.push(updates.updatedAt);
+  }
+  if (updates.isArchived !== undefined) {
+    setClauses.push("isArchived = ?");
+    values.push(updates.isArchived ? 1 : 0);
   }
 
   if (setClauses.length === 0) return;
@@ -246,4 +350,96 @@ export async function deleteMessagesAfter(
       [conversationId, targetMessage[0].createdAt],
     );
   }
+}
+
+// --- Auth Functions ---
+
+export async function createUser(user: Omit<UserRow, "createdAt" | "updatedAt">) {
+  const now = new Date().toISOString();
+  if (inMemoryMode) {
+    fallbackUsers[user.id] = { ...user, createdAt: now, updatedAt: now };
+    return;
+  }
+
+  await getDB().execute(
+    `INSERT INTO users (id, email, passwordHash, fullName, status, avatarUrl, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [user.id, user.email, user.passwordHash, user.fullName, user.status, user.avatarUrl, now, now],
+  );
+}
+
+export async function getUserByEmail(email: string): Promise<UserRow | null> {
+  if (inMemoryMode) {
+    return Object.values(fallbackUsers).find((u) => u.email === email) || null;
+  }
+
+  const results = await getDB().select<UserRow[]>(
+    `SELECT * FROM users WHERE email = ?`,
+    [email],
+  );
+  return results[0] || null;
+}
+
+export async function getUserById(id: string): Promise<UserRow | null> {
+  if (inMemoryMode) {
+    return fallbackUsers[id] || null;
+  }
+
+  const results = await getDB().select<UserRow[]>(
+    `SELECT * FROM users WHERE id = ?`,
+    [id],
+  );
+  return results[0] || null;
+}
+
+export async function createSession(session: Omit<SessionRow, "createdAt">) {
+  const now = new Date().toISOString();
+  if (inMemoryMode) {
+    fallbackSessions[session.id] = { ...session, createdAt: now };
+    return;
+  }
+
+  await getDB().execute(
+    `INSERT INTO sessions (id, userId, token, expiresAt, createdAt) VALUES (?, ?, ?, ?, ?)`,
+    [session.id, session.userId, session.token, session.expiresAt, now],
+  );
+}
+
+export async function getSessionByToken(token: string): Promise<SessionRow | null> {
+  if (inMemoryMode) {
+    return Object.values(fallbackSessions).find((s) => s.token === token) || null;
+  }
+
+  const results = await getDB().select<SessionRow[]>(
+    `SELECT * FROM sessions WHERE token = ?`,
+    [token],
+  );
+  return results[0] || null;
+}
+
+export async function deleteSession(token: string) {
+  if (inMemoryMode) {
+    const session = Object.values(fallbackSessions).find((s) => s.token === token);
+    if (session) {
+      delete fallbackSessions[session.id];
+    }
+    return;
+  }
+
+  await getDB().execute(`DELETE FROM sessions WHERE token = ?`, [token]);
+}
+
+export async function updateUserStatus(userId: string, status: string) {
+  const now = new Date().toISOString();
+  if (inMemoryMode) {
+    if (fallbackUsers[userId]) {
+      fallbackUsers[userId].status = status;
+      fallbackUsers[userId].updatedAt = now;
+    }
+    return;
+  }
+
+  await getDB().execute(
+    `UPDATE users SET status = ?, updatedAt = ? WHERE id = ?`,
+    [status, now, userId],
+  );
 }

@@ -1,5 +1,5 @@
-import type { Role } from "@/types/chat";
-import { Copy, MoreHorizontal, RotateCcw, Check } from "lucide-react";
+import type { Role, Attachment } from "@/types/chat";
+import { Copy, MoreHorizontal, RotateCcw, Check, Paperclip } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +17,7 @@ import {
 export interface MessageProps {
   role: Role;
   content: string;
+  attachments?: Attachment[];
   messageIndex?: number;
   onRegenerate?: (messageIndex: number) => void;
 }
@@ -24,6 +25,7 @@ export interface MessageProps {
 export function Message({
   role,
   content,
+  attachments,
   messageIndex,
   onRegenerate,
 }: MessageProps) {
@@ -50,12 +52,100 @@ export function Message({
 
   if (isUser) {
     return (
-      <Box sx={{ display: "flex", w: "100%", justifyContent: "flex-end", py: 1 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          w: "100%",
+          alignItems: "flex-end",
+          py: 1,
+        }}
+      >
+        {attachments && attachments.length > 0 && (
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 1,
+              mb: 1,
+              maxWidth: { xs: "85%", sm: "70%" },
+            }}
+          >
+            {attachments.map((att) => (
+              <Box
+                key={att.id}
+                sx={{
+                  width: att.type.startsWith("image/") ? 120 : "auto",
+                  height: att.type.startsWith("image/") ? 120 : "auto",
+                  minWidth: att.type.startsWith("image/") ? 0 : 200,
+                  borderRadius: "12px",
+                  overflow: "hidden",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "secondary.main",
+                  display: "flex",
+                  alignItems: "center",
+                  p: att.type.startsWith("image/") ? 0 : 1.5,
+                  gap: 1.5,
+                }}
+              >
+                {att.type.startsWith("image/") ? (
+                  <img
+                    src={`data:${att.type};base64,${att.content}`}
+                    alt={att.name}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (
+                  <>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "8px",
+                        bgcolor: "action.hover",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Paperclip size={20} style={{ color: "text.secondary" }} />
+                    </Box>
+                    <Box sx={{ overflow: "hidden" }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 500,
+                          color: "text.primary",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {att.name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ color: "text.secondary" }}
+                      >
+                        {(att.size / 1024).toFixed(1)} KB
+                      </Typography>
+                    </Box>
+                  </>
+                )}
+              </Box>
+            ))}
+          </Box>
+        )}
         <Box
           sx={{
             maxWidth: { xs: "85%", sm: "70%" },
             borderRadius: "1.5rem",
-            bgcolor: "#2f2f2f",
+            bgcolor: "secondary.main",
             px: 2.5,
             py: 1.5,
             boxShadow: 1,
@@ -67,7 +157,7 @@ export function Message({
               wordBreak: "break-word",
               lineHeight: 1.6,
               fontSize: "15.5px",
-              color: "#ececec",
+              color: "text.primary",
             }}
           >
             {content}
@@ -97,10 +187,10 @@ export function Message({
         {content ? (
           <Box
             sx={{
-              "& p": { lineHeight: 1.75, fontSize: "16px", color: "#ececec", mb: 2 },
-              "& pre": { bgcolor: "#2f2f2f", p: 2, borderRadius: "12px", overflowX: "auto", mb: 2 },
-              "& code": { color: "#ececec", fontFamily: "monospace" },
-              "& ul, & ol": { color: "#ececec", pl: 3, mb: 2 },
+              "& p": { lineHeight: 1.75, fontSize: "16px", color: "text.primary", mb: 2 },
+              "& pre": { bgcolor: "secondary.main", p: 2, borderRadius: "12px", overflowX: "auto", mb: 2 },
+              "& code": { color: "text.primary", fontFamily: "monospace" },
+              "& ul, & ol": { color: "text.primary", pl: 3, mb: 2 },
               "& li": { mb: 1 },
             }}
           >
@@ -126,9 +216,9 @@ export function Message({
             <IconButton
               size="small"
               onClick={handleCopy}
-              sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}
+              sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}
             >
-              {copied ? <Check size={14} style={{ color: "#4caf50" }} /> : <Copy size={14} />}
+              {copied ? <Check size={14} style={{ color: "var(--mui-palette-success-main)" }} /> : <Copy size={14} />}
             </IconButton>
           </Tooltip>
 
@@ -137,7 +227,7 @@ export function Message({
               <IconButton
                 size="small"
                 onClick={() => onRegenerate(messageIndex)}
-                sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}
+                sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}
               >
                 <RotateCcw size={14} />
               </IconButton>
@@ -146,7 +236,7 @@ export function Message({
 
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <IconButton size="small" sx={{ color: "rgba(255, 255, 255, 0.4)", "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" } }}>
+              <IconButton size="small" sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}>
                 <MoreHorizontal size={14} />
               </IconButton>
             </DropdownMenuTrigger>

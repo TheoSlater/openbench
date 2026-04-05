@@ -5,8 +5,10 @@ import { modelSupportsReasoning } from "@/lib/model-utils";
 import { useModelStore } from "@/store/modelStore";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/Layout/Sidebar";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
-import { Box } from "@mui/material";
+import { Box, Snackbar, Alert } from "@mui/material";
 import { useChatStore } from "@/store/chatStore";
+import { useAuthStore } from "@/store/authStore";
+import { AuthModal } from "@/components/Auth/AuthModal";
 import "./App.css";
 import * as db from "@/lib/db";
 /**
@@ -16,6 +18,10 @@ function App() {
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({
+    open: false,
+    message: "",
+  });
   const {
     availableModels,
     selectedModel,
@@ -24,6 +30,7 @@ function App() {
     ollamaError,
     systemPrompts,
     activeSystemPromptId,
+    actions: modelActions,
   } = useModelStore();
 
   useModelPicker();
@@ -34,6 +41,7 @@ function App() {
   useEffect(() => {
     async function init() {
       await db.initDB();
+      await useAuthStore.getState().actions.restoreSession();
       await useChatStore.getState().actions.loadConversations();
     }
     init();
@@ -87,7 +95,10 @@ function App() {
     deleteConversation,
     renameConversation,
     deleteMessagesAfter,
+    clearCurrentAttachments,
   } = useChatStore((state) => state.actions);
+
+  const currentAttachments = useChatStore((state) => state.currentAttachments);
 
   /**
    * Ensure a conversation exists before sending a message.
@@ -144,7 +155,7 @@ function App() {
    */
   const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed && currentAttachments.length === 0) return;
     if (trimmed.startsWith("/dev")) {
       await handleDevCommand(trimmed);
       setInput("");
@@ -153,10 +164,10 @@ function App() {
     if (!selectedModel && !devMode) {
       return;
     }
-    const conversationId = await ensureConversation();
-    await addMessage({ conversationId, role: "user", content: trimmed });
-    sendMessage(trimmed);
+    await ensureConversation();
+    sendMessage(trimmed, currentAttachments);
     setInput("");
+    clearCurrentAttachments();
   };
 
   /**
@@ -196,6 +207,15 @@ function App() {
     await renameConversation(id, newTitle);
   };
 
+  const handleSetDefaultModel = (model: string) => {
+    modelActions.setDefaultModel(model);
+    setToast({ open: true, message: `${model} set as default` });
+  };
+
+  const handleCloseToast = () => {
+    setToast({ ...toast, open: false });
+  };
+
   return (
     <SidebarProvider>
       <Sidebar
@@ -216,16 +236,17 @@ function App() {
           onModelChange={setSelectedModel}
           isLoading={isLoading}
           ollamaError={ollamaError}
+          onSetDefault={handleSetDefaultModel}
         />
 
-        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", bgcolor: "background.default" }}>
           <Box
             sx={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              justifyContent: !hasMessages ? "center" : "flex-start",
+              justifyContent: "flex-start",
             }}
           >
             {hasMessages ? (
@@ -235,12 +256,7 @@ function App() {
                 onRegenerate={handleRegenerate}
               />
             ) : (
-              <EmptyState
-                selectedModel={devMode ? "Dev Mode" : selectedModel}
-                availableModels={availableModels}
-                onModelChange={setSelectedModel}
-                isLoading={isLoading}
-              >
+              <EmptyState selectedModel={devMode ? "Dev Mode" : selectedModel}>
                 <ChatInput
                   value={input}
                   onChange={setInput}
@@ -271,6 +287,28 @@ function App() {
       </SidebarInset>
 
       <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
+      <AuthModal />
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleCloseToast}
+          severity="success"
+          sx={{
+            width: "100%",
+            bgcolor: "background.paper",
+            color: "text.primary",
+            border: (theme) => `1px solid ${theme.palette.border?.main}`,
+            "& .MuiAlert-icon": { color: "success.main" },
+          }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </SidebarProvider>
   );
 }

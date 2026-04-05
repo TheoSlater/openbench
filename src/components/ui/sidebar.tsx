@@ -59,7 +59,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
           width: "100%",
           height: "100vh",
           overflow: "hidden",
-          bgcolor: "#0d0d0d",
+          bgcolor: "background.default",
         }}
       >
         {children}
@@ -85,8 +85,9 @@ export function Sidebar({
         PaperProps={{
           sx: {
             width: 260,
-            bgcolor: "#0d0d0d",
-            borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+            bgcolor: "background.sidebar",
+            borderRight: "1px solid",
+            borderColor: "divider",
             backgroundImage: "none",
           },
         }}
@@ -106,8 +107,9 @@ export function Sidebar({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        bgcolor: "#0d0d0d",
-        borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+        bgcolor: "background.sidebar",
+        borderRight: "1px solid",
+        borderColor: "divider",
         transition: "width 0.2s ease-in-out",
         overflowX: "hidden", // Fixes horizontal scroll
       }}
@@ -174,7 +176,8 @@ export function SidebarFooter({
         display: "flex",
         alignItems: "center",
         justifyContent: isCollapsed ? "center" : "flex-start",
-        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+        borderTop: "1px solid",
+        borderColor: "divider",
         ...sx,
       }}
     >
@@ -201,7 +204,7 @@ export function SidebarGroupLabel({ children }: { children: React.ReactNode }) {
         sx={{
           fontSize: "11px",
           fontWeight: 600,
-          color: "rgba(255, 255, 255, 0.3)",
+          color: "text.secondary",
           textTransform: "uppercase",
           letterSpacing: "0.05em",
         }}
@@ -267,14 +270,14 @@ export function SidebarMenuButton({
         borderRadius: "8px",
         cursor: "pointer",
         transition: "all 0.2s",
-        bgcolor: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
-        color: isActive ? "#fff" : "rgba(255, 255, 255, 0.6)",
+        bgcolor: isActive ? "action.hover" : "transparent",
+        color: isActive ? "text.primary" : "text.secondary",
         fontSize: "13px",
         fontWeight: 500,
         overflow: "hidden",
         "&:hover": {
-          bgcolor: "rgba(255, 255, 255, 0.05)",
-          color: "#fff",
+          bgcolor: "action.hover",
+          color: "text.primary",
         },
       }}
     >
@@ -299,8 +302,8 @@ export function SidebarTrigger({ sx }: { sx?: CSSObject }) {
       onClick={handleClick}
       size="small"
       sx={{
-        color: "rgba(255, 255, 255, 0.4)",
-        "&:hover": { color: "#fff", bgcolor: "rgba(255, 255, 255, 0.05)" },
+        color: "text.secondary",
+        "&:hover": { color: "text.primary", bgcolor: "action.hover" },
         ...sx,
       }}
     >

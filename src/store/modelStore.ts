@@ -2,8 +2,14 @@ import { create } from "zustand";
 
 export type ModelProvider = "ollama" | "anthropic" | "openai";
 
+export type OllamaModel = {
+  name: string;
+  families: string[];
+  supports_vision: boolean;
+};
+
 export type AvailableModels = {
-  ollama: string[];
+  ollama: OllamaModel[];
   anthropic: string[];
   openai: string[];
 };
@@ -17,19 +23,32 @@ export type SystemPrompt = {
   instantAnswers?: boolean;
 };
 
+export type PullProgress = {
+  status: string;
+  digest?: string;
+  total?: number;
+  completed?: number;
+};
+
 type ModelStore = {
   selectedModel: string;
   selectedProvider: ModelProvider;
   availableModels: AvailableModels;
   isLoading: boolean;
   ollamaError: string | null;
+  defaultModel: string;
+  pullingModel: string | null;
+  pullProgress: PullProgress | null;
   systemPrompts: SystemPrompt[];
   activeSystemPromptId: string | null;
   setSelectedModel: (provider: ModelProvider, model: string) => void;
   setAvailableModels: (models: Partial<AvailableModels>) => void;
   setIsLoading: (isLoading: boolean) => void;
   setOllamaError: (error: string | null) => void;
+  setPullingModel: (model: string | null) => void;
+  setPullProgress: (progress: PullProgress | null) => void;
   actions: {
+    setDefaultModel: (model: string) => void;
     /**
      * Set the active system prompt by id.
      * @param id - The prompt id to activate, or null to clear.
@@ -76,9 +95,12 @@ export const useModelStore = create<ModelStore>((set) => ({
   availableModels: defaultAvailableModels,
   isLoading: false,
   ollamaError: null,
+  pullingModel: null,
+  pullProgress: null,
   systemPrompts: [defaultSystemPrompt],
   activeSystemPromptId: defaultSystemPrompt.id,
-  setSelectedModel: (provider, model) =>
+  defaultModel: localStorage.getItem("default_model") || "",
+  setSelectedModel: (provider: ModelProvider, model: string) =>
     set({ selectedProvider: provider, selectedModel: model }),
   setAvailableModels: (models) =>
     set((state) => ({
@@ -86,7 +108,13 @@ export const useModelStore = create<ModelStore>((set) => ({
     })),
   setIsLoading: (isLoading) => set({ isLoading }),
   setOllamaError: (error) => set({ ollamaError: error }),
+  setPullingModel: (model) => set({ pullingModel: model }),
+  setPullProgress: (progress) => set({ pullProgress: progress }),
   actions: {
+    setDefaultModel: (model: string) => {
+      localStorage.setItem("default_model", model);
+      set({ defaultModel: model });
+    },
     setSystemPrompt: (id) => set({ activeSystemPromptId: id }),
     addSystemPrompt: (prompt) =>
       set((state) => ({

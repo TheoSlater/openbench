@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Menu, MenuItem } from "@mui/material";
+import { Menu, MenuItem, Divider, ListSubheader, SxProps, Theme } from "@mui/material";
 
 function DropdownMenu({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -29,7 +29,7 @@ const DropdownMenuContext = React.createContext<{
   isOpen: false,
 });
 
-function DropdownMenuTrigger({ children }: { children: React.ReactElement<any> }) {
+function DropdownMenuTrigger({ children }: { children: React.ReactElement<any>; asChild?: boolean }) {
   const { setAnchorEl } = React.useContext(DropdownMenuContext);
   return React.cloneElement(children, {
     onClick: (e: React.MouseEvent<HTMLElement>) => {
@@ -39,10 +39,11 @@ function DropdownMenuTrigger({ children }: { children: React.ReactElement<any> }
   });
 }
 
-function DropdownMenuContent({ children, align = "start" }: { children: React.ReactNode; align?: "start" | "end" }) {
+function DropdownMenuContent({ children, align = "start", className }: { children: React.ReactNode; align?: "start" | "end"; className?: string }) {
   const { anchorEl, handleClose, isOpen } = React.useContext(DropdownMenuContext);
   return (
     <Menu
+      className={className}
       anchorEl={anchorEl}
       open={isOpen}
       onClose={handleClose}
@@ -56,12 +57,13 @@ function DropdownMenuContent({ children, align = "start" }: { children: React.Re
       }}
       PaperProps={{
         sx: {
-          bgcolor: "#1a1a1a",
-          border: "1px solid rgba(255, 255, 255, 0.1)",
-          color: "rgba(255, 255, 255, 0.9)",
+          bgcolor: "background.paper",
+          border: "1px solid",
+          borderColor: "divider",
+          color: "text.primary",
           mt: 0.5,
           minWidth: 160,
-          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+          boxShadow: 3,
         }
       }}
     >
@@ -70,11 +72,12 @@ function DropdownMenuContent({ children, align = "start" }: { children: React.Re
   );
 }
 
-function DropdownMenuItem({ children, onClick, variant, className }: { children: React.ReactNode; onClick?: () => void; variant?: "default" | "destructive"; className?: string }) {
+function DropdownMenuItem({ children, onClick, variant, className, disabled, sx }: { children: React.ReactNode; onClick?: () => void; variant?: "default" | "destructive"; className?: string; disabled?: boolean; sx?: SxProps<Theme> }) {
   const { handleClose } = React.useContext(DropdownMenuContext);
   return (
     <MenuItem
       className={className}
+      disabled={disabled}
       onClick={() => {
         onClick?.();
         handleClose();
@@ -82,10 +85,15 @@ function DropdownMenuItem({ children, onClick, variant, className }: { children:
       sx={{
         fontSize: "13px",
         gap: 1.5,
-        color: variant === "destructive" ? "#f87171" : "inherit",
+        mx: 1,
+        my: 0.5,
+        borderRadius: "8px",
+        color: variant === "destructive" ? "error.main" : "inherit",
         "&:hover": {
-          bgcolor: variant === "destructive" ? "rgba(248, 113, 113, 0.1)" : "rgba(255, 255, 255, 0.05)",
-        }
+          bgcolor: variant === "destructive" ? "error.dark" : "action.hover",
+          color: variant === "destructive" ? "error.contrastText" : "inherit",
+        },
+        ...sx as any,
       }}
     >
       {children}
@@ -93,4 +101,33 @@ function DropdownMenuItem({ children, onClick, variant, className }: { children:
   );
 }
 
-export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
+function DropdownMenuLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <ListSubheader
+      sx={{
+        px: 2,
+        py: 1,
+        fontSize: "12px",
+        fontWeight: 600,
+        lineHeight: "1.2",
+        color: "text.secondary",
+        bgcolor: "transparent",
+      }}
+    >
+      {children}
+    </ListSubheader>
+  );
+}
+
+function DropdownMenuSeparator() {
+  return <Divider sx={{ my: 0.5, borderColor: "divider" }} />;
+}
+
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+};

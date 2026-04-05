@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ChatMessage, StreamPayload } from "@/types/chat";
+import type { ChatMessage, StreamPayload, Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 
 const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant.
@@ -208,7 +208,7 @@ Text: ${userMessage.content}`,
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, attachments?: Attachment[]) => {
       if (!content.trim() || isStreaming || (!selectedModel && !mockMode)) {
         return;
       }
@@ -217,6 +217,14 @@ Text: ${userMessage.content}`,
       const conversationId =
         useChatStore.getState().activeConversationId ?? activeConversationId;
       if (!conversationId) return;
+
+      void addMessage({
+        conversationId,
+        role: "user",
+        content: content.trim(),
+        attachments,
+      });
+
       setIsStreaming(true);
       if (supportsReasoning) {
         const start = Date.now();
@@ -259,6 +267,7 @@ Text: ${userMessage.content}`,
         const history = useChatStore.getState().messages.map((m) => ({
           role: m.role,
           content: m.content,
+          attachments: m.attachments || [],
         }));
 
         const finalSystemPrompt = systemPrompt.trim()
@@ -267,13 +276,29 @@ Text: ${userMessage.content}`,
 
         await invoke("chat_stream", {
           model: selectedModel,
-          messages: [...history, { role: "user", content: content.trim() }],
+          messages: [
+            ...history,
+            { role: "user", content: content.trim(), attachments: attachments || [] },
+          ],
           systemPrompt: finalSystemPrompt,
         });
       } catch (error) {
         console.error("Chat error:", error);
         setIsStreaming(false);
         setReasoningStartAt(null);
+        
+        // Add an error message to the chat
+        const errorContent = typeof error === 'string' && error.includes('not found') 
+          ? `Model "${selectedModel}" not found. Please pull the model or select a different one.`
+          : `Failed to connect to Ollama. Make sure it is running. Error: ${error}`;
+          
+        void addMessage({
+          id: crypto.randomUUID(),
+          conversationId,
+          role: "assistant",
+          content: errorContent,
+          createdAt: new Date().toISOString(),
+        });
       }
     },
     [

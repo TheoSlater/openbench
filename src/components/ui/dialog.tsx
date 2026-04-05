@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Dialog as MuiDialog, Box } from "@mui/material";
+import { Dialog as MuiDialog, Box, SxProps, Theme } from "@mui/material";
 
 export function Dialog({
   children,
@@ -31,18 +31,25 @@ export function Dialog({
 
 export function DialogContent({
   children,
+  className,
+  sx,
 }: {
   children: React.ReactNode;
   showCloseButton?: boolean;
+  className?: string;
+  sx?: SxProps<Theme>;
 }) {
   return (
     <Box
+      className={className}
       sx={{
-        bgcolor: "#0d0d0d",
-        border: "1px solid rgba(255, 255, 255, 0.05)",
-        borderRadius: "16px",
+        bgcolor: "background.sidebar",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: "12px",
         overflow: "hidden",
         position: "relative",
+        ...sx as any,
       }}
     >
       {children}
@@ -50,8 +57,64 @@ export function DialogContent({
   );
 }
 
-export function DialogTitle({ children }: { children: React.ReactNode }) {
-  return <Box>{children}</Box>;
+export function DialogTitle({ 
+  children,
+  className,
+  sx,
+}: { 
+  children: React.ReactNode;
+  className?: string;
+  sx?: SxProps<Theme>;
+}) {
+  return <Box className={className} sx={sx}>{children}</Box>;
+}
+
+export function DialogHeader({ 
+  children,
+  className,
+  sx,
+}: { 
+  children: React.ReactNode;
+  className?: string;
+  sx?: SxProps<Theme>;
+}) {
+  return (
+    <Box 
+      className={className} 
+      sx={{ 
+        p: 2, 
+        pb: 1,
+        ...sx as any
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+export function DialogDescription({ 
+  children,
+  className,
+  sx,
+}: { 
+  children: React.ReactNode;
+  className?: string;
+  sx?: SxProps<Theme>;
+}) {
+  return (
+    <Box 
+      className={className} 
+      sx={{ 
+        p: 2, 
+        pt: 0, 
+        color: "text.secondary", 
+        fontSize: "14px",
+        ...sx as any
+      }}
+    >
+      {children}
+    </Box>
+  );
 }
 
 export function DialogClose({

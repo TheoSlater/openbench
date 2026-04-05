@@ -70,11 +70,11 @@ export const PersonalizationPanel = forwardRef<PersonalizationPanelRef>(
             <Typography
               component="label"
               htmlFor="prompt-content"
-              sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#fff" }}
+              sx={{ fontSize: "0.875rem", fontWeight: 700, color: "text.primary" }}
             >
               Custom instructions
             </Typography>
-            <Typography variant="caption" sx={{ color: "rgba(255, 255, 255, 0.4)", lineHeight: 1.6 }}>
+            <Typography variant="caption" sx={{ color: "text.secondary", lineHeight: 1.6 }}>
               What would you like the AI to know to provide better responses?
             </Typography>
           </Box>
@@ -89,27 +89,27 @@ export const PersonalizationPanel = forwardRef<PersonalizationPanelRef>(
             sx={{
               "& .MuiOutlinedInput-root": {
                 borderRadius: "16px",
-                bgcolor: "rgba(255, 255, 255, 0.02)",
+                bgcolor: "action.hover",
                 fontSize: "14px",
-                color: "#fff",
+                color: "text.primary",
                 lineHeight: 1.6,
                 transition: "all 0.2s",
                 "& fieldset": {
-                  borderColor: "rgba(255, 255, 255, 0.1)",
+                  borderColor: "divider",
                   borderWidth: "1px",
                 },
                 "&:hover fieldset": {
-                  borderColor: "rgba(255, 255, 255, 0.2)",
+                  borderColor: "border.main",
                 },
                 "&.Mui-focused": {
                   bgcolor: "background.default",
                   "& fieldset": {
-                    borderColor: "rgba(255, 255, 255, 0.2)",
+                    borderColor: "border.main",
                   },
                 }
               },
               "& .MuiInputBase-input::placeholder": {
-                color: "rgba(255, 255, 255, 0.2)",
+                color: "text.secondary",
                 opacity: 1,
               }
             }}
