@@ -1,7 +1,22 @@
 import * as React from "react";
-import { Menu, MenuItem, Divider, ListSubheader, SxProps, Theme } from "@mui/material";
+import {
+  Menu,
+  MenuItem,
+  Divider,
+  ListSubheader,
+  SxProps,
+  Theme,
+} from "@mui/material";
 
-function DropdownMenu({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
+function DropdownMenu({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const isOpen = open !== undefined ? open : Boolean(anchorEl);
 
@@ -11,7 +26,9 @@ function DropdownMenu({ children, open, onOpenChange }: { children: React.ReactN
   };
 
   return (
-    <DropdownMenuContext.Provider value={{ anchorEl, setAnchorEl, handleClose, isOpen }}>
+    <DropdownMenuContext.Provider
+      value={{ anchorEl, setAnchorEl, handleClose, isOpen }}
+    >
       {children}
     </DropdownMenuContext.Provider>
   );
@@ -29,7 +46,12 @@ const DropdownMenuContext = React.createContext<{
   isOpen: false,
 });
 
-function DropdownMenuTrigger({ children }: { children: React.ReactElement<any>; asChild?: boolean }) {
+function DropdownMenuTrigger({
+  children,
+}: {
+  children: React.ReactElement<any>;
+  asChild?: boolean;
+}) {
   const { setAnchorEl } = React.useContext(DropdownMenuContext);
   return React.cloneElement(children, {
     onClick: (e: React.MouseEvent<HTMLElement>) => {
@@ -39,8 +61,17 @@ function DropdownMenuTrigger({ children }: { children: React.ReactElement<any>; 
   });
 }
 
-function DropdownMenuContent({ children, align = "start", className }: { children: React.ReactNode; align?: "start" | "end"; className?: string }) {
-  const { anchorEl, handleClose, isOpen } = React.useContext(DropdownMenuContext);
+function DropdownMenuContent({
+  children,
+  align = "start",
+  className,
+}: {
+  children: React.ReactNode;
+  align?: "start" | "end";
+  className?: string;
+}) {
+  const { anchorEl, handleClose, isOpen } =
+    React.useContext(DropdownMenuContext);
   return (
     <Menu
       className={className}
@@ -64,7 +95,7 @@ function DropdownMenuContent({ children, align = "start", className }: { childre
           mt: 0.5,
           minWidth: 160,
           boxShadow: 3,
-        }
+        },
       }}
     >
       {children}
@@ -72,7 +103,21 @@ function DropdownMenuContent({ children, align = "start", className }: { childre
   );
 }
 
-function DropdownMenuItem({ children, onClick, variant, className, disabled, sx }: { children: React.ReactNode; onClick?: () => void; variant?: "default" | "destructive"; className?: string; disabled?: boolean; sx?: SxProps<Theme> }) {
+function DropdownMenuItem({
+  children,
+  onClick,
+  variant,
+  className,
+  disabled,
+  sx,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: "default" | "destructive";
+  className?: string;
+  disabled?: boolean;
+  sx?: SxProps<Theme>;
+}) {
   const { handleClose } = React.useContext(DropdownMenuContext);
   return (
     <MenuItem
@@ -93,7 +138,7 @@ function DropdownMenuItem({ children, onClick, variant, className, disabled, sx 
           bgcolor: variant === "destructive" ? "error.dark" : "action.hover",
           color: variant === "destructive" ? "error.contrastText" : "inherit",
         },
-        ...sx as any,
+        ...(sx as any),
       }}
     >
       {children}
