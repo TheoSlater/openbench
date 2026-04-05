@@ -23,7 +23,7 @@ Interaction Guidelines:
 `;
 
 export function useChatStream(
-  selectedModel: string,
+  selectedModels: string[],
   supportsReasoning: boolean,
   mockMode = false,
   systemPrompt = "",
@@ -46,15 +46,19 @@ export function useChatStream(
   const [lastReasoningDurationMs, setLastReasoningDurationMs] = useState<
     number | null
   >(null);
-  const [streamingMessage, setStreamingMessage] = useState<{
+  
+  // Track streaming messages per request_id
+  const [streamingMessages, setStreamingMessages] = useState<Record<string, {
     id: string;
     role: "assistant";
     content: string;
     conversationId: string;
     createdAt: string;
-  } | null>(null);
-  const streamingMessageRef = useRef<string>("");
-  const currentMessageIdRef = useRef<string | null>(null);
+    model: string;
+  }>>({});
+  
+  const streamingMessagesRef = useRef<Record<string, string>>({});
+  const messageIdsRef = useRef<Record<string, string>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const mockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelStreamRef = useRef(false);
@@ -74,7 +78,7 @@ export function useChatStream(
     setReasoningStartAt(null);
     setReasoningElapsedMs(0);
     setLastReasoningDurationMs(null);
-  }, [selectedModel]);
+  }, [selectedModels]);
 
   useEffect(() => {
     cancelStreamRef.current = true;
@@ -82,9 +86,9 @@ export function useChatStream(
       clearTimeout(mockTimerRef.current);
       mockTimerRef.current = null;
     }
-    setStreamingMessage(null);
-    streamingMessageRef.current = "";
-    currentMessageIdRef.current = null;
+    setStreamingMessages({});
+    streamingMessagesRef.current = {};
+    messageIdsRef.current = {};
     setIsStreaming(false);
     setReasoningStartAt(null);
     setReasoningElapsedMs(0);
@@ -93,9 +97,10 @@ export function useChatStream(
 
   // Scroll to bottom when messages change
   const displayMessages = useMemo<ChatMessage[]>(() => {
-    if (!streamingMessage) return messages;
-    return [...messages, streamingMessage];
-  }, [messages, streamingMessage]);
+    const streamList = Object.values(streamingMessages);
+    if (streamList.length === 0) return messages;
+    return [...messages, ...streamList];
+  }, [messages, streamingMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -113,21 +118,24 @@ export function useChatStream(
         }
         if (!activeConversationId) return;
 
-        if (!event.payload.done) {
-          const chunk = event.payload.content;
-          streamingMessageRef.current += chunk;
+        const { request_id, done, content, metadata } = event.payload;
 
-          setStreamingMessage((prev) => {
-            if (!prev) {
+        if (!done) {
+          streamingMessagesRef.current[request_id] = (streamingMessagesRef.current[request_id] || "") + content;
+
+          setStreamingMessages((prev) => {
+            if (!prev[request_id]) {
               const messageId = crypto.randomUUID();
-              currentMessageIdRef.current = messageId;
-              // Find the most recent log for this model that doesn't have a firstTokenTime yet
+              messageIdsRef.current[request_id] = messageId;
+              
               const lastLog = useInspectorStore
                 .getState()
                 .logs.find(
-                  (l) => l.model === selectedModel && !l.timing.firstTokenTime,
+                  (l) => l.id === request_id,
                 );
-              if (lastLog) {
+              const model = lastLog?.model || "unknown";
+
+              if (lastLog && !lastLog.timing.firstTokenTime) {
                 updateLog(lastLog.id, {
                   timing: {
                     ...lastLog.timing,
@@ -136,31 +144,43 @@ export function useChatStream(
                 });
               }
               return {
-                id: messageId,
-                role: "assistant",
-                content: chunk,
-                conversationId: activeConversationId,
-                createdAt: new Date().toISOString(),
+                ...prev,
+                [request_id]: {
+                  id: messageId,
+                  role: "assistant",
+                  content: content,
+                  conversationId: activeConversationId,
+                  createdAt: new Date().toISOString(),
+                  model,
+                },
               };
             }
-            return { ...prev, content: streamingMessageRef.current };
+            return { 
+              ...prev, 
+              [request_id]: { 
+                ...prev[request_id], 
+                content: streamingMessagesRef.current[request_id] 
+              } 
+            };
           });
         }
 
-        if (event.payload.done) {
-          const finalContent = streamingMessageRef.current;
-          const messageId = currentMessageIdRef.current;
+        if (done) {
+          const finalContent = streamingMessagesRef.current[request_id] || "";
+          const messageId = messageIdsRef.current[request_id];
+          const model = streamingMessages[request_id]?.model;
 
-          setIsStreaming(false);
-          completeReasoning();
+          // Check if all streams are done
+          const remainingStreams = Object.keys(streamingMessagesRef.current).filter(id => id !== request_id);
+          if (remainingStreams.length === 0) {
+            setIsStreaming(false);
+            completeReasoning();
+          }
 
-          // Find the most recent log for this model that doesn't have a response yet
-          const logs = useInspectorStore.getState().logs;
-          const lastLog = logs.find(
-            (l) => l.model === selectedModel && !l.response,
+          const lastLog = useInspectorStore.getState().logs.find(
+            (l) => l.id === request_id,
           );
           if (lastLog) {
-            const m = event.payload.metadata;
             updateLog(lastLog.id, {
               response: {
                 status: 200,
@@ -168,13 +188,13 @@ export function useChatStream(
                 body: {
                   message: { role: "assistant", content: finalContent },
                   done: true,
-                  ...m,
+                  ...metadata,
                 },
               },
-              tokens: m
+              tokens: metadata
                 ? {
-                    input: m.prompt_eval_count || 0,
-                    output: m.eval_count || 0,
+                    input: metadata.prompt_eval_count || 0,
+                    output: metadata.eval_count || 0,
                   }
                 : undefined,
               timing: {
@@ -191,8 +211,8 @@ export function useChatStream(
               role: "assistant",
               content: finalContent,
               createdAt: new Date().toISOString(),
+              model,
             }).then(() => {
-              // Auto-rename if first message
               const currentMessages = useChatStore.getState().messages;
               const currentConversation = useChatStore
                 .getState()
@@ -200,14 +220,15 @@ export function useChatStream(
 
               if (
                 currentMessages.length <= 2 &&
-                currentConversation?.title === "New Chat"
+                currentConversation?.title === "New Chat" &&
+                model
               ) {
                 const userMessage = currentMessages.find(
                   (m) => m.role === "user",
                 );
                 if (userMessage) {
                   invoke<string>("chat", {
-                    model: selectedModel,
+                    model: model,
                     messages: [
                       {
                         role: "user",
@@ -218,7 +239,6 @@ Text: ${userMessage.content}`,
                   })
                     .then((title) => {
                       if (title && activeConversationId) {
-                        // Clean up title (remove quotes, etc)
                         const cleanTitle = title
                           .trim()
                           .replace(/^["']|["']$/g, "")
@@ -235,9 +255,13 @@ Text: ${userMessage.content}`,
             });
           }
 
-          setStreamingMessage(null);
-          streamingMessageRef.current = "";
-          currentMessageIdRef.current = null;
+          setStreamingMessages(prev => {
+            const next = { ...prev };
+            delete next[request_id];
+            return next;
+          });
+          delete streamingMessagesRef.current[request_id];
+          delete messageIdsRef.current[request_id];
         }
       },
     );
@@ -250,7 +274,7 @@ Text: ${userMessage.content}`,
     completeReasoning,
     activeConversationId,
     addMessage,
-    selectedModel,
+    streamingMessages,
     renameConversation,
     updateLog,
   ]);
@@ -276,7 +300,8 @@ Text: ${userMessage.content}`,
 
   const sendMessage = useCallback(
     async (content: string, attachments?: Attachment[]) => {
-      if (!content.trim() || isStreaming || (!selectedModel && !mockMode)) {
+      const models = selectedModels.filter(m => !!m);
+      if (!content.trim() || isStreaming || (models.length === 0 && !mockMode)) {
         return;
       }
 
@@ -293,8 +318,10 @@ Text: ${userMessage.content}`,
       });
 
       setIsStreaming(true);
-      streamingMessageRef.current = "";
-      currentMessageIdRef.current = null;
+      setStreamingMessages({});
+      streamingMessagesRef.current = {};
+      messageIdsRef.current = {};
+      
       if (supportsReasoning) {
         const start = Date.now();
         setReasoningStartAt(start);
@@ -311,13 +338,6 @@ Text: ${userMessage.content}`,
         mockTimerRef.current = setTimeout(() => {
           const createdAt = new Date().toISOString();
           const messageId = crypto.randomUUID();
-          setStreamingMessage({
-            id: messageId,
-            role: "assistant",
-            content: `Mock response: ${content.trim()}`,
-            conversationId,
-            createdAt,
-          });
           setIsStreaming(false);
           completeReasoning();
           void addMessage({
@@ -326,25 +346,27 @@ Text: ${userMessage.content}`,
             role: "assistant",
             content: `Mock response: ${content.trim()}`,
             createdAt,
+            model: "mock-model",
           });
-          setStreamingMessage(null);
         }, delayMs);
         return;
       }
 
-      try {
-        const history = useChatStore.getState().messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-          attachments: m.attachments || [],
-        }));
+      const history = useChatStore.getState().messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments || [],
+      }));
 
-        const finalSystemPrompt = systemPrompt.trim()
-          ? `${MAIN_SYSTEM_PROMPT}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
-          : MAIN_SYSTEM_PROMPT;
+      const finalSystemPrompt = systemPrompt.trim()
+        ? `${MAIN_SYSTEM_PROMPT}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
+        : MAIN_SYSTEM_PROMPT;
 
+      for (const model of models) {
+        const request_id = crypto.randomUUID();
         const requestBody = {
-          model: selectedModel,
+          request_id,
+          model,
           messages: [
             ...history,
             {
@@ -356,10 +378,9 @@ Text: ${userMessage.content}`,
           systemPrompt: finalSystemPrompt,
         };
 
-        const logId = crypto.randomUUID();
         addLog({
-          id: logId,
-          model: selectedModel,
+          id: request_id,
+          model: model,
           request: {
             url: "tauri://chat_stream",
             method: "POST",
@@ -371,29 +392,27 @@ Text: ${userMessage.content}`,
           },
         });
 
-        await invoke("chat_stream", requestBody);
-      } catch (error) {
-        console.error("Chat error:", error);
-        setIsStreaming(false);
-        setReasoningStartAt(null);
+        invoke("chat_stream", requestBody).catch(error => {
+          console.error(`Chat error for model ${model}:`, error);
+          
+          const errorContent =
+            typeof error === "string" && error.includes("not found")
+              ? `Model "${model}" not found. Please pull the model or select a different one.`
+              : `Failed to connect to Ollama for model ${model}. Error: ${error}`;
 
-        // Add an error message to the chat
-        const errorContent =
-          typeof error === "string" && error.includes("not found")
-            ? `Model "${selectedModel}" not found. Please pull the model or select a different one.`
-            : `Failed to connect to Ollama. Make sure it is running. Error: ${error}`;
-
-        void addMessage({
-          id: crypto.randomUUID(),
-          conversationId,
-          role: "assistant",
-          content: errorContent,
-          createdAt: new Date().toISOString(),
+          void addMessage({
+            id: crypto.randomUUID(),
+            conversationId,
+            role: "assistant",
+            content: errorContent,
+            createdAt: new Date().toISOString(),
+            model,
+          });
         });
       }
     },
     [
-      selectedModel,
+      selectedModels,
       isStreaming,
       supportsReasoning,
       mockMode,
@@ -401,6 +420,7 @@ Text: ${userMessage.content}`,
       activeConversationId,
       completeReasoning,
       addMessage,
+      addLog,
     ],
   );
 
@@ -419,26 +439,28 @@ Text: ${userMessage.content}`,
       mockTimerRef.current = null;
     }
 
-    setStreamingMessage((current) => {
-      const finalContent = streamingMessageRef.current;
-      if (current && finalContent.trim()) {
+    const currentStreams = { ...streamingMessages };
+    Object.entries(currentStreams).forEach(([request_id, msg]) => {
+      const finalContent = streamingMessagesRef.current[request_id];
+      if (finalContent && finalContent.trim()) {
         void addMessage({
-          id: current.id,
-          conversationId: current.conversationId,
-          role: current.role,
+          id: msg.id,
+          conversationId: msg.conversationId,
+          role: msg.role,
           content: finalContent,
-          createdAt: current.createdAt,
+          createdAt: msg.createdAt,
+          model: msg.model,
         });
       }
-      return null;
     });
 
+    setStreamingMessages({});
+    streamingMessagesRef.current = {};
+    messageIdsRef.current = {};
     setIsStreaming(false);
-    streamingMessageRef.current = "";
-    currentMessageIdRef.current = null;
     completeReasoning();
     setReasoningStartAt(null);
-  }, [isStreaming, mockMode, completeReasoning, addMessage]);
+  }, [isStreaming, mockMode, completeReasoning, addMessage, streamingMessages]);
 
   return {
     messages: displayMessages,

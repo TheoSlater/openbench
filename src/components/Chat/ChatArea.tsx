@@ -68,6 +68,7 @@ export function ChatArea({ messages, bottomRef, onRegenerate }: ChatAreaProps) {
             role={msg.role}
             content={msg.content}
             attachments={msg.attachments}
+            model={msg.model}
             messageIndex={i}
             onRegenerate={onRegenerate}
           />

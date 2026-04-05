@@ -11,6 +11,7 @@ import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { AuthModal } from "@/components/Auth/AuthModal";
+import type { ChatMessage } from "@/types/chat";
 import "./App.css";
 import * as db from "@/lib/db";
 
@@ -25,14 +26,18 @@ function App() {
   });
   const {
     availableModels,
-    selectedModel,
-    setSelectedModel,
+    selectedModels,
+    updateSelectedModel,
+    addSelectedModel,
+    removeSelectedModel,
     isLoading,
     ollamaError,
     systemPrompts,
     activeSystemPromptId,
     actions: modelActions,
   } = useModelStore();
+
+  const selectedModel = selectedModels[0] || "";
 
   useModelPicker();
   useSystemPrompts();
@@ -93,7 +98,7 @@ function App() {
     bottomRef,
     hasMessages,
   } = useChatStream(
-    selectedModel,
+    selectedModels,
     supportsReasoning,
     devMode,
     activeSystemPrompt?.content ?? "",
@@ -102,6 +107,7 @@ function App() {
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
+  const user = useAuthStore((state) => state.user);
   const {
     createConversation,
     setActiveConversationId,
@@ -239,9 +245,13 @@ function App() {
 
       <SidebarInset>
         <Header
-          selectedModel={selectedModel}
+          selectedModels={selectedModels}
           availableModels={availableModels}
-          onModelChange={setSelectedModel}
+          onModelChange={updateSelectedModel}
+          onAddModel={() =>
+            addSelectedModel("ollama", availableModels.ollama[0]?.name || "")
+          }
+          onRemoveModel={removeSelectedModel}
           isLoading={isLoading}
           ollamaError={ollamaError}
           onSetDefault={handleSetDefaultModel}
@@ -272,7 +282,10 @@ function App() {
                 onRegenerate={handleRegenerate}
               />
             ) : (
-              <EmptyState selectedModel={devMode ? "Dev Mode" : selectedModel}>
+              <EmptyState
+                selectedModels={devMode ? ["Dev Mode"] : selectedModels}
+                userName={user?.fullName || user?.email}
+              >
                 <ChatInput
                   value={input}
                   onChange={setInput}

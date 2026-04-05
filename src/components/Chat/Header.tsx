@@ -1,4 +1,4 @@
-import { OllamaModel } from "@/store/modelStore";
+import { ModelProvider, OllamaModel } from "@/store/modelStore";
 import {
   Box,
   Select,
@@ -7,8 +7,9 @@ import {
   FormControl,
   Link,
   Tooltip,
+  IconButton,
 } from "@mui/material";
-import { ChevronDown, Plus, Eye, Settings2 } from "lucide-react";
+import { X, ChevronDown, Eye, Plus, Settings2 } from "lucide-react";
 
 interface HeaderProps {
   availableModels: {
@@ -16,11 +17,15 @@ interface HeaderProps {
     anthropic: string[];
     openai: string[];
   };
-  selectedModel: string;
+  selectedModels: string[];
+  // selectedProviders: ModelProvider[];
   onModelChange: (
-    provider: "ollama" | "anthropic" | "openai",
+    index: number,
+    provider: ModelProvider,
     model: string,
   ) => void;
+  onAddModel: () => void;
+  onRemoveModel: (index: number) => void;
   isLoading: boolean;
   ollamaError?: string | null;
   onSetDefault: (model: string) => void;
@@ -30,8 +35,11 @@ interface HeaderProps {
 
 export function Header({
   availableModels,
-  selectedModel,
+  selectedModels,
+  // selectedProviders,
   onModelChange,
+  onAddModel,
+  onRemoveModel,
   isLoading,
   ollamaError,
   onSetDefault,
@@ -39,25 +47,19 @@ export function Header({
   isInspectorOpen,
 }: HeaderProps) {
   const hasAnyModels = availableModels.ollama.length > 0;
-  const selectedValue = selectedModel || "";
-
-  const handleChange = (value: string) => {
-    if (!value) return;
-    onModelChange("ollama", value);
-  };
 
   return (
     <Box
       component="header"
       sx={{
         display: "flex",
-        height: 56,
+        minHeight: 56,
         flexShrink: 0,
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "space-between",
         bgcolor: "transparent",
         px: { xs: 2, md: 3 },
-        pt: 1,
+        pt: 1.5,
         position: "absolute",
         top: 0,
         left: 0,
@@ -66,100 +68,108 @@ export function Header({
       }}
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <FormControl size="small">
-            <Select
-              value={selectedValue}
-              onChange={(e) => handleChange(e.target.value as string)}
-              disabled={isLoading || !hasAnyModels}
-              displayEmpty
-              IconComponent={(props) => (
-                <ChevronDown
-                  {...props}
-                  size={14}
-                  style={{ color: "text.secondary" }}
-                />
-              )}
-              sx={{
-                height: 32,
-                color: "primary.main",
-                fontSize: "15px",
-                fontWeight: 600,
-                opacity: 1,
-                "& .MuiOutlinedInput-notchedOutline": { border: "none" },
-                "& .MuiSelect-select": {
-                  p: 0,
-                  pr: "20px !important",
-                  display: "flex",
-                  alignItems: "center",
-                },
-                "& .MuiSelect-icon": {
-                  right: 0,
-                  top: "calc(50% - 7px)",
-                },
-              }}
-              MenuProps={{
-                PaperProps: {
-                  sx: {
-                    bgcolor: "background.paper",
-                    color: "text.primary",
-                    mt: 1,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    "& .MuiMenuItem-root": {
-                      fontSize: "14px",
-                      "&:hover": { bgcolor: "action.hover" },
-                      "&.Mui-selected": { bgcolor: "action.selected" },
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+          {selectedModels.map((selectedModel, index) => (
+            <Box key={`${selectedModel}-${index}`} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <FormControl size="small">
+                <Select
+                  value={selectedModel}
+                  onChange={(e) => onModelChange(index, "ollama", e.target.value as string)}
+                  disabled={isLoading || !hasAnyModels}
+                  displayEmpty
+                  IconComponent={(props) => (
+                    <ChevronDown
+                      {...props}
+                      size={14}
+                      style={{ color: "text.secondary" }}
+                    />
+                  )}
+                  sx={{
+                    height: 32,
+                    color: "primary.main",
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    opacity: 1,
+                    "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                    "& .MuiSelect-select": {
+                      p: 0,
+                      pr: "20px !important",
+                      display: "flex",
+                      alignItems: "center",
                     },
-                  },
-                },
-              }}
-            >
-              {!hasAnyModels ? (
-                <MenuItem value="">No models</MenuItem>
-              ) : (
-                availableModels.ollama.map((model) => (
-                  <MenuItem
-                    key={model.name.toString()}
-                    value={model.name.toString()}
-                  >
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "100%",
-                      }}
-                    >
-                      <Typography variant="body2">{model.name}</Typography>
-                      {model.supports_vision && (
-                        <Tooltip title="Supports vision">
-                          <Eye
-                            size={14}
-                            style={{ marginLeft: 8, opacity: 0.6 }}
-                          />
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </MenuItem>
-                ))
+                    "& .MuiSelect-icon": {
+                      right: 0,
+                      top: "calc(50% - 7px)",
+                    },
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        bgcolor: "background.paper",
+                        color: "text.primary",
+                        mt: 1,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        "& .MuiMenuItem-root": {
+                          fontSize: "14px",
+                          "&:hover": { bgcolor: "action.hover" },
+                          "&.Mui-selected": { bgcolor: "action.selected" },
+                        },
+                      },
+                    },
+                  }}
+                >
+                  {!hasAnyModels ? (
+                    <MenuItem value="">No models</MenuItem>
+                  ) : (
+                    availableModels.ollama.map((model) => (
+                      <MenuItem
+                        key={model.name.toString()}
+                        value={model.name.toString()}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                          }}
+                        >
+                          <Typography variant="body2">{model.name}</Typography>
+                          {model.supports_vision && (
+                            <Tooltip title="Supports vision">
+                              <Eye
+                                size={14}
+                                style={{ marginLeft: 8, opacity: 0.8 }}
+                              />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+              {selectedModels.length > 1 && (
+                <IconButton
+                  size="small"
+                  onClick={() => onRemoveModel(index)}
+                  sx={{ p: 0.5, color: "text.secondary" }}
+                >
+                  <X size={14} />
+                </IconButton>
               )}
-              <MenuItem divider sx={{ my: 0.5, opacity: 0.1 }} />
-              <MenuItem
-                onClick={() => onSetDefault(selectedModel)}
-                disabled={!selectedModel}
-                sx={{ fontSize: "13px", color: "text.secondary" }}
-              >
-                Set as default
-              </MenuItem>
-            </Select>
-          </FormControl>
+            </Box>
+          ))}
           <Box
+            onClick={onAddModel}
             sx={{
               color: "text.secondary",
               display: "flex",
               alignItems: "center",
               cursor: "pointer",
+              ml: 1,
+              "&:hover": { color: "text.primary" },
             }}
           >
             <Plus size={16} />
@@ -169,8 +179,8 @@ export function Header({
           component="button"
           variant="caption"
           underline="none"
-          onClick={() => onSetDefault(selectedModel)}
-          disabled={!selectedModel}
+          onClick={() => onSetDefault(selectedModels[0])}
+          disabled={!selectedModels[0]}
           sx={{
             color: "text.secondary",
             fontSize: "11px",
@@ -187,7 +197,7 @@ export function Header({
         {ollamaError && (
           <Typography
             variant="caption"
-            sx={{ color: "error.main", mr: 1, opacity: 0.6 }}
+            sx={{ color: "error.main", mr: 1, opacity: 0.8 }}
           >
             {ollamaError}
           </Typography>

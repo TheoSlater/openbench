@@ -32,7 +32,9 @@ export type PullProgress = {
 
 type ModelStore = {
   selectedModel: string;
+  selectedModels: string[];
   selectedProvider: ModelProvider;
+  selectedProviders: ModelProvider[];
   availableModels: AvailableModels;
   isLoading: boolean;
   ollamaError: string | null;
@@ -42,6 +44,16 @@ type ModelStore = {
   systemPrompts: SystemPrompt[];
   activeSystemPromptId: string | null;
   setSelectedModel: (provider: ModelProvider, model: string) => void;
+  setSelectedModels: (
+    models: { provider: ModelProvider; model: string }[],
+  ) => void;
+  addSelectedModel: (provider: ModelProvider, model: string) => void;
+  removeSelectedModel: (index: number) => void;
+  updateSelectedModel: (
+    index: number,
+    provider: ModelProvider,
+    model: string,
+  ) => void;
   setAvailableModels: (models: Partial<AvailableModels>) => void;
   setIsLoading: (isLoading: boolean) => void;
   setOllamaError: (error: string | null) => void;
@@ -91,7 +103,9 @@ const defaultSystemPrompt: SystemPrompt = {
 
 export const useModelStore = create<ModelStore>((set) => ({
   selectedModel: "",
+  selectedModels: [],
   selectedProvider: "ollama",
+  selectedProviders: [],
   availableModels: defaultAvailableModels,
   isLoading: false,
   ollamaError: null,
@@ -101,7 +115,50 @@ export const useModelStore = create<ModelStore>((set) => ({
   activeSystemPromptId: defaultSystemPrompt.id,
   defaultModel: localStorage.getItem("default_model") || "",
   setSelectedModel: (provider: ModelProvider, model: string) =>
-    set({ selectedProvider: provider, selectedModel: model }),
+    set({
+      selectedProvider: provider,
+      selectedModel: model,
+      selectedProviders: [provider],
+      selectedModels: [model],
+    }),
+  setSelectedModels: (models) =>
+    set({
+      selectedProviders: models.map((m) => m.provider),
+      selectedModels: models.map((m) => m.model),
+      selectedProvider: models[0]?.provider || "ollama",
+      selectedModel: models[0]?.model || "",
+    }),
+  addSelectedModel: (provider: ModelProvider, model: string) =>
+    set((state) => ({
+      selectedProviders: [...state.selectedProviders, provider],
+      selectedModels: [...state.selectedModels, model],
+    })),
+  removeSelectedModel: (index: number) =>
+    set((state) => {
+      const nextProviders = state.selectedProviders.filter(
+        (_, i) => i !== index,
+      );
+      const nextModels = state.selectedModels.filter((_, i) => i !== index);
+      return {
+        selectedProviders: nextProviders,
+        selectedModels: nextModels,
+        selectedProvider: nextProviders[0] || "ollama",
+        selectedModel: nextModels[0] || "",
+      };
+    }),
+  updateSelectedModel: (index, provider, model) =>
+    set((state) => {
+      const nextProviders = [...state.selectedProviders];
+      const nextModels = [...state.selectedModels];
+      nextProviders[index] = provider;
+      nextModels[index] = model;
+      return {
+        selectedProviders: nextProviders,
+        selectedModels: nextModels,
+        selectedProvider: nextProviders[0] || "ollama",
+        selectedModel: nextModels[0] || "",
+      };
+    }),
   setAvailableModels: (models) =>
     set((state) => {
       const newState = {

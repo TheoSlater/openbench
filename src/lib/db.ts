@@ -34,6 +34,7 @@ export type MessageRow = {
   content: string;
   createdAt: string;
   attachments?: string; // JSON string
+  model?: string;
 };
 
 let db: Database | null = null;
@@ -83,7 +84,8 @@ export async function initDB() {
           role TEXT,
           content TEXT,
           createdAt TEXT,
-          attachments TEXT
+          attachments TEXT,
+          model TEXT
         )
       `);
 
@@ -100,16 +102,18 @@ export async function initDB() {
         )
       `);
 
-      await db.execute(`
-        CREATE TABLE IF NOT EXISTS sessions (
-          id TEXT PRIMARY KEY,
-          userId TEXT NOT NULL,
-          token TEXT UNIQUE NOT NULL,
-          expiresAt TEXT NOT NULL,
-          createdAt TEXT,
-          FOREIGN KEY (userId) REFERENCES users (id)
-        )
-      `);
+      // Check if 'model' column exists in 'messages' table, add if missing
+      try {
+        const columns = await db.select<{ name: string }[]>(
+          "PRAGMA table_info(messages)",
+        );
+        if (!columns.some((col) => col.name === "model")) {
+          await db.execute("ALTER TABLE messages ADD COLUMN model TEXT");
+          console.log("[db] Added 'model' column to 'messages' table");
+        }
+      } catch (err) {
+        console.error("[db] Error checking/adding 'model' column:", err);
+      }
 
       // Migration: Add attachments column if it doesn't exist
       try {

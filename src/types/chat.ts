@@ -23,11 +23,13 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   attachments?: Attachment[];
+  model?: string;
 }
 
 export interface Message extends ChatMessage {}
 
 export interface StreamPayload {
+  request_id: string;
   content: string;
   done: boolean;
   metadata?: {

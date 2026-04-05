@@ -270,7 +270,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
       <Divider />
       <Box sx={{ flexGrow: 1, overflowY: "auto" }}>
         {logs.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: "center", opacity: 0.5 }}>
+          <Box sx={{ p: 4, textAlign: "center", opacity: 0.8 }}>
             <Typography variant="body2">No logs yet.</Typography>
             <Typography variant="caption">Requests will appear here as they happen.</Typography>
           </Box>

@@ -2,10 +2,13 @@ import { Box, Typography } from "@mui/material";
 
 interface EmptyStateProps {
   children?: React.ReactNode;
-  selectedModel: string;
+  selectedModels: string[];
+  userName?: string;
 }
 
-export function EmptyState({ children, selectedModel }: EmptyStateProps) {
+export function EmptyState({ children, selectedModels, userName }: EmptyStateProps) {
+  const isMultiModel = selectedModels.length >= 2;
+
   return (
     <Box
       sx={{
@@ -33,7 +36,9 @@ export function EmptyState({ children, selectedModel }: EmptyStateProps) {
             opacity: 1,
           }}
         >
-          {selectedModel || "gpt-oss:20b-cloud"}
+          {isMultiModel
+            ? `Hello, ${userName || "User"}`
+            : selectedModels[0] || "gpt-oss:20b-cloud"}
         </Typography>
       </Box>
 

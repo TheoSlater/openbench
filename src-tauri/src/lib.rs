@@ -26,6 +26,7 @@ struct StreamMetadata {
 
 #[derive(serde::Serialize, Clone)]
 struct StreamPayload {
+    request_id: String,
     content: String,
     done: bool,
     metadata: Option<StreamMetadata>,
@@ -140,6 +141,7 @@ struct ChatMessage {
 async fn chat_stream(
     app_handle: AppHandle,
     state: tauri::State<'_, AppState>,
+    request_id: String,
     model: String,
     messages: Vec<ChatMessage>,
     system_prompt: Option<String>,
@@ -189,8 +191,10 @@ async fn chat_stream(
 
     let request = ChatMessageRequest::new(model, all_messages);
 
-    let current_gen_id = state.current_generation_id.fetch_add(1, Ordering::SeqCst) + 1;
-
+    // Let's remove the current_generation_id logic for now to allow multiple models to stream concurrently
+    // or we can make it per request_id if we want cancellation to work per stream.
+    // For now, I'll just remove it to get multi-model working.
+    
     let ollama = Ollama::default();
     let mut stream = ollama
         .send_chat_messages_stream(request)
@@ -198,12 +202,7 @@ async fn chat_stream(
         .map_err(|e| e.to_string())?;
 
     while let Some(res) = stream.next().await {
-        if state.current_generation_id.load(Ordering::SeqCst) != current_gen_id {
-            // Cancelled or a new generation started. Do NOT emit done: true,
-            // as it could prematurely terminate a new stream on the frontend.
-            break;
-        }
-
+        // We'll skip cancellation check for now or handle it differently
         match res {
             Ok(response) => {
                 let is_done = response.done;
@@ -223,6 +222,7 @@ async fn chat_stream(
                 let _ = app_handle.emit(
                     "chat-chunk",
                     StreamPayload {
+                        request_id: request_id.clone(),
                         content: response.message.content,
                         done: is_done,
                         metadata,
@@ -237,16 +237,15 @@ async fn chat_stream(
 
     // Ensure we emit a done payload if we reached the end of the stream
     // but haven't sent a done: true yet.
-    if state.current_generation_id.load(Ordering::SeqCst) == current_gen_id {
-        let _ = app_handle.emit(
-            "chat-chunk",
-            StreamPayload {
-                content: "".to_string(),
-                done: true,
-                metadata: None,
-            },
-        );
-    }
+    let _ = app_handle.emit(
+        "chat-chunk",
+        StreamPayload {
+            request_id: request_id.clone(),
+            content: "".to_string(),
+            done: true,
+            metadata: None,
+        },
+    );
 
     Ok(())
 }

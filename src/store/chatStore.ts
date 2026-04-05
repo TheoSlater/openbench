@@ -24,6 +24,7 @@ type ChatStore = {
       id?: string;
       createdAt?: string;
       attachments?: Attachment[];
+      model?: string;
     }) => Promise<Message>;
     loadConversations: () => Promise<void>;
     deleteConversation: (id: string) => Promise<void>;
@@ -93,6 +94,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: m.content,
           createdAt: m.createdAt,
           attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+          model: m.model,
         }));
         set({ messages, hasMoreMessages: messages.length === pageSize });
       } else {
@@ -120,6 +122,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           content: m.content,
           createdAt: m.createdAt,
           attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+          model: m.model,
         }));
         set({
           messages: [...newMessages, ...messages],
@@ -141,6 +144,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         content: message.content,
         createdAt: now,
         attachments: message.attachments,
+        model: message.model,
       };
       await db.addMessage(payload);
       set((state) => ({

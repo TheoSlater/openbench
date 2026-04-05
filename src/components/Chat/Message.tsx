@@ -20,6 +20,7 @@ export interface MessageProps {
   content: string;
   attachments?: Attachment[];
   messageIndex?: number;
+  model?: string;
   onRegenerate?: (messageIndex: number) => void;
 }
 
@@ -28,6 +29,7 @@ export function Message({
   content,
   attachments,
   messageIndex,
+  model,
   onRegenerate,
 }: MessageProps) {
   const [copied, setCopied] = useState(false);
@@ -185,6 +187,22 @@ export function Message({
       }}
     >
       <Box sx={{ w: "100%", maxWidth: { xs: "95%", sm: "85%", md: "80%" } }}>
+        {model && (
+          <Typography
+            variant="caption"
+            sx={{
+              color: "primary.main",
+              fontWeight: 600,
+              mb: 1,
+              display: "block",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              fontSize: "10px",
+            }}
+          >
+            {model}
+          </Typography>
+        )}
         {content ? (
           <Box
             sx={{

@@ -70,3 +70,19 @@
     "NEW INSTRUCTION": "WHEN initializing or configuring Ollama client THEN ignore apiKey/baseUrl and use local defaults only"
 }
 
+[2026-04-05 13:15] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "model picker UI",
+    "EXPECTATION": "The 'Set as default' item should be an action, not a selectable model; the dropdown should list only actual models.",
+    "NEW INSTRUCTION": "WHEN rendering the model dropdown options THEN exclude action items like 'Set as default'"
+}
+
+[2026-04-05 13:22] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "target UI clarified",
+    "EXPECTATION": "Keep the header dropdowns unchanged; update the EmptyState main text (which shows the model name) to say 'Hello, {username}'.",
+    "NEW INSTRUCTION": "WHEN rendering EmptyState and two or more models are selected THEN show 'Hello, {username}' instead of model name"
+}
+
