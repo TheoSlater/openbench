@@ -190,7 +190,7 @@ function App() {
 
   const handleNewChat = () => {
     stopStreaming();
-    createConversation();
+    setActiveConversationId(null);
   };
 
   const handleSelectConversation = (id: string) => {

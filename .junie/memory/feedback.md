@@ -398,3 +398,11 @@
     "NEW INSTRUCTION": "WHEN implementing or fixing the Login modal THEN use a portal with fixed overlay, center container, set z-index 1000/1001, and switch tabs via state."
 }
 
+[2026-04-05 09:08] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "New Chat creation behavior",
+    "EXPECTATION": "Clicking New Chat should not pre-create a chat named 'New Chat'; it should show the EmptyState and only create the chat when the user sends the first message.",
+    "NEW INSTRUCTION": "WHEN New Chat is clicked with no messages THEN do not create chat; create on first send"
+}
+
