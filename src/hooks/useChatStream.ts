@@ -122,7 +122,11 @@ export function useChatStream(
               const messageId = crypto.randomUUID();
               currentMessageIdRef.current = messageId;
               // Find the most recent log for this model that doesn't have a firstTokenTime yet
-              const lastLog = useInspectorStore.getState().logs.find(l => l.model === selectedModel && !l.timing.firstTokenTime);
+              const lastLog = useInspectorStore
+                .getState()
+                .logs.find(
+                  (l) => l.model === selectedModel && !l.timing.firstTokenTime,
+                );
               if (lastLog) {
                 updateLog(lastLog.id, {
                   timing: {
@@ -146,13 +150,15 @@ export function useChatStream(
         if (event.payload.done) {
           const finalContent = streamingMessageRef.current;
           const messageId = currentMessageIdRef.current;
-          
+
           setIsStreaming(false);
           completeReasoning();
 
           // Find the most recent log for this model that doesn't have a response yet
           const logs = useInspectorStore.getState().logs;
-          const lastLog = logs.find(l => l.model === selectedModel && !l.response);
+          const lastLog = logs.find(
+            (l) => l.model === selectedModel && !l.response,
+          );
           if (lastLog) {
             const m = event.payload.metadata;
             updateLog(lastLog.id, {
@@ -162,17 +168,19 @@ export function useChatStream(
                 body: {
                   message: { role: "assistant", content: finalContent },
                   done: true,
-                  ...(m || {})
-                }
+                  ...m,
+                },
               },
-              tokens: m ? {
-                input: m.prompt_eval_count || 0,
-                output: m.eval_count || 0
-              } : undefined,
+              tokens: m
+                ? {
+                    input: m.prompt_eval_count || 0,
+                    output: m.eval_count || 0,
+                  }
+                : undefined,
               timing: {
                 ...lastLog.timing,
-                totalTime: Date.now() - lastLog.timing.startTime
-              }
+                totalTime: Date.now() - lastLog.timing.startTime,
+              },
             });
           }
 
@@ -221,14 +229,12 @@ Text: ${userMessage.content}`,
                         );
                       }
                     })
-                    .catch((err) =>
-                      console.error("Auto-rename failed:", err),
-                    );
+                    .catch((err) => console.error("Auto-rename failed:", err));
                 }
               }
             });
           }
-          
+
           setStreamingMessage(null);
           streamingMessageRef.current = "";
           currentMessageIdRef.current = null;
@@ -239,7 +245,15 @@ Text: ${userMessage.content}`,
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [mockMode, completeReasoning, activeConversationId, addMessage, selectedModel, renameConversation, updateLog]);
+  }, [
+    mockMode,
+    completeReasoning,
+    activeConversationId,
+    addMessage,
+    selectedModel,
+    renameConversation,
+    updateLog,
+  ]);
 
   useEffect(() => {
     if (!reasoningStartAt) return;
@@ -333,7 +347,11 @@ Text: ${userMessage.content}`,
           model: selectedModel,
           messages: [
             ...history,
-            { role: "user", content: content.trim(), attachments: attachments || [] },
+            {
+              role: "user",
+              content: content.trim(),
+              attachments: attachments || [],
+            },
           ],
           systemPrompt: finalSystemPrompt,
         };
@@ -358,12 +376,13 @@ Text: ${userMessage.content}`,
         console.error("Chat error:", error);
         setIsStreaming(false);
         setReasoningStartAt(null);
-        
+
         // Add an error message to the chat
-        const errorContent = typeof error === 'string' && error.includes('not found') 
-          ? `Model "${selectedModel}" not found. Please pull the model or select a different one.`
-          : `Failed to connect to Ollama. Make sure it is running. Error: ${error}`;
-          
+        const errorContent =
+          typeof error === "string" && error.includes("not found")
+            ? `Model "${selectedModel}" not found. Please pull the model or select a different one.`
+            : `Failed to connect to Ollama. Make sure it is running. Error: ${error}`;
+
         void addMessage({
           id: crypto.randomUUID(),
           conversationId,
