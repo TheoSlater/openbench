@@ -20,9 +20,37 @@ interface ProfileMenuProps {
 }
 
 export const ProfileMenu: React.FC<ProfileMenuProps> = ({ onOpenSettings }) => {
-  const { user, actions } = useAuthStore();
+  const { user, actions, isLoading } = useAuthStore();
   const { isCollapsed } = useSidebar();
   const [isArchivedOpen, setIsArchivedOpen] = React.useState(false);
+
+  if (isLoading) {
+    return (
+      <Box className="w-full flex flex-col items-center" sx={{ opacity: 0.5 }}>
+        <MuiButton
+          fullWidth
+          disabled
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            gap: 1.5,
+            p: 1,
+            borderRadius: 2,
+            textTransform: "none",
+          }}
+        >
+          <Box sx={{ width: 36, height: 36, borderRadius: "50%", bgcolor: "action.selected" }} />
+          {!isCollapsed && (
+            <Box>
+              <Box sx={{ width: 80, height: 14, bgcolor: "action.selected", mb: 0.5, borderRadius: 1 }} />
+              <Box sx={{ width: 40, height: 10, bgcolor: "action.selected", borderRadius: 1 }} />
+            </Box>
+          )}
+        </MuiButton>
+      </Box>
+    );
+  }
 
   if (!user) return null;
 

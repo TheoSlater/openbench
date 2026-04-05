@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
 import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
+import { InspectorPanel } from "@/components/Inspector/InspectorPanel";
 import { modelSupportsReasoning } from "@/lib/model-utils";
 import { useModelStore } from "@/store/modelStore";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/Layout/Sidebar";
@@ -8,6 +9,7 @@ import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { Box, Snackbar, Alert } from "@mui/material";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { AuthModal } from "@/components/Auth/AuthModal";
 import "./App.css";
 import * as db from "@/lib/db";
@@ -18,6 +20,7 @@ function App() {
   const [input, setInput] = useState("");
   const [devMode, setDevMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({
     open: false,
     message: "",
@@ -40,9 +43,67 @@ function App() {
 
   useEffect(() => {
     async function init() {
-      await db.initDB();
-      await useAuthStore.getState().actions.restoreSession();
-      await useChatStore.getState().actions.loadConversations();
+      console.log("[App] init starting...");
+      
+      // Set a global timeout as a safety net
+      const timeoutId = setTimeout(() => {
+        const { isLoading } = useAuthStore.getState();
+        if (isLoading) {
+          console.warn("[App] Initialization timeout reached, forcing useAuthStore.isLoading to false");
+          useAuthStore.setState({ isLoading: false });
+        }
+      }, 8000); // 8 seconds global safety timeout
+
+      try {
+        // Step 1: Initialize Database
+        console.log("[App] initializing DB...");
+        try {
+          await db.initDB();
+        } catch (dbErr) {
+          console.error("[App] DB init failed:", dbErr);
+        }
+
+        // Step 2: Sync settings to backend
+        // This is important for the Ollama client configuration
+        console.log("[App] syncing settings to backend...");
+        try {
+          // Add a per-step timeout to prevent hanging
+          await Promise.race([
+            useSettingsStore.getState().actions.syncToBackend(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout syncing settings")), 3000))
+          ]);
+        } catch (settingsErr) {
+          console.error("[App] Settings sync failed or timed out:", settingsErr);
+        }
+
+        // Step 3: Restore session
+        // This MUST run to show the profile
+        console.log("[App] restoring session...");
+        try {
+          await useAuthStore.getState().actions.restoreSession();
+        } catch (authErr) {
+          console.error("[App] Session restoration failed:", authErr);
+        }
+
+        // Step 4: Load conversations
+        console.log("[App] loading conversations...");
+        try {
+          await useChatStore.getState().actions.loadConversations();
+        } catch (chatErr) {
+          console.error("[App] Loading conversations failed:", chatErr);
+        }
+
+        console.log("[App] init sequence finished");
+      } catch (err) {
+        console.error("[App] Unexpected init error:", err);
+      } finally {
+        clearTimeout(timeoutId);
+        // Ensure isLoading is false if we finished the sequence (successfully or with errors)
+        const { isLoading } = useAuthStore.getState();
+        if (isLoading) {
+          useAuthStore.setState({ isLoading: false });
+        }
+      }
     }
     init();
   }, []);
@@ -237,9 +298,11 @@ function App() {
           isLoading={isLoading}
           ollamaError={ollamaError}
           onSetDefault={handleSetDefaultModel}
+          onToggleInspector={() => setIsInspectorOpen((v) => !v)}
+          isInspectorOpen={isInspectorOpen}
         />
 
-        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", bgcolor: "background.default" }}>
+        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative", bgcolor: "background.default", pt: "56px" }}>
           <Box
             sx={{
               flex: 1,
@@ -247,6 +310,12 @@ function App() {
               flexDirection: "column",
               overflow: "hidden",
               justifyContent: "flex-start",
+              transition: (theme) =>
+                theme.transitions.create("margin", {
+                  easing: theme.transitions.easing.sharp,
+                  duration: theme.transitions.duration.leavingScreen,
+                }),
+              marginRight: isInspectorOpen ? "0px" : "-350px",
             }}
           >
             {hasMessages ? (
@@ -283,6 +352,7 @@ function App() {
               />
             )}
           </Box>
+          <InspectorPanel open={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
         </Box>
       </SidebarInset>
 

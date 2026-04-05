@@ -103,9 +103,14 @@ export const useModelStore = create<ModelStore>((set) => ({
   setSelectedModel: (provider: ModelProvider, model: string) =>
     set({ selectedProvider: provider, selectedModel: model }),
   setAvailableModels: (models) =>
-    set((state) => ({
-      availableModels: { ...state.availableModels, ...models },
-    })),
+    set((state) => {
+      const newState = {
+        availableModels: { ...state.availableModels, ...models },
+      };
+      // If we just loaded ollama models and our selected model isn't in the list,
+      // but we have some models, don't necessarily clear it if it was a custom one.
+      return newState;
+    }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setOllamaError: (error) => set({ ollamaError: error }),
   setPullingModel: (model) => set({ pullingModel: model }),

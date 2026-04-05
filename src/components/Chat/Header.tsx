@@ -8,7 +8,7 @@ import {
   Link,
   Tooltip,
 } from "@mui/material";
-import { ChevronDown, Plus, Eye } from "lucide-react";
+import { ChevronDown, Plus, Eye, Settings2 } from "lucide-react";
 
 interface HeaderProps {
   availableModels: {
@@ -24,6 +24,8 @@ interface HeaderProps {
   isLoading: boolean;
   ollamaError?: string | null;
   onSetDefault: (model: string) => void;
+  onToggleInspector: () => void;
+  isInspectorOpen: boolean;
 }
 
 export function Header({
@@ -33,6 +35,8 @@ export function Header({
   isLoading,
   ollamaError,
   onSetDefault,
+  onToggleInspector,
+  isInspectorOpen,
 }: HeaderProps) {
   const hasAnyModels = availableModels.ollama.length > 0;
   const selectedValue = selectedModel || "";
@@ -188,6 +192,28 @@ export function Header({
             {ollamaError}
           </Typography>
         )}
+        <Tooltip title={isInspectorOpen ? "Close Inspector" : "Open Inspector"}>
+          <Box
+            onClick={onToggleInspector}
+            sx={{
+              p: 0.75,
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: isInspectorOpen ? "primary.main" : "text.secondary",
+              bgcolor: isInspectorOpen ? "action.selected" : "transparent",
+              "&:hover": {
+                bgcolor: "action.hover",
+                color: "text.primary",
+              },
+              transition: "all 0.2s ease-in-out",
+            }}
+          >
+            <Settings2 size={18} />
+          </Box>
+        </Tooltip>
       </Box>
     </Box>
   );

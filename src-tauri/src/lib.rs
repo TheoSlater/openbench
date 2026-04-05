@@ -11,14 +11,24 @@ use tokio_stream::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct AppState {
-    ollama: Ollama,
     current_generation_id: AtomicUsize,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct StreamMetadata {
+    prompt_eval_count: Option<u64>,
+    eval_count: Option<u64>,
+    total_duration: Option<u64>,
+    load_duration: Option<u64>,
+    prompt_eval_duration: Option<u64>,
+    eval_duration: Option<u64>,
 }
 
 #[derive(serde::Serialize, Clone)]
 struct StreamPayload {
     content: String,
     done: bool,
+    metadata: Option<StreamMetadata>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -37,9 +47,9 @@ pub struct ModelDetails {
 }
 
 #[tauri::command]
-async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<ModelDetails>, String> {
-    let models = state
-        .ollama
+async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
+    let ollama = Ollama::default();
+    let models = ollama
         .list_local_models()
         .await
         .map_err(|e| e.to_string())?;
@@ -70,11 +80,10 @@ async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<Model
 #[tauri::command]
 async fn pull_model(
     app_handle: AppHandle,
-    state: tauri::State<'_, AppState>,
     model: String,
 ) -> Result<(), String> {
-    let mut stream = state
-        .ollama
+    let ollama = Ollama::default();
+    let mut stream = ollama
         .pull_model_stream(model, false)
         .await
         .map_err(|e| e.to_string())?;
@@ -182,8 +191,8 @@ async fn chat_stream(
 
     let current_gen_id = state.current_generation_id.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let mut stream = state
-        .ollama
+    let ollama = Ollama::default();
+    let mut stream = ollama
         .send_chat_messages_stream(request)
         .await
         .map_err(|e| e.to_string())?;
@@ -197,11 +206,26 @@ async fn chat_stream(
 
         match res {
             Ok(response) => {
+                let is_done = response.done;
+                let metadata = if let Some(final_data) = response.final_data {
+                    Some(StreamMetadata {
+                        prompt_eval_count: Some(final_data.prompt_eval_count),
+                        eval_count: Some(final_data.eval_count),
+                        total_duration: Some(final_data.total_duration),
+                        load_duration: Some(final_data.load_duration),
+                        prompt_eval_duration: Some(final_data.prompt_eval_duration),
+                        eval_duration: Some(final_data.eval_duration),
+                    })
+                } else {
+                    None
+                };
+
                 let _ = app_handle.emit(
                     "chat-chunk",
                     StreamPayload {
                         content: response.message.content,
-                        done: response.done,
+                        done: is_done,
+                        metadata,
                     },
                 );
             }
@@ -211,12 +235,24 @@ async fn chat_stream(
         }
     }
 
+    // Ensure we emit a done payload if we reached the end of the stream
+    // but haven't sent a done: true yet.
+    if state.current_generation_id.load(Ordering::SeqCst) == current_gen_id {
+        let _ = app_handle.emit(
+            "chat-chunk",
+            StreamPayload {
+                content: "".to_string(),
+                done: true,
+                metadata: None,
+            },
+        );
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 async fn chat(
-    state: tauri::State<'_, AppState>,
     model: String,
     messages: Vec<ChatMessage>,
 ) -> Result<String, String> {
@@ -251,8 +287,8 @@ async fn chat(
     }
 
     let request = ChatMessageRequest::new(model, all_messages);
-    let response = state
-        .ollama
+    let ollama = Ollama::default();
+    let response = ollama
         .send_chat_messages(request)
         .await
         .map_err(|e| e.to_string())?;
@@ -260,14 +296,13 @@ async fn chat(
     Ok(response.message.content)
 }
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            ollama: Ollama::default(),
             current_generation_id: AtomicUsize::new(0),
         })
         .invoke_handler(tauri::generate_handler![

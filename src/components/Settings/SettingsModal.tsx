@@ -155,6 +155,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               flex: 1,
               px: { xs: 3, sm: 5 },
               py: { xs: 4, sm: 5 },
+              overflowY: "auto",
             }}
           >
             {activeTab === "personalization" ? (

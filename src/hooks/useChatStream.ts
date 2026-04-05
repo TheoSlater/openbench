@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamPayload, Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
+import { useInspectorStore } from "@/store/inspectorStore";
 
 const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant.
 
@@ -33,6 +34,7 @@ export function useChatStream(
   );
   const { addMessage, renameConversation, setStreamingConversationId } =
     useChatStore((state) => state.actions);
+  const { addLog, updateLog } = useInspectorStore((state) => state.actions);
   const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
@@ -51,6 +53,8 @@ export function useChatStream(
     conversationId: string;
     createdAt: string;
   } | null>(null);
+  const streamingMessageRef = useRef<string>("");
+  const currentMessageIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelStreamRef = useRef(false);
@@ -79,6 +83,8 @@ export function useChatStream(
       mockTimerRef.current = null;
     }
     setStreamingMessage(null);
+    streamingMessageRef.current = "";
+    currentMessageIdRef.current = null;
     setIsStreaming(false);
     setReasoningStartAt(null);
     setReasoningElapsedMs(0);
@@ -107,78 +113,125 @@ export function useChatStream(
         }
         if (!activeConversationId) return;
 
-        setStreamingMessage((prev) => {
-          const content = (prev?.content ?? "") + event.payload.content;
-          if (prev) {
-            return { ...prev, content };
-          }
-          return {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content,
-            conversationId: activeConversationId,
-            createdAt: new Date().toISOString(),
-          };
-        });
+        if (!event.payload.done) {
+          const chunk = event.payload.content;
+          streamingMessageRef.current += chunk;
+
+          setStreamingMessage((prev) => {
+            if (!prev) {
+              const messageId = crypto.randomUUID();
+              currentMessageIdRef.current = messageId;
+              // Find the most recent log for this model that doesn't have a firstTokenTime yet
+              const lastLog = useInspectorStore.getState().logs.find(l => l.model === selectedModel && !l.timing.firstTokenTime);
+              if (lastLog) {
+                updateLog(lastLog.id, {
+                  timing: {
+                    ...lastLog.timing,
+                    firstTokenTime: Date.now() - lastLog.timing.startTime,
+                  },
+                });
+              }
+              return {
+                id: messageId,
+                role: "assistant",
+                content: chunk,
+                conversationId: activeConversationId,
+                createdAt: new Date().toISOString(),
+              };
+            }
+            return { ...prev, content: streamingMessageRef.current };
+          });
+        }
 
         if (event.payload.done) {
+          const finalContent = streamingMessageRef.current;
+          const messageId = currentMessageIdRef.current;
+          
           setIsStreaming(false);
           completeReasoning();
-          setStreamingMessage((current) => {
-            if (current && current.content.trim()) {
-              void addMessage({
-                id: current.id,
-                conversationId: current.conversationId,
-                role: current.role,
-                content: current.content,
-                createdAt: current.createdAt,
-              }).then(() => {
-                // Auto-rename if first message
-                const currentMessages = useChatStore.getState().messages;
-                const currentConversation = useChatStore
-                  .getState()
-                  .conversations.find((c) => c.id === activeConversationId);
 
-                if (
-                  currentMessages.length <= 2 &&
-                  currentConversation?.title === "New Chat"
-                ) {
-                  const userMessage = currentMessages.find(
-                    (m) => m.role === "user",
-                  );
-                  if (userMessage) {
-                    invoke<string>("chat", {
-                      model: selectedModel,
-                      messages: [
-                        {
-                          role: "user",
-                          content: `Summarize this chat in 2-3 words. Be concise and do not use quotes. Use Title Case.
-Text: ${userMessage.content}`,
-                        },
-                      ],
-                    })
-                      .then((title) => {
-                        if (title && activeConversationId) {
-                          // Clean up title (remove quotes, etc)
-                          const cleanTitle = title
-                            .trim()
-                            .replace(/^["']|["']$/g, "")
-                            .slice(0, 40);
-                          void renameConversation(
-                            activeConversationId,
-                            cleanTitle,
-                          );
-                        }
-                      })
-                      .catch((err) =>
-                        console.error("Auto-rename failed:", err),
-                      );
-                  }
+          // Find the most recent log for this model that doesn't have a response yet
+          const logs = useInspectorStore.getState().logs;
+          const lastLog = logs.find(l => l.model === selectedModel && !l.response);
+          if (lastLog) {
+            const m = event.payload.metadata;
+            updateLog(lastLog.id, {
+              response: {
+                status: 200,
+                headers: {},
+                body: {
+                  message: { role: "assistant", content: finalContent },
+                  done: true,
+                  ...(m || {})
                 }
-              });
-            }
-            return null;
-          });
+              },
+              tokens: m ? {
+                input: m.prompt_eval_count || 0,
+                output: m.eval_count || 0
+              } : undefined,
+              timing: {
+                ...lastLog.timing,
+                totalTime: Date.now() - lastLog.timing.startTime
+              }
+            });
+          }
+
+          if (finalContent.trim() && messageId) {
+            void addMessage({
+              id: messageId,
+              conversationId: activeConversationId,
+              role: "assistant",
+              content: finalContent,
+              createdAt: new Date().toISOString(),
+            }).then(() => {
+              // Auto-rename if first message
+              const currentMessages = useChatStore.getState().messages;
+              const currentConversation = useChatStore
+                .getState()
+                .conversations.find((c) => c.id === activeConversationId);
+
+              if (
+                currentMessages.length <= 2 &&
+                currentConversation?.title === "New Chat"
+              ) {
+                const userMessage = currentMessages.find(
+                  (m) => m.role === "user",
+                );
+                if (userMessage) {
+                  invoke<string>("chat", {
+                    model: selectedModel,
+                    messages: [
+                      {
+                        role: "user",
+                        content: `Summarize this chat in 2-3 words. Be concise and do not use quotes. Use Title Case.
+Text: ${userMessage.content}`,
+                      },
+                    ],
+                  })
+                    .then((title) => {
+                      if (title && activeConversationId) {
+                        // Clean up title (remove quotes, etc)
+                        const cleanTitle = title
+                          .trim()
+                          .replace(/^["']|["']$/g, "")
+                          .slice(0, 40);
+                        void renameConversation(
+                          activeConversationId,
+                          cleanTitle,
+                        );
+                      }
+                    })
+                    .catch((err) =>
+                      console.error("Auto-rename failed:", err),
+                    );
+                }
+              }
+            });
+          }
+          
+          setStreamingMessage(null);
+          streamingMessageRef.current = "";
+          currentMessageIdRef.current = null;
         }
       },
     );
@@ -186,7 +239,7 @@ Text: ${userMessage.content}`,
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [mockMode, completeReasoning, activeConversationId, addMessage]);
+  }, [mockMode, completeReasoning, activeConversationId, addMessage, selectedModel, renameConversation, updateLog]);
 
   useEffect(() => {
     if (!reasoningStartAt) return;
@@ -226,6 +279,8 @@ Text: ${userMessage.content}`,
       });
 
       setIsStreaming(true);
+      streamingMessageRef.current = "";
+      currentMessageIdRef.current = null;
       if (supportsReasoning) {
         const start = Date.now();
         setReasoningStartAt(start);
@@ -274,14 +329,31 @@ Text: ${userMessage.content}`,
           ? `${MAIN_SYSTEM_PROMPT}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
           : MAIN_SYSTEM_PROMPT;
 
-        await invoke("chat_stream", {
+        const requestBody = {
           model: selectedModel,
           messages: [
             ...history,
             { role: "user", content: content.trim(), attachments: attachments || [] },
           ],
           systemPrompt: finalSystemPrompt,
+        };
+
+        const logId = crypto.randomUUID();
+        addLog({
+          id: logId,
+          model: selectedModel,
+          request: {
+            url: "tauri://chat_stream",
+            method: "POST",
+            headers: {},
+            body: requestBody,
+          },
+          timing: {
+            startTime: Date.now(),
+          },
         });
+
+        await invoke("chat_stream", requestBody);
       } catch (error) {
         console.error("Chat error:", error);
         setIsStreaming(false);
@@ -329,12 +401,13 @@ Text: ${userMessage.content}`,
     }
 
     setStreamingMessage((current) => {
-      if (current && current.content.trim()) {
+      const finalContent = streamingMessageRef.current;
+      if (current && finalContent.trim()) {
         void addMessage({
           id: current.id,
           conversationId: current.conversationId,
           role: current.role,
-          content: current.content,
+          content: finalContent,
           createdAt: current.createdAt,
         });
       }
@@ -342,6 +415,8 @@ Text: ${userMessage.content}`,
     });
 
     setIsStreaming(false);
+    streamingMessageRef.current = "";
+    currentMessageIdRef.current = null;
     completeReasoning();
     setReasoningStartAt(null);
   }, [isStreaming, mockMode, completeReasoning, addMessage]);

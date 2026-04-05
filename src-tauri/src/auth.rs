@@ -151,7 +151,9 @@ pub async fn auth_get_current_user<R: Runtime>(
     app: AppHandle<R>,
     token: String,
 ) -> Result<User, String> {
+    println!("[auth] auth_get_current_user - token: {}", token);
     let pool = get_db_pool(&app).await?;
+    println!("[auth] pool acquired");
 
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query!(
@@ -163,8 +165,16 @@ pub async fn auth_get_current_user<R: Runtime>(
     )
     .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Session expired".to_string())?;
+    .map_err(|e| {
+        println!("[auth] fetch_optional error: {}", e);
+        e.to_string()
+    })?
+    .ok_or_else(|| {
+        println!("[auth] session expired or not found");
+        "Session expired".to_string()
+    })?;
+
+    println!("[auth] user retrieved: {}", row.email);
 
     Ok(User {
         id: row.id.unwrap_or_default(),
