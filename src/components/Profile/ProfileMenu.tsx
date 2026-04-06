@@ -28,15 +28,16 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ onOpenSettings }) => {
     return (
       <Box className="w-full flex flex-col items-center" sx={{ opacity: 0.5 }}>
         <MuiButton
-          fullWidth
+          fullWidth={!isCollapsed}
           disabled
           sx={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-start",
+            justifyContent: isCollapsed ? "center" : "flex-start",
             gap: 1.5,
             p: 1,
-            borderRadius: 2,
+            minWidth: isCollapsed ? 0 : undefined,
+            borderRadius: isCollapsed ? "50%" : 2,
             textTransform: "none",
           }}
         >
@@ -67,14 +68,15 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ onOpenSettings }) => {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <MuiButton
-            fullWidth
+            fullWidth={!isCollapsed}
             sx={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "flex-start",
+              justifyContent: isCollapsed ? "center" : "flex-start",
               gap: 1.5,
               p: 1,
-              borderRadius: 2,
+              minWidth: isCollapsed ? 0 : undefined,
+              borderRadius: isCollapsed ? "50%" : 2,
               textTransform: "none",
               color: "text.primary",
               textAlign: "left",

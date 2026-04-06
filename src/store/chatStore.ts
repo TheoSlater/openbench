@@ -12,7 +12,7 @@ type ChatStore = {
   hasMoreMessages: boolean;
   currentAttachments: Attachment[];
   actions: {
-    createConversation: (title?: string) => Promise<Conversation>;
+    createConversation: (title?: string, isTemporary?: boolean) => Promise<Conversation>;
     setActiveConversationId: (id: string | null) => Promise<void>;
     setStreamingConversationId: (id: string | null) => void;
     setMessages: (messages: Message[]) => void;
@@ -62,16 +62,19 @@ export const useChatStore = create<ChatStore>((set) => ({
     },
     setStreamingConversationId: (id) => set({ streamingConversationId: id }),
     // Create a new conversation
-    createConversation: async (title = "New Chat") => {
+    createConversation: async (title = "New Chat", isTemporary = false) => {
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
-      await db.createConversation(id, title);
+      if (!isTemporary) {
+        await db.createConversation(id, title);
+      }
       const conversation: Conversation = {
         id,
         title,
         createdAt: now,
         updatedAt: now,
         isArchived: false,
+        isTemporary,
       };
       set((state) => ({
         conversations: [conversation, ...state.conversations],
@@ -146,7 +149,15 @@ export const useChatStore = create<ChatStore>((set) => ({
         attachments: message.attachments,
         model: message.model,
       };
-      await db.addMessage(payload);
+
+      const { conversations } = useChatStore.getState();
+      const conversation = conversations.find(c => c.id === message.conversationId);
+      const isTemporary = conversation?.isTemporary ?? true; // Default to true if not found (new unsaved chat)
+
+      if (!isTemporary) {
+        await db.addMessage(payload);
+      }
+
       set((state) => ({
         messages: [...state.messages, payload],
       }));
@@ -154,7 +165,11 @@ export const useChatStore = create<ChatStore>((set) => ({
     },
     // Delete a conversation and its messages
     deleteConversation: async (id) => {
-      await db.deleteConversation(id);
+      const { conversations } = useChatStore.getState();
+      const conversation = conversations.find(c => c.id === id);
+      if (conversation && !conversation.isTemporary) {
+        await db.deleteConversation(id);
+      }
       set((state) => {
         const newConversations = state.conversations.filter((c) => c.id !== id);
         const newActiveId =
@@ -172,7 +187,11 @@ export const useChatStore = create<ChatStore>((set) => ({
     },
     // Archive a conversation
     archiveConversation: async (id) => {
-      await db.updateConversation(id, { isArchived: true });
+      const { conversations } = useChatStore.getState();
+      const conversation = conversations.find(c => c.id === id);
+      if (conversation && !conversation.isTemporary) {
+        await db.updateConversation(id, { isArchived: true });
+      }
       set((state) => {
         const newConversations = state.conversations.map((c) =>
           c.id === id ? { ...c, isArchived: true } : c,
@@ -192,7 +211,11 @@ export const useChatStore = create<ChatStore>((set) => ({
     },
     // Unarchive a conversation
     unarchiveConversation: async (id) => {
-      await db.updateConversation(id, { isArchived: false });
+      const { conversations } = useChatStore.getState();
+      const conversation = conversations.find(c => c.id === id);
+      if (conversation && !conversation.isTemporary) {
+        await db.updateConversation(id, { isArchived: false });
+      }
       set((state) => ({
         conversations: state.conversations.map((c) =>
           c.id === id ? { ...c, isArchived: false } : c,
@@ -202,7 +225,10 @@ export const useChatStore = create<ChatStore>((set) => ({
     // Rename a conversation
     renameConversation: async (id, newTitle) => {
       const now = new Date().toISOString();
-      await db.updateConversation(id, { title: newTitle, updatedAt: now });
+      const conversation = useChatStore.getState().conversations.find(c => c.id === id);
+      if (conversation && !conversation.isTemporary) {
+        await db.updateConversation(id, { title: newTitle, updatedAt: now });
+      }
       set((state) => ({
         conversations: state.conversations.map((c) =>
           c.id === id ? { ...c, title: newTitle, updatedAt: now } : c,
@@ -211,7 +237,11 @@ export const useChatStore = create<ChatStore>((set) => ({
     },
     // Delete messages after a specific message ID (inclusive)
     deleteMessagesAfter: async (conversationId, messageId) => {
-      await db.deleteMessagesAfter(conversationId, messageId);
+      const { conversations } = useChatStore.getState();
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (conversation && !conversation.isTemporary) {
+        await db.deleteMessagesAfter(conversationId, messageId);
+      }
       set((state) => {
         const index = state.messages.findIndex((m) => m.id === messageId);
         if (index === -1) return state;

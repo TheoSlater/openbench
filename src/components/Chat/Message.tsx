@@ -59,7 +59,7 @@ export function Message({
         sx={{
           display: "flex",
           flexDirection: "column",
-          w: "100%",
+          width: "100%",
           alignItems: "flex-end",
           py: 1,
         }}
@@ -90,6 +90,7 @@ export function Message({
                   alignItems: "center",
                   p: isImageAttachment(att.type) ? 0 : 1.5,
                   gap: 1.5,
+                  transition: "all 0.2s ease",
                 }}
               >
                 {isImageAttachment(att.type) ? (
@@ -149,9 +150,11 @@ export function Message({
             maxWidth: { xs: "85%", sm: "70%" },
             borderRadius: "1.5rem",
             bgcolor: "secondary.main",
+            border: "1px solid",
+            borderColor: "divider",
             px: 2.5,
             py: 1.5,
-            boxShadow: 1,
+            transition: "all 0.2s ease",
           }}
         >
           <Typography
@@ -175,18 +178,14 @@ export function Message({
       sx={{
         display: "flex",
         flexDirection: "column",
-        w: "100%",
+        width: "100%",
         py: 2,
         "& .action-bar": {
-          opacity: 0,
-          transition: "opacity 0.3s",
-        },
-        "&:hover .action-bar": {
           opacity: 1,
-        }
+        },
       }}
     >
-      <Box sx={{ w: "100%", maxWidth: { xs: "95%", sm: "85%", md: "80%" } }}>
+      <Box sx={{ width: "100%" }}>
         {model && (
           <Typography
             variant="caption"
@@ -203,6 +202,8 @@ export function Message({
             {model}
           </Typography>
         )}
+
+
         {content ? (
           <Box
             sx={{

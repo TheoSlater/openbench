@@ -83,7 +83,7 @@ export function ArchivedChatsDialog({
               justifyContent: "center",
               mb: 1
             }}>
-              <ArchiveRestore size={24} style={{ opacity: 0.5 }} />
+              <ArchiveRestore size={24} />
             </Box>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
               {searchQuery ? "No matching chats" : "No archived chats"}

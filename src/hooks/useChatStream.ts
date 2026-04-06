@@ -5,26 +5,54 @@ import type { ChatMessage, StreamPayload, Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 import { useInspectorStore } from "@/store/inspectorStore";
 
-const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant.
+const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant. Be clear, concise, and direct.
 
-Formatting and Content Capabilities:
-- You have full support for Markdown formatting. Use bold, italics, code blocks, lists, and tables when appropriate to structure your responses.
-- You have robust support for LaTeX mathematics rendering via KaTeX.
-  - Always wrap inline mathematical expressions, variables, and symbols in single dollar signs (e.g., $E = mc^2$, $x$, $\\alpha$).
-  - Always wrap display-level equations in double dollar signs on their own lines (e.g., $$f(x) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x} \\,d\\xi$$).
-  - Use standard LaTeX environments like \\frac, \\sum, \\sqrt, and matrices where necessary.
-  - Ensure equations are correctly formatted and mathematically accurate.
+- Use Markdown formatting where appropriate (headers, bold, lists, tables, code blocks with language labels).
+- Use KaTeX for math: inline with $...$ and display with $$...$$.
+- Break down complex problems step by step.
+- If a request is ambiguous, ask one clarifying question before proceeding.`;
 
-Interaction Guidelines:
-- Be clear, concise, and direct in your answers.
-- Organize complex explanations into digestible sections using headings.
-- If you provide code snippets, always specify the language for proper syntax highlighting.
-- When appropriate, break down steps logically and explain your reasoning.
+function getTemporalPrompt() {
+  const now = new Date();
+  const date = now.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const time = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+
+  return `Temporal Awareness:
+- CURRENT_DATE: ${date}
+- CURRENT_TIME: ${time}
+- CURRENT_WEEKDAY: ${weekday}
 `;
+}
+
+function processTemporalVariables(content: string) {
+  const now = new Date();
+  const date = now.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const time = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+
+  return content
+    .replace(/\{\{CURRENT_DATE\}\}/g, date)
+    .replace(/\{\{CURRENT_TIME\}\}/g, time)
+    .replace(/\{\{CURRENT_WEEKDAY\}\}/g, weekday);
+}
 
 export function useChatStream(
   selectedModels: string[],
-  supportsReasoning: boolean,
   mockMode = false,
   systemPrompt = "",
 ) {
@@ -41,44 +69,31 @@ export function useChatStream(
     setStreamingConversationId(isStreaming ? activeConversationId : null);
   }, [isStreaming, activeConversationId, setStreamingConversationId]);
 
-  const [reasoningStartAt, setReasoningStartAt] = useState<number | null>(null);
-  const [reasoningElapsedMs, setReasoningElapsedMs] = useState(0);
-  const [lastReasoningDurationMs, setLastReasoningDurationMs] = useState<
-    number | null
-  >(null);
-  
-  // Track streaming messages per request_id
-  const [streamingMessages, setStreamingMessages] = useState<Record<string, {
-    id: string;
-    role: "assistant";
-    content: string;
-    conversationId: string;
-    createdAt: string;
-    model: string;
-  }>>({});
-  
+  const [streamingMessages, setStreamingMessages] = useState<
+    Record<
+      string,
+      {
+        id: string;
+        role: "assistant";
+        content: string;
+        conversationId: string;
+        createdAt: string;
+        model: string;
+      }
+    >
+  >({});
+
   const streamingMessagesRef = useRef<Record<string, string>>({});
   const messageIdsRef = useRef<Record<string, string>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const mockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelStreamRef = useRef(false);
 
-  const completeReasoning = useCallback(() => {
-    if (!supportsReasoning) return;
-    setReasoningStartAt((start) => {
-      if (start === null) return null;
-      const elapsed = Date.now() - start;
-      setLastReasoningDurationMs(elapsed);
-      setReasoningElapsedMs(elapsed);
-      return null;
-    });
-  }, [supportsReasoning]);
-
-  useEffect(() => {
-    setReasoningStartAt(null);
-    setReasoningElapsedMs(0);
-    setLastReasoningDurationMs(null);
-  }, [selectedModels]);
+  const resetStreamState = useCallback(() => {
+    setStreamingMessages({});
+    streamingMessagesRef.current = {};
+    messageIdsRef.current = {};
+  }, []);
 
   useEffect(() => {
     cancelStreamRef.current = true;
@@ -86,16 +101,10 @@ export function useChatStream(
       clearTimeout(mockTimerRef.current);
       mockTimerRef.current = null;
     }
-    setStreamingMessages({});
-    streamingMessagesRef.current = {};
-    messageIdsRef.current = {};
+    resetStreamState();
     setIsStreaming(false);
-    setReasoningStartAt(null);
-    setReasoningElapsedMs(0);
-    setLastReasoningDurationMs(null);
-  }, [activeConversationId]);
+  }, [activeConversationId, resetStreamState]);
 
-  // Scroll to bottom when messages change
   const displayMessages = useMemo<ChatMessage[]>(() => {
     const streamList = Object.values(streamingMessages);
     if (streamList.length === 0) return messages;
@@ -106,87 +115,82 @@ export function useChatStream(
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages]);
 
-  // Listen for streaming chunks
   useEffect(() => {
     if (mockMode) return;
 
     const unlistenPromise = listen<StreamPayload>(
       "chat-chunk",
       async (event) => {
-        if (cancelStreamRef.current) {
-          return;
-        }
+        if (cancelStreamRef.current) return;
         if (!activeConversationId) return;
 
         const { request_id, done, content, metadata } = event.payload;
 
-        if (!done) {
-          streamingMessagesRef.current[request_id] = (streamingMessagesRef.current[request_id] || "") + content;
+        streamingMessagesRef.current[request_id] =
+          (streamingMessagesRef.current[request_id] || "") + content;
+        const fullContent = streamingMessagesRef.current[request_id];
 
-          setStreamingMessages((prev) => {
-            if (!prev[request_id]) {
-              const messageId = crypto.randomUUID();
-              messageIdsRef.current[request_id] = messageId;
-              
-              const lastLog = useInspectorStore
-                .getState()
-                .logs.find(
-                  (l) => l.id === request_id,
-                );
-              const model = lastLog?.model || "unknown";
+        setStreamingMessages((prev) => {
+          if (!prev[request_id]) {
+            const messageId = crypto.randomUUID();
+            messageIdsRef.current[request_id] = messageId;
 
-              if (lastLog && !lastLog.timing.firstTokenTime) {
-                updateLog(lastLog.id, {
-                  timing: {
-                    ...lastLog.timing,
-                    firstTokenTime: Date.now() - lastLog.timing.startTime,
-                  },
-                });
-              }
-              return {
-                ...prev,
-                [request_id]: {
-                  id: messageId,
-                  role: "assistant",
-                  content: content,
-                  conversationId: activeConversationId,
-                  createdAt: new Date().toISOString(),
-                  model,
+            const lastLog = useInspectorStore
+              .getState()
+              .logs.find((l) => l.id === request_id);
+            const model = lastLog?.model || "unknown";
+
+            if (lastLog && !lastLog.timing.firstTokenTime) {
+              updateLog(lastLog.id, {
+                timing: {
+                  ...lastLog.timing,
+                  firstTokenTime: Date.now() - lastLog.timing.startTime,
                 },
-              };
+              });
             }
-            return { 
-              ...prev, 
-              [request_id]: { 
-                ...prev[request_id], 
-                content: streamingMessagesRef.current[request_id] 
-              } 
+
+            return {
+              ...prev,
+              [request_id]: {
+                id: messageId,
+                role: "assistant",
+                content: fullContent,
+                conversationId: activeConversationId,
+                createdAt: new Date().toISOString(),
+                model,
+              },
             };
-          });
-        }
-
-        if (done) {
-          const finalContent = streamingMessagesRef.current[request_id] || "";
-          const messageId = messageIdsRef.current[request_id];
-          const model = streamingMessages[request_id]?.model;
-
-          // Check if all streams are done
-          const remainingStreams = Object.keys(streamingMessagesRef.current).filter(id => id !== request_id);
-          if (remainingStreams.length === 0) {
-            setIsStreaming(false);
-            completeReasoning();
           }
 
-          const lastLog = useInspectorStore.getState().logs.find(
-            (l) => l.id === request_id,
-          );
+          return {
+            ...prev,
+            [request_id]: { ...prev[request_id], content: fullContent },
+          };
+        });
+
+        if (done) {
+          const messageId = messageIdsRef.current[request_id];
+          const model =
+            useInspectorStore.getState().logs.find((l) => l.id === request_id)
+              ?.model || "unknown";
+
+          const remainingStreams = Object.keys(
+            streamingMessagesRef.current,
+          ).filter((id) => id !== request_id);
+          if (remainingStreams.length === 0) {
+            setIsStreaming(false);
+          }
+
+          const lastLog = useInspectorStore
+            .getState()
+            .logs.find((l) => l.id === request_id);
           if (lastLog) {
             updateLog(lastLog.id, {
               response: {
                 status: 200,
                 headers: {},
                 body: {
-                  message: { role: "assistant", content: finalContent },
+                  message: { role: "assistant", content: fullContent },
                   done: true,
                   ...metadata,
                 },
@@ -204,12 +208,12 @@ export function useChatStream(
             });
           }
 
-          if (finalContent.trim() && messageId) {
+          if (fullContent.trim() && messageId) {
             void addMessage({
               id: messageId,
               conversationId: activeConversationId,
               role: "assistant",
-              content: finalContent,
+              content: fullContent,
               createdAt: new Date().toISOString(),
               model,
             }).then(() => {
@@ -228,7 +232,7 @@ export function useChatStream(
                 );
                 if (userMessage) {
                   invoke<string>("chat", {
-                    model: model,
+                    model,
                     messages: [
                       {
                         role: "user",
@@ -255,7 +259,7 @@ Text: ${userMessage.content}`,
             });
           }
 
-          setStreamingMessages(prev => {
+          setStreamingMessages((prev) => {
             const next = { ...prev };
             delete next[request_id];
             return next;
@@ -271,23 +275,12 @@ Text: ${userMessage.content}`,
     };
   }, [
     mockMode,
-    completeReasoning,
     activeConversationId,
     addMessage,
     streamingMessages,
     renameConversation,
     updateLog,
   ]);
-
-  useEffect(() => {
-    if (!reasoningStartAt) return;
-
-    const interval = setInterval(() => {
-      setReasoningElapsedMs(Date.now() - reasoningStartAt);
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, [reasoningStartAt]);
 
   useEffect(() => {
     return () => {
@@ -300,8 +293,12 @@ Text: ${userMessage.content}`,
 
   const sendMessage = useCallback(
     async (content: string, attachments?: Attachment[]) => {
-      const models = selectedModels.filter(m => !!m);
-      if (!content.trim() || isStreaming || (models.length === 0 && !mockMode)) {
+      const models = selectedModels.filter((m) => !!m);
+      if (
+        !content.trim() ||
+        isStreaming ||
+        (models.length === 0 && !mockMode)
+      ) {
         return;
       }
 
@@ -310,47 +307,14 @@ Text: ${userMessage.content}`,
         useChatStore.getState().activeConversationId ?? activeConversationId;
       if (!conversationId) return;
 
+      const processedContent = processTemporalVariables(content.trim());
+
       void addMessage({
         conversationId,
         role: "user",
-        content: content.trim(),
+        content: processedContent,
         attachments,
       });
-
-      setIsStreaming(true);
-      setStreamingMessages({});
-      streamingMessagesRef.current = {};
-      messageIdsRef.current = {};
-      
-      if (supportsReasoning) {
-        const start = Date.now();
-        setReasoningStartAt(start);
-        setReasoningElapsedMs(0);
-        setLastReasoningDurationMs(null);
-      }
-
-      if (mockMode) {
-        if (mockTimerRef.current) {
-          clearTimeout(mockTimerRef.current);
-        }
-
-        const delayMs = 600 + Math.round(Math.random() * 400);
-        mockTimerRef.current = setTimeout(() => {
-          const createdAt = new Date().toISOString();
-          const messageId = crypto.randomUUID();
-          setIsStreaming(false);
-          completeReasoning();
-          void addMessage({
-            id: messageId,
-            conversationId,
-            role: "assistant",
-            content: `Mock response: ${content.trim()}`,
-            createdAt,
-            model: "mock-model",
-          });
-        }, delayMs);
-        return;
-      }
 
       const history = useChatStore.getState().messages.map((m) => ({
         role: m.role,
@@ -358,29 +322,46 @@ Text: ${userMessage.content}`,
         attachments: m.attachments || [],
       }));
 
+      setIsStreaming(true);
+      resetStreamState();
+
+      if (mockMode) {
+        if (mockTimerRef.current) clearTimeout(mockTimerRef.current);
+        const delayMs = 600 + Math.round(Math.random() * 400);
+        mockTimerRef.current = setTimeout(() => {
+          const createdAt = new Date().toISOString();
+          const messageId = crypto.randomUUID();
+          setIsStreaming(false);
+          void addMessage({
+            id: messageId,
+            conversationId,
+            role: "assistant",
+            content: `Mock response: ${processedContent}`,
+            createdAt,
+            model: "mock-model",
+          });
+        }, delayMs);
+        return;
+      }
+
+      const temporalPrompt = getTemporalPrompt();
+      const baseSystemPrompt = `${MAIN_SYSTEM_PROMPT}\n${temporalPrompt}`;
       const finalSystemPrompt = systemPrompt.trim()
-        ? `${MAIN_SYSTEM_PROMPT}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
-        : MAIN_SYSTEM_PROMPT;
+        ? `${baseSystemPrompt}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
+        : baseSystemPrompt;
 
       for (const model of models) {
         const request_id = crypto.randomUUID();
         const requestBody = {
-          request_id,
+          requestId: request_id,
           model,
-          messages: [
-            ...history,
-            {
-              role: "user",
-              content: content.trim(),
-              attachments: attachments || [],
-            },
-          ],
+          messages: history,
           systemPrompt: finalSystemPrompt,
         };
 
         addLog({
           id: request_id,
-          model: model,
+          model,
           request: {
             url: "tauri://chat_stream",
             method: "POST",
@@ -392,9 +373,9 @@ Text: ${userMessage.content}`,
           },
         });
 
-        invoke("chat_stream", requestBody).catch(error => {
+        invoke("chat_stream", requestBody).catch((error) => {
           console.error(`Chat error for model ${model}:`, error);
-          
+
           const errorContent =
             typeof error === "string" && error.includes("not found")
               ? `Model "${model}" not found. Please pull the model or select a different one.`
@@ -414,13 +395,12 @@ Text: ${userMessage.content}`,
     [
       selectedModels,
       isStreaming,
-      supportsReasoning,
       mockMode,
       systemPrompt,
       activeConversationId,
-      completeReasoning,
       addMessage,
       addLog,
+      resetStreamState,
     ],
   );
 
@@ -440,27 +420,22 @@ Text: ${userMessage.content}`,
     }
 
     const currentStreams = { ...streamingMessages };
-    Object.entries(currentStreams).forEach(([request_id, msg]) => {
-      const finalContent = streamingMessagesRef.current[request_id];
-      if (finalContent && finalContent.trim()) {
+    Object.values(currentStreams).forEach((msg) => {
+      if (msg.content.trim()) {
         void addMessage({
           id: msg.id,
           conversationId: msg.conversationId,
           role: msg.role,
-          content: finalContent,
+          content: msg.content,
           createdAt: msg.createdAt,
           model: msg.model,
         });
       }
     });
 
-    setStreamingMessages({});
-    streamingMessagesRef.current = {};
-    messageIdsRef.current = {};
+    resetStreamState();
     setIsStreaming(false);
-    completeReasoning();
-    setReasoningStartAt(null);
-  }, [isStreaming, mockMode, completeReasoning, addMessage, streamingMessages]);
+  }, [isStreaming, mockMode, addMessage, streamingMessages, resetStreamState]);
 
   return {
     messages: displayMessages,
@@ -469,7 +444,5 @@ Text: ${userMessage.content}`,
     stopStreaming,
     bottomRef,
     hasMessages: displayMessages.length > 0,
-    reasoningElapsedMs,
-    lastReasoningDurationMs,
   };
 }

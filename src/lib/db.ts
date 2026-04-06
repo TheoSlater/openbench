@@ -109,7 +109,6 @@ export async function initDB() {
         );
         if (!columns.some((col) => col.name === "model")) {
           await db.execute("ALTER TABLE messages ADD COLUMN model TEXT");
-          console.log("[db] Added 'model' column to 'messages' table");
         }
       } catch (err) {
         console.error("[db] Error checking/adding 'model' column:", err);
@@ -200,6 +199,7 @@ export async function addMessage(msg: {
   content: string;
   createdAt: string;
   attachments?: any[];
+  model?: string;
 }) {
   if (inMemoryMode) {
     const messageList = fallbackMessages[msg.conversationId] ?? [];
@@ -212,6 +212,7 @@ export async function addMessage(msg: {
         content: msg.content,
         createdAt: msg.createdAt,
         attachments: msg.attachments ? JSON.stringify(msg.attachments) : undefined,
+        model: msg.model,
       },
     ];
     const conversation = fallbackConversations[msg.conversationId];
@@ -222,7 +223,7 @@ export async function addMessage(msg: {
   }
 
   await getDB().execute(
-    `INSERT INTO messages (id, conversationId, role, content, createdAt, attachments) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       msg.id,
       msg.conversationId,
@@ -230,6 +231,7 @@ export async function addMessage(msg: {
       msg.content,
       msg.createdAt,
       msg.attachments ? JSON.stringify(msg.attachments) : null,
+      msg.model || null,
     ],
   );
 

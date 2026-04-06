@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
 import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
 import { InspectorPanel } from "@/components/Inspector/InspectorPanel";
-import { modelSupportsReasoning } from "@/lib/model-utils";
 import { useModelStore } from "@/store/modelStore";
 import { Sidebar, SidebarInset, SidebarProvider } from "@/components/Layout/Sidebar";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
@@ -86,7 +85,6 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const supportsReasoning = devMode || modelSupportsReasoning(selectedModel);
   const activeSystemPrompt =
     systemPrompts.find((prompt) => prompt.id === activeSystemPromptId) ?? null;
 
@@ -99,7 +97,6 @@ function App() {
     hasMessages,
   } = useChatStream(
     selectedModels,
-    supportsReasoning,
     devMode,
     activeSystemPrompt?.content ?? "",
   );
@@ -202,9 +199,13 @@ function App() {
     sendMessage(previousUserMessage.content);
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = (isTemporary = false) => {
     stopStreaming();
-    setActiveConversationId(null);
+    if (isTemporary) {
+      void createConversation("Temporary Chat", true);
+    } else {
+      setActiveConversationId(null);
+    }
   };
 
   const handleSelectConversation = (id: string) => {
@@ -228,6 +229,21 @@ function App() {
 
   const handleCloseToast = () => {
     setToast({ ...toast, open: false });
+  };
+
+  const isTemporary = conversations.find((c) => c.id === activeConversationId)?.isTemporary;
+
+  const handleToggleTemporaryChat = async () => {
+    if (isStreaming) stopStreaming();
+
+    if (isTemporary) {
+      // Find the last non-temporary conversation to switch back to, or null for a new chat
+      const lastNormal = conversations.find(c => !c.isTemporary);
+      setActiveConversationId(lastNormal?.id || null);
+    } else {
+      // If not temporary, start a new temporary chat
+      await createConversation("Temporary Chat", true);
+    }
   };
 
   return (
@@ -257,6 +273,8 @@ function App() {
           onSetDefault={handleSetDefaultModel}
           onToggleInspector={() => setIsInspectorOpen((v) => !v)}
           isInspectorOpen={isInspectorOpen}
+          isTemporary={isTemporary}
+          onToggleTemporaryChat={handleToggleTemporaryChat}
         />
 
         <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative", bgcolor: "background.default", pt: "56px" }}>
@@ -273,6 +291,7 @@ function App() {
                   duration: theme.transitions.duration.leavingScreen,
                 }),
               marginRight: isInspectorOpen ? "0px" : "-350px",
+              width: "100%",
             }}
           >
             {hasMessages ? (
@@ -280,11 +299,13 @@ function App() {
                 messages={messages}
                 bottomRef={bottomRef}
                 onRegenerate={handleRegenerate}
+                isTemporary={isTemporary}
               />
             ) : (
               <EmptyState
                 selectedModels={devMode ? ["Dev Mode"] : selectedModels}
                 userName={user?.fullName || user?.email}
+                isTemporary={isTemporary}
               >
                 <ChatInput
                   value={input}
@@ -295,6 +316,7 @@ function App() {
                   selectedModel={devMode ? "Dev Mode" : selectedModel}
                   hasMessages={hasMessages}
                   allowEmptyModel={devMode}
+                  isTemporary={isTemporary}
                 />
               </EmptyState>
             )}
@@ -309,6 +331,7 @@ function App() {
                 selectedModel={devMode ? "Dev Mode" : selectedModel}
                 hasMessages={hasMessages}
                 allowEmptyModel={devMode}
+                isTemporary={isTemporary}
               />
             )}
           </Box>

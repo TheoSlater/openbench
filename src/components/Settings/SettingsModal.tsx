@@ -1,4 +1,5 @@
 import { PersonalizationPanel } from "./PersonalizationPanel";
+import { GeneralSettingsPanel } from "./GeneralSettingsPanel";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
@@ -161,7 +162,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {activeTab === "personalization" ? (
               <PersonalizationPanel ref={personalizationRef} />
             ) : activeTab === "general" ? (
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {/* Theme Section */}
                 <Box>
                   <Typography
@@ -245,6 +246,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     })}
                   </Box>
                 </Box>
+
+                {/* Ollama Config Section */}
+                <GeneralSettingsPanel />
               </Box>
             ) : (
               <Box

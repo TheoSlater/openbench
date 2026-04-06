@@ -89,7 +89,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 interface SidebarProps {
   onOpenSettings: () => void;
-  onNewChat: () => void;
+  onNewChat: (isTemporary?: boolean) => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => Promise<void>;
@@ -175,7 +175,7 @@ export function Sidebar({
           <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", pt: 2, gap: 2 }}>
             <SidebarTrigger />
             <IconButton
-              onClick={onNewChat}
+              onClick={() => onNewChat(false)}
               size="small"
               sx={{
                 color: "text.secondary",
@@ -184,15 +184,40 @@ export function Sidebar({
             >
               <Plus size={18} />
             </IconButton>
+            <IconButton
+              onClick={() => onNewChat(true)}
+              size="small"
+              sx={{
+                color: "text.secondary",
+                "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+              }}
+            >
+              <svg
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                style={{ width: 18, height: 18 }}
+              >
+                <path
+                  d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="2.5 3.5"
+                ></path>
+              </svg>
+            </IconButton>
           </Box>
         )}
       </SidebarHeader>
 
       <SidebarContent>
         {!isCollapsed && (
-          <Box sx={{ px: 1.5, mb: 2, mt: 1, display: "flex", justifyContent: "center" }}>
+          <Box sx={{ px: 1.5, mb: 1, mt: 1, display: "flex", flexDirection: "column", gap: 1 }}>
             <SidebarMenuButton
-              onClick={onNewChat}
+              onClick={() => onNewChat(false)}
               isActive={false}
               sx={{
                 width: "100%",
@@ -208,6 +233,38 @@ export function Sidebar({
                 New Chat
               </Box>
             </SidebarMenuButton>
+            <SidebarMenuButton
+              onClick={() => onNewChat(true)}
+              isActive={false}
+              sx={{
+                width: "100%",
+                justifyContent: "flex-start",
+                bgcolor: "transparent",
+                border: "1px solid",
+                borderColor: "divider",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <svg
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                style={{ width: 18, height: 18 }}
+              >
+                <path
+                  d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="2.5 3.5"
+                ></path>
+              </svg>
+              <Box component="span" sx={{ ml: 1 }}>
+                Temporary Chat
+              </Box>
+            </SidebarMenuButton>
           </Box>
         )}
 
@@ -216,7 +273,7 @@ export function Sidebar({
             <SidebarGroupLabel>Recent</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {conversations.filter(c => !c.isArchived).map((conv) => (
+                {conversations.filter(c => !c.isArchived && !c.isTemporary).map((conv) => (
                   <SidebarMenuButton
                     key={conv.id}
                     isActive={activeConversationId === conv.id}
@@ -282,8 +339,7 @@ export function Sidebar({
                                       color: "text.primary",
                                       bgcolor: "action.selected",
                                     },
-                                    opacity:
-                                      activeConversationId === conv.id ? 1 : 0,
+                                    opacity: 0,
                                     ".MuiBox-root:hover &": { opacity: 1 },
                                   }}
                                 >

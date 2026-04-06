@@ -229,6 +229,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
           borderLeft: "1px solid",
           borderColor: "divider",
           boxShadow: "none",
+          display: "flex",
+          flexDirection: "column",
         },
       }}
     >
@@ -239,6 +241,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
           alignItems: "center",
           justifyContent: "space-between",
           gap: 1,
+          flexShrink: 0,
         }}
       >
         <Typography
@@ -252,7 +255,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
             size="small"
             onClick={() => clearLogs()}
             title="Clear Logs"
-            sx={{ borderRadius: 1, px: 1, height: 28 }}
+            sx={{ 
+              borderRadius: "8px", 
+              px: 1, 
+              height: 28,
+              "&:hover": { bgcolor: "action.hover" }
+            }}
           >
             <Typography
               variant="caption"
@@ -262,20 +270,28 @@ export const InspectorPanel: React.FC<InspectorPanelProps & { open: boolean }> =
               CLEAR
             </Typography>
           </IconButton>
-          <IconButton size="small" onClick={onClose} title="Close Panel">
+          <IconButton 
+            size="small" 
+            onClick={onClose} 
+            title="Close Panel"
+            sx={{ 
+              borderRadius: "8px",
+              "&:hover": { bgcolor: "action.hover" }
+            }}
+          >
             <X size={18} />
           </IconButton>
         </Stack>
       </Box>
       <Divider />
-      <Box sx={{ flexGrow: 1, overflowY: "auto" }}>
+      <Box sx={{ flexGrow: 1, overflowY: "auto", minHeight: 0 }}>
         {logs.length === 0 ? (
           <Box sx={{ p: 4, textAlign: "center", opacity: 0.8 }}>
             <Typography variant="body2">No logs yet.</Typography>
             <Typography variant="caption">Requests will appear here as they happen.</Typography>
           </Box>
         ) : (
-          logs.map((log) => <LogItem key={log.id} log={log} />)
+          [...logs].reverse().map((log) => <LogItem key={log.id} log={log} />)
         )}
       </Box>
     </Drawer>

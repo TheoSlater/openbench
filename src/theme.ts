@@ -83,7 +83,7 @@ export const darkTheme = createTheme({
     },
     text: {
       primary: "#ececec",   // Soft white for better readability
-      secondary: "rgba(255, 255, 255, 0.7)", // Muted text
+      secondary: "#a3a3a3", // Muted text, fully opaque (neutral-400)
     },
     divider: "rgba(255, 255, 255, 0.05)",
     action: {
@@ -123,7 +123,7 @@ export const lightTheme = createTheme({
     },
     text: {
       primary: "#1a1a1a",
-      secondary: "rgba(0, 0, 0, 0.7)",
+      secondary: "#737373", // Muted text, fully opaque (neutral-500)
     },
     divider: "rgba(0, 0, 0, 0.05)",
     action: {

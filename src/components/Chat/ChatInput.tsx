@@ -21,6 +21,7 @@ interface ChatInputProps {
   hasMessages: boolean;
   allowEmptyModel?: boolean;
   onFocusChange?: (focused: boolean) => void;
+  isTemporary?: boolean;
 }
 
 export function ChatInput({
@@ -32,6 +33,7 @@ export function ChatInput({
   selectedModel,
   allowEmptyModel = false,
   onFocusChange,
+  isTemporary,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,10 +154,11 @@ export function ChatInput({
             bgcolor: "background.paper",
             p: 1.5,
             transition: "all 0.2s",
-            border: "1px solid",
-            borderColor: "divider",
+            border: isTemporary ? "1px dashed" : "1px solid",
+            borderColor: isTemporary ? "border.main" : "divider",
             "&:focus-within": {
               borderColor: "border.main",
+              boxShadow: isTemporary ? (theme) => `0 0 0 1px ${theme.palette.border.main}` : "none",
             },
           }}
         >

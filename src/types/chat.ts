@@ -6,6 +6,7 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   isArchived: boolean;
+  isTemporary?: boolean;
 }
 
 export interface Attachment {

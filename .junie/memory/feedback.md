@@ -86,3 +86,51 @@
     "NEW INSTRUCTION": "WHEN rendering EmptyState and two or more models are selected THEN show 'Hello, {username}' instead of model name"
 }
 
+[2026-04-05 15:17] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "missing requestId param",
+    "EXPECTATION": "Ollama chat_stream calls must include the required requestId so the request is accepted.",
+    "NEW INSTRUCTION": "WHEN sending Ollama chat_stream request THEN include unique requestId string in args"
+}
+
+[2026-04-05 16:39] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "UI outline color",
+    "EXPECTATION": "The dotted outline should use the same color as the default selected/focus outline.",
+    "NEW INSTRUCTION": "WHEN temporary chat is enabled AND input is focused THEN apply default focus outline color to dotted border"
+}
+
+[2026-04-05 17:27] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "garbled/truncated responses",
+    "EXPECTATION": "Asking simple queries like 'What time is it' should yield a complete, coherent answer without stray tokens or cut-offs.",
+    "NEW INSTRUCTION": "WHEN handling streaming chunks THEN concatenate message.content in order and finalize only on stream end"
+}
+
+[2026-04-05 20:02] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "stream handling",
+    "EXPECTATION": "Streaming responses must capture complete assistant text in order and only finalize on stream end to avoid garbled or truncated outputs.",
+    "NEW INSTRUCTION": "WHEN handling streaming chunks THEN concatenate message.content in order and finalize on stream end"
+}
+
+[2026-04-05 20:14] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "thinking indicator not showing",
+    "EXPECTATION": "The ThinkingIndicator should appear during the thought block and show duration after it ends.",
+    "NEW INSTRUCTION": "WHEN a chunk contains \"<|channel>thought\" THEN set isThinking true and render ThinkingIndicator"
+}
+
+[2026-04-05 20:17] - Updated by Junie
+{
+    "TYPE": "correction",
+    "CATEGORY": "garbled/truncated response",
+    "EXPECTATION": "Simple prompts like asking the time should return a complete, well-formed sentence without stray or missing characters (e.g., not 'It16 PM) local time') and without unrelated filler lines.",
+    "NEW INSTRUCTION": "WHEN concatenating streaming chunks THEN preserve whitespace and punctuation exactly as received"
+}
+
