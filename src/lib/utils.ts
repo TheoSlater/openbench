@@ -1,8 +1,62 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { invoke } from "@tauri-apps/api/core";
+import { useInspectorStore } from "@/store/inspectorStore";
+
+type InvokeArgs = Record<string, unknown>;
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/**
+ * A wrapper around Tauri's invoke that logs the call to the inspector.
+ */
+export async function loggedInvoke<T>(
+  cmd: string,
+  args: InvokeArgs = {},
+): Promise<T> {
+  const { addLog, updateLog } = useInspectorStore.getState().actions;
+  const requestId = crypto.randomUUID();
+  const startTime = Date.now();
+  const request = {
+    url: `tauri://${cmd}`,
+    method: "POST" as const,
+    headers: {},
+    body: args,
+  };
+
+  addLog({
+    id: requestId,
+    model: "system",
+    request,
+    timing: { startTime },
+  });
+
+  const finishLog = (status: number, body: unknown) => {
+    updateLog(requestId, {
+      response: {
+        status,
+        headers: {},
+        body,
+      },
+      timing: { startTime, totalTime: Date.now() - startTime },
+    });
+  };
+
+  try {
+    const result = await invoke<T>(cmd, args);
+    finishLog(200, result || { success: true });
+    return result;
+  } catch (error: unknown) {
+    finishLog(500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : String(error || "Unknown error"),
+    });
+    throw error;
+  }
 }
 
 /**

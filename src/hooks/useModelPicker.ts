@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useModelStore, type OllamaModel } from "@/store/modelStore";
+import { loggedInvoke } from "@/lib/utils";
 
 export function useModelPicker() {
   const setAvailableModels = useModelStore((state) => state.setAvailableModels);
@@ -14,22 +14,18 @@ export function useModelPicker() {
     setIsLoading(true);
     setOllamaError(null);
     try {
-      const models = await invoke<OllamaModel[]>("get_local_models");
-
+      const models = await loggedInvoke<OllamaModel[]>("get_local_models");
       setAvailableModels({ ollama: models });
-      
-      const modelNames = models.map(m => m.name.toString());
-      if (models.length > 0) {
-        // Only auto-select if nothing is selected yet
-        if (!selectedModel) {
-          // Priority: 1. Default model if available, 2. First available model
-          const modelToSelect = (defaultModel && modelNames.includes(defaultModel)) 
-            ? defaultModel 
+
+      if (!selectedModel && models.length > 0) {
+        const modelNames = models.map((model) => model.name);
+        const preferredModel =
+          defaultModel && modelNames.includes(defaultModel)
+            ? defaultModel
             : modelNames[0];
-          setSelectedModel("ollama", modelToSelect);
-        }
+        setSelectedModel("ollama", preferredModel);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Failed to load Ollama models:", error);
       setOllamaError("Ollama unavailable");
     } finally {

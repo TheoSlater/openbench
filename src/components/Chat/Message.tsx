@@ -14,6 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { isImageAttachment, createDataUrl, formatFileSize } from "@/lib/utils";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export interface MessageProps {
   role: Role;
@@ -61,7 +63,7 @@ export function Message({
           flexDirection: "column",
           width: "100%",
           alignItems: "flex-end",
-          py: 1,
+          py: 0.5,
         }}
       >
         {attachments && attachments.length > 0 && (
@@ -109,7 +111,7 @@ export function Message({
                       sx={{
                         width: 40,
                         height: 40,
-                        borderRadius: "8px",
+                        borderRadius: 1,
                         bgcolor: "action.hover",
                         display: "flex",
                         alignItems: "center",
@@ -148,10 +150,10 @@ export function Message({
         <Box
           sx={{
             maxWidth: { xs: "85%", sm: "70%" },
-            borderRadius: "1.5rem",
-            bgcolor: "secondary.main",
+            borderRadius: "24px",
+            bgcolor: "chat.bubbleUser",
             border: "1px solid",
-            borderColor: "divider",
+            borderColor: "border.light",
             px: 2.5,
             py: 1.5,
             transition: "all 0.2s ease",
@@ -179,9 +181,18 @@ export function Message({
         display: "flex",
         flexDirection: "column",
         width: "100%",
-        py: 2,
+        py: 0.5,
         "& .action-bar": {
+          opacity: 0,
+          transition: "opacity 0.2s",
+        },
+        "&:hover .action-bar, &:focus-within .action-bar": {
           opacity: 1,
+        },
+        "@media (hover: none)": {
+          "& .action-bar": {
+            opacity: 1,
+          },
         },
       }}
     >
@@ -190,7 +201,7 @@ export function Message({
           <Typography
             variant="caption"
             sx={{
-              color: "primary.main",
+              color: "text.secondary",
               fontWeight: 600,
               mb: 1,
               display: "block",
@@ -207,16 +218,68 @@ export function Message({
         {content ? (
           <Box
             sx={{
-              "& p": { lineHeight: 1.75, fontSize: "16px", color: "text.primary", mb: 2 },
-              "& pre": { bgcolor: "secondary.main", p: 2, borderRadius: "12px", overflowX: "auto", mb: 2 },
-              "& code": { color: "text.primary", fontFamily: "monospace" },
-              "& ul, & ol": { color: "text.primary", pl: 3, mb: 2 },
-              "& li": { mb: 1 },
+              color: "text.primary",
+              fontSize: "15px",
+              lineHeight: 1.6,
+              maxWidth: { xs: "90%", sm: "80%" },
+              "& p": { mb: 2, "&:last-child": { mb: 0 }, lineHeight: 1.6, fontSize: "15px" },
+              "& pre": { mb: 2, p: 0, borderRadius: "8px", overflow: "hidden" },
+              "& code": {
+                bgcolor: "action.hover",
+                px: 0.6,
+                py: 0.2,
+                borderRadius: "4px",
+                fontFamily: "monospace",
+                fontSize: "0.9em",
+              },
+              "& ul, & ol": { pl: 3, mb: 2 },
+              "& li": { mb: 0.5 },
+              "& blockquote": {
+                borderLeft: "4px solid",
+                borderColor: "divider",
+                pl: 2,
+                fontStyle: "italic",
+                color: "text.secondary",
+                mb: 2,
+              },
+              "& table": {
+                width: "100%",
+                borderCollapse: "collapse",
+                mb: 2,
+                border: "1px solid",
+                borderColor: "divider",
+              },
+              "& th, & td": {
+                border: "1px solid",
+                borderColor: "divider",
+                p: 1,
+                textAlign: "left",
+              },
+              "& th": { bgcolor: "action.hover", fontWeight: 600 },
             }}
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  return !inline && match ? (
+                    <SyntaxHighlighter
+                      style={vscDarkPlus as any}
+                      language={match[1]}
+                      PreTag="div"
+                      {...props}
+                    >
+                      {String(children).replace(/\n$/, "")}
+                    </SyntaxHighlighter>
+                  ) : (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                },
+              }}
             >
               {content}
             </ReactMarkdown>

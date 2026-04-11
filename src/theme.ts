@@ -12,7 +12,7 @@ declare module "@mui/material/styles" {
     chat: {
       bubble: string;
       bubbleUser: string;
-    }
+    };
   }
   interface PaletteOptions {
     border?: {
@@ -22,7 +22,7 @@ declare module "@mui/material/styles" {
     chat?: {
       bubble?: string;
       bubbleUser?: string;
-    }
+    };
   }
 }
 
@@ -61,6 +61,17 @@ const baseThemeOptions: ThemeOptions = {
         },
       },
     },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          borderRadius: "8px",
+          margin: "4px 8px",
+          padding: "8px 12px",
+          fontSize: "14px",
+          gap: "12px",
+        },
+      },
+    },
   },
 };
 
@@ -78,11 +89,11 @@ export const darkTheme = createTheme({
     },
     background: {
       default: "#171717", // Subtle dark grey from reference
-      paper: "#1a1a1a",   // Slightly lighter for inputs/cards
+      paper: "#1a1a1a", // Slightly lighter for inputs/cards
       sidebar: "#121212", // Darker background for sidebar
     },
     text: {
-      primary: "#ececec",   // Soft white for better readability
+      primary: "#ececec", // Soft white for better readability
       secondary: "#a3a3a3", // Muted text, fully opaque (neutral-400)
     },
     divider: "rgba(255, 255, 255, 0.05)",

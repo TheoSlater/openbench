@@ -1,4 +1,4 @@
-import { ModelProvider, OllamaModel } from "@/store/modelStore";
+import { ModelProvider, OllamaModel, PullProgress } from "@/store/modelStore";
 import {
   Box,
   Select,
@@ -8,8 +8,10 @@ import {
   Link,
   Tooltip,
   IconButton,
+  CircularProgress,
+  LinearProgress,
 } from "@mui/material";
-import { X, ChevronDown, Eye, Plus, Settings2 } from "lucide-react";
+import { X, ChevronDown, Eye, Plus, Settings2, AlertCircle } from "lucide-react";
 
 interface HeaderProps {
   availableModels: {
@@ -33,6 +35,8 @@ interface HeaderProps {
   isInspectorOpen: boolean;
   isTemporary?: boolean;
   onToggleTemporaryChat: () => void;
+  pullingModel?: string | null;
+  pullProgress?: PullProgress | null;
 }
 
 export function Header({
@@ -49,8 +53,11 @@ export function Header({
   isInspectorOpen,
   isTemporary,
   onToggleTemporaryChat,
+  pullingModel,
+  pullProgress,
 }: HeaderProps) {
   const hasAnyModels = availableModels.ollama.length > 0;
+  const isOllamaLoading = isLoading && !hasAnyModels;
 
   return (
     <Box
@@ -73,141 +80,170 @@ export function Header({
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-            {selectedModels.map((selectedModel, index) => (
-              <Box key={`${selectedModel}-${index}`} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <FormControl size="small">
-                  <Select
-                    value={selectedModel}
-                    onChange={(e) => onModelChange(index, "ollama", e.target.value as string)}
-                    disabled={isLoading || !hasAnyModels}
-                    displayEmpty
-                    IconComponent={(props) => (
-                      <ChevronDown
-                        {...props}
-                        size={14}
-                        style={{ color: "text.secondary" }}
-                      />
-                    )}
-                    sx={{
-                      height: 32,
-                      color: "primary.main",
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      opacity: 1,
-                      "& .MuiOutlinedInput-notchedOutline": { border: "none" },
-                      "& .MuiSelect-select": {
-                        p: 0,
-                        pr: "20px !important",
-                        display: "flex",
-                        alignItems: "center",
-                      },
-                      "& .MuiSelect-icon": {
-                        right: 0,
-                        top: "calc(50% - 7px)",
-                      },
-                    }}
-                    MenuProps={{
-                      PaperProps: {
-                        sx: {
-                          bgcolor: "background.paper",
-                          color: "text.primary",
-                          mt: 1,
-                          border: "1px solid",
-                          borderColor: "divider",
-                          "& .MuiMenuItem-root": {
-                            fontSize: "14px",
-                            "&:hover": { bgcolor: "action.hover" },
-                            "&.Mui-selected": { bgcolor: "action.selected" },
-                          },
-                        },
-                      },
-                    }}
-                  >
-                    {!hasAnyModels ? (
-                      <MenuItem value="">No models</MenuItem>
-                    ) : (
-                      availableModels.ollama.map((model) => (
-                        <MenuItem
-                          key={model.name.toString()}
-                          value={model.name.toString()}
-                        >
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              width: "100%",
-                            }}
-                          >
-                            <Typography variant="body2">{model.name}</Typography>
-                            {model.supports_vision && (
-                              <Tooltip title="Supports vision">
-                                <Eye
-                                  size={14}
-                                  style={{ marginLeft: 8 }}
-                                />
-                              </Tooltip>
-                            )}
-                          </Box>
-                        </MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-                {selectedModels.length > 1 && (
-                  <IconButton
-                    size="small"
-                    onClick={() => onRemoveModel(index)}
-                    sx={{ p: 0.5, color: "text.secondary" }}
-                  >
-                    <X size={14} />
-                  </IconButton>
-                )}
+          {pullingModel ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 200, px: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.primary" }}>
+                  Pulling {pullingModel}...
+                </Typography>
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  {pullProgress?.completed && pullProgress.total 
+                    ? `${Math.round((pullProgress.completed / pullProgress.total) * 100)}%`
+                    : pullProgress?.status || "Starting..."}
+                </Typography>
               </Box>
-            ))}
-            <Box
-              onClick={onAddModel}
-              sx={{
-                color: "text.secondary",
-                display: "flex",
-                alignItems: "center",
-                cursor: "pointer",
-                ml: 1,
-                "&:hover": { color: "text.primary" },
-              }}
-            >
-              <Plus size={16} />
+              <LinearProgress 
+                variant={pullProgress?.completed && pullProgress.total ? "determinate" : "indeterminate"}
+                value={pullProgress?.completed && pullProgress.total ? (pullProgress.completed / pullProgress.total) * 100 : undefined}
+                sx={{ height: 4, borderRadius: 2, bgcolor: "action.hover" }}
+              />
             </Box>
-          </Box>
-          <Link
-            component="button"
-            variant="caption"
-            underline="none"
-            onClick={() => onSetDefault(selectedModels[0])}
-            disabled={!selectedModels[0]}
-            sx={{
-              color: "text.secondary",
-              fontSize: "11px",
-              textAlign: "left",
-              ml: 0.2,
-              "&:hover": { color: "text.primary" },
-            }}
-          >
-            Set as default
-          </Link>
+          ) : (
+            <>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                {selectedModels.map((selectedModel, index) => (
+                  <Box key={`${selectedModel}-${index}`} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <FormControl size="small">
+                      <Select
+                        value={selectedModel}
+                        onChange={(e) => onModelChange(index, "ollama", e.target.value as string)}
+                        disabled={isLoading || !hasAnyModels}
+                        displayEmpty
+                        IconComponent={(props) => (
+                          <ChevronDown
+                            {...props}
+                            size={14}
+                            style={{ color: "text.secondary" }}
+                          />
+                        )}
+                        sx={{
+                          height: 32,
+                          color: "primary.main",
+                          fontSize: "15px",
+                          fontWeight: 600,
+                          opacity: 1,
+                          "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                          "& .MuiSelect-select": {
+                            p: 0,
+                            pr: "20px !important",
+                            display: "flex",
+                            alignItems: "center",
+                          },
+                          "& .MuiSelect-icon": {
+                            right: 0,
+                            top: "calc(50% - 7px)",
+                          },
+                        }}
+                        MenuProps={{
+                          PaperProps: {
+                            sx: {
+                              bgcolor: "background.paper",
+                              color: "text.primary",
+                              mt: 1,
+                              border: "1px solid",
+                              borderColor: "divider",
+                            },
+                          },
+                        }}
+                      >
+                        {isOllamaLoading ? (
+                          <MenuItem value="" disabled>
+                            <CircularProgress size={16} sx={{ mr: 1 }} />
+                            Connecting to Ollama...
+                          </MenuItem>
+                        ) : !hasAnyModels ? (
+                          <MenuItem value="">No models</MenuItem>
+                        ) : (
+                          availableModels.ollama.map((model) => (
+                            <MenuItem
+                              key={model.name.toString()}
+                              value={model.name.toString()}
+                            >
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  width: "100%",
+                                }}
+                              >
+                                <Typography variant="body2">{model.name}</Typography>
+                                {model.supports_vision && (
+                                  <Tooltip title="Supports vision">
+                                    <Eye
+                                      size={14}
+                                      style={{ marginLeft: 8 }}
+                                    />
+                                  </Tooltip>
+                                )}
+                              </Box>
+                            </MenuItem>
+                          ))
+                        )}
+                      </Select>
+                    </FormControl>
+                    {selectedModels.length > 1 && (
+                      <IconButton
+                        size="small"
+                        onClick={() => onRemoveModel(index)}
+                        sx={{ p: 0.5, color: "text.secondary" }}
+                      >
+                        <X size={14} />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+                <Box
+                  onClick={onAddModel}
+                  sx={{
+                    color: "text.secondary",
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    ml: 1,
+                    "&:hover": { color: "text.primary" },
+                  }}
+                >
+                  <Plus size={16} />
+                </Box>
+              </Box>
+              <Link
+                component="button"
+                variant="caption"
+                underline="none"
+                onClick={() => onSetDefault(selectedModels[0])}
+                disabled={!selectedModels[0]}
+                sx={{
+                  color: "text.secondary",
+                  fontSize: "11px",
+                  textAlign: "left",
+                  ml: 0.2,
+                  "&:hover": { color: "text.primary" },
+                }}
+              >
+                Set as default
+              </Link>
+            </>
+          )}
         </Box>
-
       </Box>
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        {isLoading && hasAnyModels && (
+          <Tooltip title="Updating models...">
+            <CircularProgress size={16} color="inherit" sx={{ mr: 1, opacity: 0.5 }} />
+          </Tooltip>
+        )}
         {ollamaError && (
-          <Typography
-            variant="caption"
-            sx={{ color: "error.main", mr: 1, opacity: 0.8 }}
-          >
-            {ollamaError}
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "error.main", mr: 1 }}>
+            <AlertCircle size={14} />
+            <Typography
+              variant="caption"
+              sx={{ fontWeight: 500 }}
+            >
+              {ollamaError}
+            </Typography>
+          </Box>
         )}
         <Tooltip title={isTemporary ? "Disable Temporary Chat" : "Enable Temporary Chat"}>
           <Box

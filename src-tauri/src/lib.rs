@@ -12,6 +12,18 @@ use tokio_stream::StreamExt;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+const VISION_MODEL_KEYWORDS: &[&str] = &[
+    "llava",
+    "moondream",
+    "vision",
+    "bakllava",
+    "llama3.2",
+    "minicpm-v",
+    "pixtral",
+    "molmo",
+    "internvl",
+];
+
 struct AppState {
     current_generation_id: AtomicUsize,
 }
@@ -49,21 +61,19 @@ pub struct ModelDetails {
     pub supports_vision: bool,
 }
 
-/// Strip all thinking blocks from a completed response string.
+/// Strip model reasoning markers from assistant content before showing it in the UI.
 /// Handles both:
 ///   - Gemma4:           <|channel>thought ... <channel|>
 ///   - Qwen3/DeepSeek:   <think> ... </think>
 fn strip_thinking_blocks(input: &str) -> String {
     let mut output = input.to_string();
 
-    // Gemma4
     loop {
         if let Some(start) = output.find("<|channel>thought") {
             if let Some(end) = output.find("<channel|>") {
                 let end = end + "<channel|>".len();
                 output.replace_range(start..end, "");
             } else {
-                // No closing tag — strip from start to end of string
                 output.truncate(start);
                 break;
             }
@@ -72,7 +82,6 @@ fn strip_thinking_blocks(input: &str) -> String {
         }
     }
 
-    // Qwen3 / DeepSeek-R1
     loop {
         if let Some(start) = output.find("<think>") {
             if let Some(end) = output[start..].find("</think>") {
@@ -103,8 +112,7 @@ async fn calculate_timestamp_fn(expression: String) -> String {
         let parts: Vec<&str> = expr.split_whitespace().collect();
         if parts.len() >= 2 {
             if let Ok(num) = parts[0].parse::<i64>() {
-                let unit = parts[1];
-                let duration = match unit {
+                let duration = match parts[1] {
                     "day" | "days" => Some(Duration::days(num)),
                     "hour" | "hours" => Some(Duration::hours(num)),
                     "minute" | "minutes" => Some(Duration::minutes(num)),
@@ -163,25 +171,20 @@ async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut details = Vec::new();
-    for model in models {
-        let name_lower = model.name.to_lowercase();
-        let supports_vision = name_lower.contains("llava")
-            || name_lower.contains("moondream")
-            || name_lower.contains("vision")
-            || name_lower.contains("bakllava")
-            || name_lower.contains("llama3.2")
-            || name_lower.contains("minicpm-v")
-            || name_lower.contains("pixtral")
-            || name_lower.contains("molmo")
-            || name_lower.contains("internvl");
-
-        details.push(ModelDetails {
-            name: model.name,
-            families: Vec::new(),
-            supports_vision,
-        });
-    }
+    let details = models
+        .into_iter()
+        .map(|model| {
+            let name_lower = model.name.to_lowercase();
+            let supports_vision = VISION_MODEL_KEYWORDS
+                .iter()
+                .any(|s| name_lower.contains(s));
+            ModelDetails {
+                name: model.name,
+                families: Vec::new(),
+                supports_vision,
+            }
+        })
+        .collect();
 
     Ok(details)
 }
@@ -207,9 +210,7 @@ async fn pull_model(app_handle: AppHandle, model: String) -> Result<(), String> 
                     },
                 );
             }
-            Err(e) => {
-                return Err(e.to_string());
-            }
+            Err(e) => return Err(e.to_string()),
         }
     }
 
@@ -223,15 +224,8 @@ fn cancel_chat(state: tauri::State<'_, AppState>) {
 
 #[derive(serde::Deserialize)]
 struct ChatAttachment {
-    #[allow(dead_code)]
-    id: String,
-    #[allow(dead_code)]
-    name: String,
-    #[allow(dead_code)]
     #[serde(rename = "type")]
     content_type: String,
-    #[allow(dead_code)]
-    size: u64,
     content: Option<String>,
 }
 
@@ -242,72 +236,62 @@ struct ChatMessage {
     attachments: Option<Vec<ChatAttachment>>,
 }
 
+fn build_ollama_message(msg: ChatMessage) -> OllamaChatMessage {
+    let mut ollama_msg = match msg.role.as_str() {
+        "assistant" => OllamaChatMessage::assistant(msg.content),
+        _ => OllamaChatMessage::user(msg.content),
+    };
+
+    if let Some(attachments) = msg.attachments {
+        let images: Vec<Image> = attachments
+            .into_iter()
+            .filter(|a| a.content_type.starts_with("image/"))
+            .filter_map(|a| a.content.map(|c| Image::from_base64(&c)))
+            .collect();
+
+        if !images.is_empty() {
+            ollama_msg.images = Some(images);
+        }
+    }
+
+    ollama_msg
+}
+
 #[tauri::command]
 async fn chat_stream(
     app_handle: AppHandle,
-    _state: tauri::State<'_, AppState>,
     request_id: String,
     model: String,
     messages: Vec<ChatMessage>,
     system_prompt: Option<String>,
 ) -> Result<(), String> {
+    let mut history: Vec<OllamaChatMessage> = Vec::new();
+
     if let Some(ref prompt) = system_prompt {
-        println!(
-            "[openbench] system_prompt length={} preview={}",
-            prompt.len(),
-            prompt.chars().take(80).collect::<String>()
-        );
-    } else {
-        println!("[openbench] system_prompt missing");
-    }
-
-    let mut current_history = Vec::new();
-    if let Some(prompt) = system_prompt {
         if !prompt.trim().is_empty() {
-            current_history.push(OllamaChatMessage::system(prompt));
+            history.push(OllamaChatMessage::system(prompt.clone()));
         }
     }
 
-    for msg in messages {
-        let mut ollama_msg = match msg.role.as_str() {
-            "user" => OllamaChatMessage::user(msg.content),
-            "assistant" => OllamaChatMessage::assistant(msg.content),
-            _ => OllamaChatMessage::user(msg.content),
-        };
+    history.extend(messages.into_iter().map(build_ollama_message));
 
-        if let Some(attachments) = msg.attachments {
-            let mut images = Vec::new();
-            for att in attachments {
-                if att.content_type.starts_with("image/") {
-                    if let Some(content) = att.content {
-                        images.push(Image::from_base64(&content));
-                    }
-                }
-            }
-            if !images.is_empty() {
-                ollama_msg.images = Some(images);
-            }
-        }
-        current_history.push(ollama_msg);
-    }
-
+    let ollama = Ollama::default();
     let mut iteration = 0;
     let max_iterations = 5;
 
     while iteration < max_iterations {
         iteration += 1;
 
-        let request = ChatMessageRequest::new(model.clone(), current_history.clone());
-        let ollama = Ollama::default();
+        let request = ChatMessageRequest::new(model.clone(), history.clone());
+
         let mut stream = ollama
             .send_chat_messages_stream(request)
             .await
             .map_err(|e| e.to_string())?;
 
-        // Accumulate the full raw response, then strip thinking blocks before
-        // emitting. This avoids any chunk-boundary issues with split markers.
         let mut raw_content = String::new();
-        let mut assistant_tool_calls: Vec<ToolCall> = Vec::new();
+        let mut emitted_len = 0;
+        let mut tool_calls: Vec<ToolCall> = Vec::new();
         let mut final_metadata: Option<StreamMetadata> = None;
         let mut is_done = false;
 
@@ -330,9 +314,27 @@ async fn chat_stream(
                     let msg = response.message;
                     if !msg.content.is_empty() {
                         raw_content.push_str(&msg.content);
+
+                        // Emit delta if not doing tool calls yet
+                        if tool_calls.is_empty() {
+                            let clean_content = strip_thinking_blocks(&raw_content);
+                            if clean_content.len() > emitted_len {
+                                let delta = &clean_content[emitted_len..];
+                                let _ = app_handle.emit(
+                                    "chat-chunk",
+                                    StreamPayload {
+                                        request_id: request_id.clone(),
+                                        content: delta.to_string(),
+                                        done: false,
+                                        metadata: None,
+                                    },
+                                );
+                                emitted_len = clean_content.len();
+                            }
+                        }
                     }
                     if !msg.tool_calls.is_empty() {
-                        assistant_tool_calls.extend(msg.tool_calls);
+                        tool_calls.extend(msg.tool_calls);
                     }
                 }
                 Err(e) => {
@@ -350,65 +352,42 @@ async fn chat_stream(
             }
         }
 
-        if is_done {
-            let clean_content = strip_thinking_blocks(&raw_content);
+        if !is_done {
+            continue;
+        }
 
-            println!(
-                "[openbench] stream iteration={} done, raw={} clean={} tool_calls={}",
-                iteration,
-                raw_content.len(),
-                clean_content.len(),
-                assistant_tool_calls.len()
+        if tool_calls.is_empty() {
+            let _ = app_handle.emit(
+                "chat-chunk",
+                StreamPayload {
+                    request_id: request_id.clone(),
+                    content: String::new(),
+                    done: true,
+                    metadata: final_metadata,
+                },
             );
+            return Ok(());
+        }
 
-            if assistant_tool_calls.is_empty() {
-                // Emit the full clean content as one chunk, then signal done
-                if !clean_content.is_empty() {
-                    let _ = app_handle.emit(
-                        "chat-chunk",
-                        StreamPayload {
-                            request_id: request_id.clone(),
-                            content: clean_content,
-                            done: false,
-                            metadata: None,
-                        },
-                    );
-                }
-                let _ = app_handle.emit(
-                    "chat-chunk",
-                    StreamPayload {
-                        request_id: request_id.clone(),
-                        content: "".to_string(),
-                        done: true,
-                        metadata: final_metadata,
-                    },
-                );
-                return Ok(());
-            }
+        // Tool call path — push assistant turn and resolve tools
+        let mut assistant_msg = OllamaChatMessage::assistant(raw_content.clone());
+        assistant_msg.tool_calls = tool_calls.clone();
+        history.push(assistant_msg);
 
-            // Tool call path — push assistant turn and loop
-            let mut assistant_msg = OllamaChatMessage::assistant(raw_content.clone());
-            assistant_msg.tool_calls = assistant_tool_calls.clone();
-            current_history.push(assistant_msg);
-
-            for tool_call in assistant_tool_calls {
-                let tool_name = tool_call.function.name.clone();
-                let arguments = tool_call.function.arguments;
-
-                println!("[openbench] executing tool: {}", tool_name);
-
-                let content = if tool_name == "get_current_timestamp" {
-                    get_current_timestamp_fn().await
-                } else if tool_name == "calculate_timestamp" {
-                    let expr = arguments["expression"].as_str().unwrap_or("").to_string();
+        for tool_call in tool_calls {
+            let result = match tool_call.function.name.as_str() {
+                "get_current_timestamp" => get_current_timestamp_fn().await,
+                "calculate_timestamp" => {
+                    let expr = tool_call.function.arguments
+                        .get("expression")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     calculate_timestamp_fn(expr).await
-                } else {
-                    format!("Error: Tool {} not found", tool_name)
-                };
-
-                println!("[openbench] tool result: {}", content);
-                current_history.push(OllamaChatMessage::tool(content));
-            }
+                }
+                name => format!("Error: Tool {} not found", name),
+            };
+            history.push(OllamaChatMessage::tool(result));
         }
     }
 
@@ -417,40 +396,10 @@ async fn chat_stream(
 
 #[tauri::command]
 async fn chat(model: String, messages: Vec<ChatMessage>) -> Result<String, String> {
-    let mut all_messages = Vec::new();
-    for msg in messages {
-        let mut ollama_msg = match msg.role.as_str() {
-            "user" => OllamaChatMessage::user(msg.content),
-            "assistant" => OllamaChatMessage::assistant(msg.content),
-            _ => OllamaChatMessage::user(msg.content),
-        };
-
-        if let Some(attachments) = msg.attachments {
-            let mut images = Vec::new();
-            let model_lower = model.to_lowercase();
-            let is_vision_model = model_lower.contains("llava")
-                || model_lower.contains("moondream")
-                || model_lower.contains("vision")
-                || model_lower.contains("bakllava");
-
-            if is_vision_model {
-                for att in attachments {
-                    if let Some(content) = att.content {
-                        images.push(Image::from_base64(&content));
-                    }
-                }
-            }
-            if !images.is_empty() {
-                ollama_msg.images = Some(images);
-            }
-        }
-        all_messages.push(ollama_msg);
-    }
-
-    let request = ChatMessageRequest::new(model, all_messages);
+    let all_messages = messages.into_iter().map(build_ollama_message).collect();
     let ollama = Ollama::default();
     let response = ollama
-        .send_chat_messages(request)
+        .send_chat_messages(ChatMessageRequest::new(model, all_messages))
         .await
         .map_err(|e| e.to_string())?;
 

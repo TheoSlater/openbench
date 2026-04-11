@@ -128,7 +128,7 @@ function DropdownMenuItem({
         handleClose();
       }}
       sx={{
-        fontSize: "13px",
+        fontSize: "14px",
         gap: 1.5,
         mx: 1,
         my: 0.5,

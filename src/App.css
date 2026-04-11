@@ -108,6 +108,11 @@
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
+
+  .bg-dot-pattern {
+    background-image: radial-gradient(hsl(var(--muted-foreground) / 0.1) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 }
 
 #sidebar-chat-item {

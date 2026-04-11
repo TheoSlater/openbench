@@ -31,6 +31,8 @@ function App() {
     removeSelectedModel,
     isLoading,
     ollamaError,
+    pullingModel,
+    pullProgress,
     systemPrompts,
     activeSystemPromptId,
     actions: modelActions,
@@ -54,12 +56,14 @@ function App() {
 
       try {
         await db.initDB().catch(() => {});
-        await Promise.race([
-          useSettingsStore.getState().actions.syncToBackend(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout syncing settings")), 3000))
-        ]).catch(() => {});
-        await useAuthStore.getState().actions.restoreSession().catch(() => {});
-        await useChatStore.getState().actions.loadConversations().catch(() => {});
+        await Promise.all([
+          Promise.race([
+            useSettingsStore.getState().actions.syncToBackend(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout syncing settings")), 3000))
+          ]).catch(() => {}),
+          useAuthStore.getState().actions.restoreSession().catch(() => {}),
+          useChatStore.getState().actions.loadConversations().catch(() => {}),
+        ]);
       } finally {
         clearTimeout(timeoutId);
         const { isLoading } = useAuthStore.getState();
@@ -88,6 +92,8 @@ function App() {
   const activeSystemPrompt =
     systemPrompts.find((prompt) => prompt.id === activeSystemPromptId) ?? null;
 
+  const effectiveSystemPrompt = (activeSystemPrompt?.content ?? "");
+
   const {
     messages,
     isStreaming,
@@ -98,7 +104,7 @@ function App() {
   } = useChatStream(
     selectedModels,
     devMode,
-    activeSystemPrompt?.content ?? "",
+    effectiveSystemPrompt,
   );
   const conversations = useChatStore((state) => state.conversations);
   const activeConversationId = useChatStore(
@@ -119,7 +125,7 @@ function App() {
 
   const ensureConversation = async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
-    const created = await createConversation();
+    const created = await createConversation("New Chat", false);
     return created.id;
   };
 
@@ -231,20 +237,20 @@ function App() {
     setToast({ ...toast, open: false });
   };
 
-  const isTemporary = conversations.find((c) => c.id === activeConversationId)?.isTemporary;
+  const isTemporary = !!conversations.find((c) => c.id === activeConversationId)?.isTemporary;
 
   const handleToggleTemporaryChat = async () => {
     if (isStreaming) stopStreaming();
 
     if (isTemporary) {
-      // Find the last non-temporary conversation to switch back to, or null for a new chat
-      const lastNormal = conversations.find(c => !c.isTemporary);
-      setActiveConversationId(lastNormal?.id || null);
+      // Switch back to a new chat when disabling temporary chat
+      setActiveConversationId(null);
     } else {
       // If not temporary, start a new temporary chat
       await createConversation("Temporary Chat", true);
     }
   };
+
 
   return (
     <SidebarProvider>
@@ -262,55 +268,83 @@ function App() {
       <SidebarInset>
         <Header
           selectedModels={selectedModels}
-          availableModels={availableModels}
-          onModelChange={updateSelectedModel}
-          onAddModel={() =>
-            addSelectedModel("ollama", availableModels.ollama[0]?.name || "")
-          }
-          onRemoveModel={removeSelectedModel}
-          isLoading={isLoading}
-          ollamaError={ollamaError}
-          onSetDefault={handleSetDefaultModel}
-          onToggleInspector={() => setIsInspectorOpen((v) => !v)}
-          isInspectorOpen={isInspectorOpen}
-          isTemporary={isTemporary}
-          onToggleTemporaryChat={handleToggleTemporaryChat}
-        />
+            availableModels={availableModels}
+            onModelChange={updateSelectedModel}
+            onAddModel={() =>
+              addSelectedModel("ollama", availableModels.ollama[0]?.name || "")
+            }
+            onRemoveModel={removeSelectedModel}
+            isLoading={isLoading}
+            ollamaError={ollamaError}
+            onSetDefault={handleSetDefaultModel}
+            onToggleInspector={() => setIsInspectorOpen((v) => !v)}
+            isInspectorOpen={isInspectorOpen}
+            isTemporary={isTemporary}
+            onToggleTemporaryChat={handleToggleTemporaryChat}
+            pullingModel={pullingModel}
+            pullProgress={pullProgress}
+          />
 
-        <Box component="main" sx={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative", bgcolor: "background.default", pt: "56px" }}>
-          <Box
-            sx={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              justifyContent: "flex-start",
-              transition: (theme) =>
-                theme.transitions.create("margin", {
-                  easing: theme.transitions.easing.sharp,
-                  duration: theme.transitions.duration.leavingScreen,
-                }),
-              marginRight: isInspectorOpen ? "0px" : "-350px",
-              width: "100%",
+          <Box 
+            component="main" 
+            sx={{ 
+              flex: 1, 
+              display: "flex", 
+              flexDirection: "row", 
+              overflow: "hidden", 
+              position: "relative", 
+              bgcolor: "background.default", 
+              pt: "56px" 
             }}
           >
-            {hasMessages ? (
-              <ChatArea
-                messages={messages}
-                bottomRef={bottomRef}
-                onRegenerate={handleRegenerate}
-                isTemporary={isTemporary}
-              />
-            ) : (
-              <EmptyState
-                selectedModels={devMode ? ["Dev Mode"] : selectedModels}
-                userName={user?.fullName || user?.email}
-                isTemporary={isTemporary}
-              >
+            <Box
+              sx={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                justifyContent: "flex-start",
+                transition: (theme) =>
+                  theme.transitions.create("margin", {
+                    easing: theme.transitions.easing.sharp,
+                    duration: theme.transitions.duration.leavingScreen,
+                  }),
+                marginRight: isInspectorOpen ? "0px" : "-350px",
+                width: "100%",
+              }}
+            >
+              {hasMessages ? (
+                <ChatArea
+                  messages={messages}
+                  bottomRef={bottomRef}
+                  onRegenerate={handleRegenerate}
+                  isTemporary={isTemporary}
+                />
+              ) : (
+                <EmptyState
+                  selectedModels={devMode ? ["Dev Mode"] : selectedModels}
+                  userName={user?.fullName || user?.email}
+                  isTemporary={isTemporary}
+                >
+                  <ChatInput
+                    value={input}
+                    onChange={setInput}
+                    onSubmit={() => handleSend()}
+                    onStop={stopStreaming}
+                    isStreaming={isStreaming}
+                    selectedModel={devMode ? "Dev Mode" : selectedModel}
+                    hasMessages={hasMessages}
+                    allowEmptyModel={devMode}
+                    isTemporary={isTemporary}
+                  />
+                </EmptyState>
+              )}
+
+              {hasMessages && (
                 <ChatInput
                   value={input}
                   onChange={setInput}
-                  onSubmit={handleSend}
+                  onSubmit={() => handleSend()}
                   onStop={stopStreaming}
                   isStreaming={isStreaming}
                   selectedModel={devMode ? "Dev Mode" : selectedModel}
@@ -318,23 +352,8 @@ function App() {
                   allowEmptyModel={devMode}
                   isTemporary={isTemporary}
                 />
-              </EmptyState>
-            )}
-
-            {hasMessages && (
-              <ChatInput
-                value={input}
-                onChange={setInput}
-                onSubmit={handleSend}
-                onStop={stopStreaming}
-                isStreaming={isStreaming}
-                selectedModel={devMode ? "Dev Mode" : selectedModel}
-                hasMessages={hasMessages}
-                allowEmptyModel={devMode}
-                isTemporary={isTemporary}
-              />
-            )}
-          </Box>
+              )}
+            </Box>
           <InspectorPanel open={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
         </Box>
       </SidebarInset>

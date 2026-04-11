@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
 import { User, AuthResponse } from "@/types/auth";
+import { loggedInvoke } from "@/lib/utils";
 
 type AuthStore = {
   user: User | null;
@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     login: async (email, password) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await invoke<AuthResponse>("auth_login", { email, password });
+        const response = await loggedInvoke<AuthResponse>("auth_login", { email, password });
         localStorage.setItem("session_token", response.token);
         set({ user: response.user, isAuthenticated: true, isLoading: false });
       } catch (err) {
@@ -37,7 +37,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     signup: async (email, password, fullName) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await invoke<AuthResponse>("auth_signup", { email, password, fullName });
+        const response = await loggedInvoke<AuthResponse>("auth_signup", { email, password, fullName });
         localStorage.setItem("session_token", response.token);
         set({ user: response.user, isAuthenticated: true, isLoading: false });
       } catch (err) {
@@ -48,7 +48,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     logout: async () => {
       set({ isLoading: true });
       try {
-        await invoke("auth_logout");
+        await loggedInvoke("auth_logout");
         localStorage.removeItem("session_token");
         set({ user: null, isAuthenticated: false, isLoading: false });
       } catch (err) {
@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       const token = localStorage.getItem("session_token");
       if (!token) return;
       try {
-        await invoke("auth_update_status", { token, status });
+        await loggedInvoke("auth_update_status", { token, status });
         set((state) => ({
           user: state.user ? { ...state.user, status } : null,
         }));
@@ -78,7 +78,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
       }
       set({ isLoading: true });
       try {
-        const user = await invoke<User>("auth_get_current_user", { token });
+        const user = await loggedInvoke<User>("auth_get_current_user", { token });
         set({ user, isAuthenticated: true, isLoading: false });
       } catch {
         localStorage.removeItem("session_token");

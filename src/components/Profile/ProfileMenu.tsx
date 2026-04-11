@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Box, Typography, Button as MuiButton } from "@mui/material";
-import { Settings, Archive, Layout, Shield, LogOut } from "lucide-react";
+import { Settings, Archive, LogOut } from "lucide-react";
 
 import { useSidebar } from "@/components/Layout/Sidebar";
 import { ArchivedChatsDialog } from "@/components/Chat/ArchivedChatsDialog";
@@ -19,7 +19,9 @@ interface ProfileMenuProps {
   onOpenSettings?: () => void;
 }
 
-export const ProfileMenu: React.FC<ProfileMenuProps> = ({ onOpenSettings }) => {
+export const ProfileMenu: React.FC<ProfileMenuProps> = ({
+  onOpenSettings,
+}) => {
   const { user, actions, isLoading } = useAuthStore();
   const { isCollapsed } = useSidebar();
   const [isArchivedOpen, setIsArchivedOpen] = React.useState(false);
@@ -167,14 +169,6 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ onOpenSettings }) => {
           >
             <Archive className="mr-2 h-4 w-4" />
             <span>Archived Chats</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer">
-            <Layout className="mr-2 h-4 w-4" />
-            <span>Playground</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer">
-            <Shield className="mr-2 h-4 w-4" />
-            <span>Admin Panel</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

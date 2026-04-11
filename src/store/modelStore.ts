@@ -97,8 +97,7 @@ const defaultAvailableModels: AvailableModels = {
 const defaultSystemPrompt: SystemPrompt = {
   id: "default",
   name: "Default",
-  content:
-    "You are a helpful assistant. Be concise, direct, and clear. Ask a clarifying question when requirements are ambiguous.",
+  content: "",
 };
 
 export const useModelStore = create<ModelStore>((set) => ({

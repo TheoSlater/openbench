@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -17,6 +17,12 @@ function Root() {
       return prefersDarkMode ? darkTheme : lightTheme;
     }
     return mode === "dark" ? darkTheme : lightTheme;
+  }, [mode, prefersDarkMode]);
+
+  useEffect(() => {
+    const isDark =
+      mode === "dark" || (mode === "system" && prefersDarkMode);
+    document.documentElement.classList.toggle("dark", isDark);
   }, [mode, prefersDarkMode]);
 
   return (

@@ -4,31 +4,23 @@ import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamPayload, Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 import { useInspectorStore } from "@/store/inspectorStore";
+import { cleanTitle, loggedInvoke } from "@/lib/utils";
 
-const MAIN_SYSTEM_PROMPT = `You are a highly capable AI assistant. Be clear, concise, and direct.
-
-- Use Markdown formatting where appropriate (headers, bold, lists, tables, code blocks with language labels).
-- Use KaTeX for math: inline with $...$ and display with $$...$$.
-- Break down complex problems step by step.
-- If a request is ambiguous, ask one clarifying question before proceeding.`;
+type StreamingMessage = {
+  id: string;
+  role: "assistant";
+  content: string;
+  conversationId: string;
+  createdAt: string;
+  model: string;
+};
 
 function getTemporalPrompt() {
   const now = new Date();
-  const date = now.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const time = now.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-
   return `Temporal Awareness:
-- CURRENT_DATE: ${date}
-- CURRENT_TIME: ${time}
-- CURRENT_WEEKDAY: ${weekday}
+- CURRENT_DATE: ${now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+- CURRENT_TIME: ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+- CURRENT_WEEKDAY: ${now.toLocaleDateString("en-US", { weekday: "long" })}
 `;
 }
 
@@ -51,6 +43,13 @@ function processTemporalVariables(content: string) {
     .replace(/\{\{CURRENT_WEEKDAY\}\}/g, weekday);
 }
 
+function buildSystemPrompt(userSystemPrompt: string) {
+  const temporal = getTemporalPrompt();
+  return userSystemPrompt.trim()
+    ? `${temporal}\nPersonalization/Custom Instructions:\n${userSystemPrompt}`
+    : temporal;
+}
+
 export function useChatStream(
   selectedModels: string[],
   mockMode = false,
@@ -63,24 +62,10 @@ export function useChatStream(
   const { addMessage, renameConversation, setStreamingConversationId } =
     useChatStore((state) => state.actions);
   const { addLog, updateLog } = useInspectorStore((state) => state.actions);
+
   const [isStreaming, setIsStreaming] = useState(false);
-
-  useEffect(() => {
-    setStreamingConversationId(isStreaming ? activeConversationId : null);
-  }, [isStreaming, activeConversationId, setStreamingConversationId]);
-
   const [streamingMessages, setStreamingMessages] = useState<
-    Record<
-      string,
-      {
-        id: string;
-        role: "assistant";
-        content: string;
-        conversationId: string;
-        createdAt: string;
-        model: string;
-      }
-    >
+    Record<string, StreamingMessage>
   >({});
 
   const streamingMessagesRef = useRef<Record<string, string>>({});
@@ -88,11 +73,24 @@ export function useChatStream(
   const bottomRef = useRef<HTMLDivElement>(null);
   const mockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelStreamRef = useRef(false);
+  // Tracks how many model invocations are still in-flight so we know when
+  // to clear isStreaming regardless of whether they errored or completed.
+  const pendingStreamsRef = useRef(0);
+  const getLog = useCallback(
+    (requestId: string) =>
+      useInspectorStore.getState().logs.find((log) => log.id === requestId),
+    [],
+  );
+
+  useEffect(() => {
+    setStreamingConversationId(isStreaming ? activeConversationId : null);
+  }, [isStreaming, activeConversationId, setStreamingConversationId]);
 
   const resetStreamState = useCallback(() => {
     setStreamingMessages({});
     streamingMessagesRef.current = {};
     messageIdsRef.current = {};
+    pendingStreamsRef.current = 0;
   }, []);
 
   useEffect(() => {
@@ -111,6 +109,61 @@ export function useChatStream(
     return [...messages, ...streamList];
   }, [messages, streamingMessages]);
 
+  const clearStreamingMessage = useCallback((requestId: string) => {
+    setStreamingMessages((prev) => {
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
+    delete streamingMessagesRef.current[requestId];
+    delete messageIdsRef.current[requestId];
+  }, []);
+
+  const settlePendingStream = useCallback(() => {
+    pendingStreamsRef.current -= 1;
+    if (pendingStreamsRef.current <= 0) {
+      pendingStreamsRef.current = 0;
+      setIsStreaming(false);
+    }
+  }, []);
+
+  const autoRenameConversation = useCallback(
+    (conversationId: string, model: string) => {
+      const currentMessages = useChatStore.getState().messages;
+      const conversation = useChatStore
+        .getState()
+        .conversations.find((c) => c.id === conversationId);
+
+      if (currentMessages.length > 2 || conversation?.title !== "New Chat") {
+        return;
+      }
+
+      const userMessage = currentMessages.find((message) => message.role === "user");
+      if (!userMessage) return;
+
+      const requestBody = {
+        model,
+        messages: [
+          {
+            role: "user",
+            content: `Summarize this chat in 2-3 words. Be concise and do not use quotes. Use Title Case.\nText: ${userMessage.content}`,
+          },
+        ],
+      };
+
+      loggedInvoke<string>("chat", requestBody)
+        .then((title) => {
+          if (title) {
+            void renameConversation(conversationId, cleanTitle(title));
+          }
+        })
+        .catch((error) => {
+          console.error("Auto-rename failed:", error);
+        });
+    },
+    [renameConversation],
+  );
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages]);
@@ -121,8 +174,7 @@ export function useChatStream(
     const unlistenPromise = listen<StreamPayload>(
       "chat-chunk",
       async (event) => {
-        if (cancelStreamRef.current) return;
-        if (!activeConversationId) return;
+        if (cancelStreamRef.current || !activeConversationId) return;
 
         const { request_id, done, content, metadata } = event.payload;
 
@@ -135,16 +187,12 @@ export function useChatStream(
             const messageId = crypto.randomUUID();
             messageIdsRef.current[request_id] = messageId;
 
-            const lastLog = useInspectorStore
-              .getState()
-              .logs.find((l) => l.id === request_id);
-            const model = lastLog?.model || "unknown";
-
-            if (lastLog && !lastLog.timing.firstTokenTime) {
-              updateLog(lastLog.id, {
+            const log = getLog(request_id);
+            if (log && !log.timing.firstTokenTime) {
+              updateLog(log.id, {
                 timing: {
-                  ...lastLog.timing,
-                  firstTokenTime: Date.now() - lastLog.timing.startTime,
+                  ...log.timing,
+                  firstTokenTime: Date.now() - log.timing.startTime,
                 },
               });
             }
@@ -157,116 +205,62 @@ export function useChatStream(
                 content: fullContent,
                 conversationId: activeConversationId,
                 createdAt: new Date().toISOString(),
-                model,
+                model: log?.model ?? "unknown",
               },
             };
           }
-
           return {
             ...prev,
             [request_id]: { ...prev[request_id], content: fullContent },
           };
         });
 
-        if (done) {
-          const messageId = messageIdsRef.current[request_id];
-          const model =
-            useInspectorStore.getState().logs.find((l) => l.id === request_id)
-              ?.model || "unknown";
+        if (!done) return;
 
-          const remainingStreams = Object.keys(
-            streamingMessagesRef.current,
-          ).filter((id) => id !== request_id);
-          if (remainingStreams.length === 0) {
-            setIsStreaming(false);
-          }
+        const messageId = messageIdsRef.current[request_id];
+        const log = getLog(request_id);
+        const model = log?.model ?? "unknown";
 
-          const lastLog = useInspectorStore
-            .getState()
-            .logs.find((l) => l.id === request_id);
-          if (lastLog) {
-            updateLog(lastLog.id, {
-              response: {
-                status: 200,
-                headers: {},
-                body: {
-                  message: { role: "assistant", content: fullContent },
-                  done: true,
-                  ...metadata,
-                },
+        settlePendingStream();
+
+        if (log) {
+          updateLog(log.id, {
+            response: {
+              status: 200,
+              headers: {},
+              body: {
+                message: { role: "assistant", content: fullContent },
+                done: true,
+                ...metadata,
               },
-              tokens: metadata
-                ? {
-                    input: metadata.prompt_eval_count || 0,
-                    output: metadata.eval_count || 0,
-                  }
-                : undefined,
-              timing: {
-                ...lastLog.timing,
-                totalTime: Date.now() - lastLog.timing.startTime,
-              },
-            });
-          }
-
-          if (fullContent.trim() && messageId) {
-            void addMessage({
-              id: messageId,
-              conversationId: activeConversationId,
-              role: "assistant",
-              content: fullContent,
-              createdAt: new Date().toISOString(),
-              model,
-            }).then(() => {
-              const currentMessages = useChatStore.getState().messages;
-              const currentConversation = useChatStore
-                .getState()
-                .conversations.find((c) => c.id === activeConversationId);
-
-              if (
-                currentMessages.length <= 2 &&
-                currentConversation?.title === "New Chat" &&
-                model
-              ) {
-                const userMessage = currentMessages.find(
-                  (m) => m.role === "user",
-                );
-                if (userMessage) {
-                  invoke<string>("chat", {
-                    model,
-                    messages: [
-                      {
-                        role: "user",
-                        content: `Summarize this chat in 2-3 words. Be concise and do not use quotes. Use Title Case.
-Text: ${userMessage.content}`,
-                      },
-                    ],
-                  })
-                    .then((title) => {
-                      if (title && activeConversationId) {
-                        const cleanTitle = title
-                          .trim()
-                          .replace(/^["']|["']$/g, "")
-                          .slice(0, 40);
-                        void renameConversation(
-                          activeConversationId,
-                          cleanTitle,
-                        );
-                      }
-                    })
-                    .catch((err) => console.error("Auto-rename failed:", err));
+            },
+            tokens: metadata
+              ? {
+                  input: metadata.prompt_eval_count || 0,
+                  output: metadata.eval_count || 0,
                 }
-              }
-            });
-          }
-
-          setStreamingMessages((prev) => {
-            const next = { ...prev };
-            delete next[request_id];
-            return next;
+              : undefined,
+            timing: {
+              ...log.timing,
+              totalTime: Date.now() - log.timing.startTime,
+            },
           });
-          delete streamingMessagesRef.current[request_id];
-          delete messageIdsRef.current[request_id];
         }
+
+        if (fullContent.trim() && messageId) {
+          void addMessage({
+            id: messageId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: fullContent,
+            createdAt: new Date().toISOString(),
+            model,
+          }).then(() => {
+            autoRenameConversation(activeConversationId, model);
+          });
+        }
+
+        clearStreamingMessage(request_id);
       },
     );
 
@@ -277,30 +271,24 @@ Text: ${userMessage.content}`,
     mockMode,
     activeConversationId,
     addMessage,
-    streamingMessages,
-    renameConversation,
+    autoRenameConversation,
+    clearStreamingMessage,
+    getLog,
+    settlePendingStream,
     updateLog,
   ]);
 
   useEffect(() => {
     return () => {
-      if (mockTimerRef.current) {
-        clearTimeout(mockTimerRef.current);
-        mockTimerRef.current = null;
-      }
+      if (mockTimerRef.current) clearTimeout(mockTimerRef.current);
     };
   }, []);
 
   const sendMessage = useCallback(
     async (content: string, attachments?: Attachment[]) => {
-      const models = selectedModels.filter((m) => !!m);
-      if (
-        !content.trim() ||
-        isStreaming ||
-        (models.length === 0 && !mockMode)
-      ) {
+      const models = selectedModels.filter(Boolean);
+      if (!content.trim() || isStreaming || (models.length === 0 && !mockMode))
         return;
-      }
 
       cancelStreamRef.current = false;
       const conversationId =
@@ -308,8 +296,7 @@ Text: ${userMessage.content}`,
       if (!conversationId) return;
 
       const processedContent = processTemporalVariables(content.trim());
-
-      void addMessage({
+      await addMessage({
         conversationId,
         role: "user",
         content: processedContent,
@@ -326,29 +313,27 @@ Text: ${userMessage.content}`,
       resetStreamState();
 
       if (mockMode) {
-        if (mockTimerRef.current) clearTimeout(mockTimerRef.current);
-        const delayMs = 600 + Math.round(Math.random() * 400);
-        mockTimerRef.current = setTimeout(() => {
-          const createdAt = new Date().toISOString();
-          const messageId = crypto.randomUUID();
-          setIsStreaming(false);
-          void addMessage({
-            id: messageId,
-            conversationId,
-            role: "assistant",
-            content: `Mock response: ${processedContent}`,
-            createdAt,
-            model: "mock-model",
-          });
-        }, delayMs);
+        pendingStreamsRef.current = 1;
+        mockTimerRef.current = setTimeout(
+          () => {
+            pendingStreamsRef.current = 0;
+            setIsStreaming(false);
+            void addMessage({
+              id: crypto.randomUUID(),
+              conversationId,
+              role: "assistant",
+              content: `Mock response: ${processedContent}`,
+              createdAt: new Date().toISOString(),
+              model: "mock-model",
+            });
+          },
+          600 + Math.round(Math.random() * 400),
+        );
         return;
       }
 
-      const temporalPrompt = getTemporalPrompt();
-      const baseSystemPrompt = `${MAIN_SYSTEM_PROMPT}\n${temporalPrompt}`;
-      const finalSystemPrompt = systemPrompt.trim()
-        ? `${baseSystemPrompt}\n\nPersonalization/Custom Instructions:\n${systemPrompt}`
-        : baseSystemPrompt;
+      const finalSystemPrompt = buildSystemPrompt(systemPrompt);
+      pendingStreamsRef.current = models.length;
 
       for (const model of models) {
         const request_id = crypto.randomUUID();
@@ -368,24 +353,22 @@ Text: ${userMessage.content}`,
             headers: {},
             body: requestBody,
           },
-          timing: {
-            startTime: Date.now(),
-          },
+          timing: { startTime: Date.now() },
         });
 
         invoke("chat_stream", requestBody).catch((error) => {
           console.error(`Chat error for model ${model}:`, error);
 
-          const errorContent =
-            typeof error === "string" && error.includes("not found")
-              ? `Model "${model}" not found. Please pull the model or select a different one.`
-              : `Failed to connect to Ollama for model ${model}. Error: ${error}`;
+          settlePendingStream();
 
           void addMessage({
             id: crypto.randomUUID(),
             conversationId,
             role: "assistant",
-            content: errorContent,
+            content:
+              typeof error === "string" && error.includes("not found")
+                ? `Model "${model}" not found. Please pull the model or select a different one.`
+                : `Failed to connect to Ollama for model ${model}. Error: ${error}`,
             createdAt: new Date().toISOString(),
             model,
           });
@@ -401,6 +384,7 @@ Text: ${userMessage.content}`,
       addMessage,
       addLog,
       resetStreamState,
+      settlePendingStream,
     ],
   );
 
@@ -409,7 +393,7 @@ Text: ${userMessage.content}`,
     cancelStreamRef.current = true;
 
     try {
-      await invoke("cancel_chat");
+      await loggedInvoke("cancel_chat");
     } catch (err) {
       console.error("Failed to cancel chat:", err);
     }
@@ -419,8 +403,7 @@ Text: ${userMessage.content}`,
       mockTimerRef.current = null;
     }
 
-    const currentStreams = { ...streamingMessages };
-    Object.values(currentStreams).forEach((msg) => {
+    Object.values(streamingMessages).forEach((msg) => {
       if (msg.content.trim()) {
         void addMessage({
           id: msg.id,

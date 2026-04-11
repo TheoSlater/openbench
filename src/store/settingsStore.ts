@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { invoke } from "@tauri-apps/api/core";
+import { loggedInvoke } from "@/lib/utils";
 
 export type OllamaConfig = {
   baseUrl: string;
@@ -30,7 +30,7 @@ export const useSettingsStore = create<SettingsState>()(
         syncToBackend: async () => {
           const { ollamaConfig } = get();
           try {
-            await invoke("set_ollama_config", { 
+            await loggedInvoke("set_ollama_config", { 
               baseUrl: ollamaConfig.baseUrl, 
               apiKey: null 
             });

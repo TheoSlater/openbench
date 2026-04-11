@@ -158,7 +158,7 @@ export function ChatInput({
             borderColor: isTemporary ? "border.main" : "divider",
             "&:focus-within": {
               borderColor: "border.main",
-              boxShadow: isTemporary ? (theme) => `0 0 0 1px ${theme.palette.border.main}` : "none",
+              boxShadow: (theme) => `0 0 0 1px ${theme.palette.border.main}`,
             },
           }}
         >
