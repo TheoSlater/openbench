@@ -307,7 +307,7 @@ export async function updateConversation(
   }
 
   const setClauses: string[] = [];
-  const values: (string | number | undefined)[] = [];
+  const values: (string | number | null | undefined)[] = [];
 
   if (updates.title !== undefined) {
     setClauses.push("title = ?");

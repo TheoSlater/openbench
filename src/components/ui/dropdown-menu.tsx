@@ -112,7 +112,7 @@ function DropdownMenuItem({
   sx,
 }: {
   children: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLElement>) => void;
   variant?: "default" | "destructive";
   className?: string;
   disabled?: boolean;
@@ -123,8 +123,9 @@ function DropdownMenuItem({
     <MenuItem
       className={className}
       disabled={disabled}
-      onClick={() => {
-        onClick?.();
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.(e);
         handleClose();
       }}
       sx={{

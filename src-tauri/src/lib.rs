@@ -86,6 +86,7 @@ pub struct ModelDetails {
     pub name: String,
     pub families: Vec<String>,
     pub supports_vision: bool,
+    pub size: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -177,11 +178,22 @@ async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
                 name: m.name,
                 families: Vec::new(),
                 supports_vision,
+                size: m.size,
             }
         })
         .collect();
 
     Ok(details)
+}
+
+#[tauri::command]
+async fn delete_model(model: String) -> Result<(), String> {
+    let ollama = Ollama::default();
+    ollama
+        .delete_model(model)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -526,6 +538,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_local_models,
             pull_model,
+            delete_model,
             chat_stream,
             chat,
             cancel_chat,

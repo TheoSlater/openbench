@@ -3,7 +3,8 @@ import { useThemeStore, ThemeMode } from "@/store/themeStore";
 import { SystemPrompt, useModelStore } from "@/store/modelStore";
 import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Settings, UserCircle, X, Sun, Moon, Monitor } from "lucide-react";
+import { Settings, UserCircle, X, Sun, Moon, Monitor, Box as BoxIcon } from "lucide-react";
+import { ModelManagement } from "./ModelManagement";
 import {
   Box,
   Typography,
@@ -24,6 +25,7 @@ type SettingsModalProps = {
 
 const SIDEBAR_ITEMS = [
   { id: "general", label: "General", icon: Settings },
+  { id: "models", label: "Models", icon: BoxIcon },
   { id: "personalization", label: "Personalization", icon: UserCircle },
 ];
 
@@ -472,6 +474,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       }}
                     />
                   </Box>
+                </Box>
+              )}
+
+              {activeTab === "models" && (
+                <Box sx={{ py: 2 }}>
+                  <ModelManagement />
                 </Box>
               )}
             </Box>

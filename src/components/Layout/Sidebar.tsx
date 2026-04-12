@@ -17,6 +17,7 @@ import {
   X,
   MoreHorizontal,
   Archive,
+  Search,
 } from "lucide-react";
 import { Conversation, useChatStore } from "@/store/chatStore";
 import {
@@ -28,6 +29,7 @@ import {
 import { DeleteConversationDialog } from "@/components/Chat/DeleteConversationDialog";
 import { ProfileMenu } from "@/components/Profile/ProfileMenu";
 import { isToday, isYesterday, subDays, isAfter } from "date-fns";
+import { InputBase } from "@mui/material";
 
 interface SidebarContextValue {
   isOpen: boolean;
@@ -99,6 +101,143 @@ interface SidebarProps {
   collapsible?: "icon" | "none";
 }
 
+function ConversationItem({
+  conv,
+  activeConversationId,
+  editingId,
+  editValue,
+  setEditValue,
+  handleConfirmRename,
+  handleCancelRename,
+  handleStartRename,
+  handleArchive,
+  handleStartDelete,
+}: {
+  conv: Conversation;
+  activeConversationId: string | null;
+  editingId: string | null;
+  editValue: string;
+  setEditValue: (v: string) => void;
+  handleConfirmRename: (e: React.MouseEvent, id: string) => void;
+  handleCancelRename: (e: React.MouseEvent) => void;
+  handleStartRename: (e: React.MouseEvent, conv: Conversation) => void;
+  handleArchive: (id: string) => void;
+  handleStartDelete: (conv: Conversation) => void;
+}) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        width: "100%",
+        minWidth: 0,
+      }}
+    >
+      {editingId === conv.id ? (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            width: "100%",
+            gap: 0.5,
+          }}
+        >
+          <input
+            autoFocus
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirmRename(e as any, conv.id);
+              if (e.key === "Escape") handleCancelRename(e as any);
+            }}
+            style={{
+              flex: 1,
+              background: "transparent",
+              border: "none",
+              color: "inherit",
+              outline: "none",
+              fontSize: "inherit",
+              padding: 0,
+            }}
+          />
+          <IconButton
+            size="small"
+            onClick={(e) => handleConfirmRename(e, conv.id)}
+            sx={{ p: 0.5, color: "text.secondary" }}
+          >
+            <Check size={14} />
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={handleCancelRename}
+            sx={{ p: 0.5, color: "text.secondary" }}
+          >
+            <X size={14} />
+          </IconButton>
+        </Box>
+      ) : (
+        <>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{
+              flex: 1,
+              color:
+                activeConversationId === conv.id ? "text.primary" : "inherit",
+            }}
+          >
+            {conv.title || "Untitled"}
+          </Typography>
+          <Box
+            className="conversation-actions"
+            sx={{
+              display: "flex",
+              gap: 0,
+              opacity: 0,
+              transition: "opacity 0.2s",
+            }}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  size="small"
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    p: 0.5,
+                    color: "text.secondary",
+                    "&:hover": {
+                      color: "text.primary",
+                      bgcolor: "action.selected",
+                    },
+                  }}
+                >
+                  <MoreHorizontal size={14} />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => handleStartRename(e, conv)}>
+                  <Edit2 size={14} /> Rename
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => handleArchive(conv.id)}>
+                  <Archive size={14} /> Archive
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => handleStartDelete(conv)}
+                >
+                  <Trash2 size={14} /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+}
+
 export function Sidebar({
   onOpenSettings,
   onNewChat,
@@ -116,6 +255,7 @@ export function Sidebar({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [deleteTitle, setDeleteTitle] = React.useState("");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
 
   const handleStartDelete = (conv: Conversation) => {
     setDeleteId(conv.id);
@@ -133,12 +273,14 @@ export function Sidebar({
 
   const handleStartRename = (e: React.MouseEvent, conv: Conversation) => {
     e.stopPropagation();
+    e.preventDefault();
     setEditingId(conv.id);
     setEditValue(conv.title || "Untitled");
   };
 
   const handleConfirmRename = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    e.preventDefault();
     if (editValue.trim()) {
       await onRenameConversation(id, editValue.trim());
     }
@@ -147,6 +289,7 @@ export function Sidebar({
 
   const handleCancelRename = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setEditingId(null);
   };
 
@@ -155,36 +298,42 @@ export function Sidebar({
   };
 
   const groupedConversations = React.useMemo(() => {
+    const now = new Date();
+    const sevenDaysAgo = subDays(now, 7);
+    const query = searchQuery.toLowerCase().trim();
+
+    const filtered = conversations
+      .filter((c) => !c.isArchived && !c.isTemporary)
+      .filter((c) => {
+        if (!query) return true;
+        return (c.title || "Untitled").toLowerCase().includes(query);
+      });
+
     const today: Conversation[] = [];
     const yesterday: Conversation[] = [];
     const last7Days: Conversation[] = [];
     const older: Conversation[] = [];
 
-    const now = new Date();
-    const sevenDaysAgo = subDays(now, 7);
-
-    conversations
-      .filter((c) => !c.isArchived && !c.isTemporary)
-      .forEach((conv) => {
-        const date = new Date(conv.updatedAt || conv.createdAt);
-        if (isToday(date)) {
-          today.push(conv);
-        } else if (isYesterday(date)) {
-          yesterday.push(conv);
-        } else if (isAfter(date, sevenDaysAgo)) {
-          last7Days.push(conv);
-        } else {
-          older.push(conv);
-        }
-      });
+    filtered.forEach((conv) => {
+      const date = new Date(conv.updatedAt || conv.createdAt);
+      if (isToday(date)) {
+        today.push(conv);
+      } else if (isYesterday(date)) {
+        yesterday.push(conv);
+      } else if (isAfter(date, sevenDaysAgo)) {
+        last7Days.push(conv);
+      } else {
+        older.push(conv);
+      }
+    });
 
     return [
-      { label: "Today", items: today },
-      { label: "Yesterday", items: yesterday },
-      { label: "Previous 7 Days", items: last7Days },
-      { label: "Older", items: older },
+      { id: "today", label: "Today", items: today },
+      { id: "yesterday", label: "Yesterday", items: yesterday },
+      { id: "last7days", label: "Previous 7 Days", items: last7Days },
+      { id: "older", label: "Older", items: older },
     ].filter((group) => group.items.length > 0);
-  }, [conversations]);
+  }, [conversations, searchQuery]);
 
   const sidebarContent = (
     <>
@@ -265,6 +414,60 @@ export function Sidebar({
 
       <SidebarContent>
         {!isCollapsed && (
+          <Box sx={{ px: 1.5, mb: 1.5, mt: 0.5 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                px: 1.5,
+                height: 36,
+                borderRadius: "10px",
+                bgcolor: "action.hover",
+                color: "text.secondary",
+                border: "1px solid",
+                borderColor: "transparent",
+                transition: "all 0.2s",
+                "&:focus-within": {
+                  borderColor: "primary.main",
+                  bgcolor: "background.paper",
+                  boxShadow: "0 0 0 2px rgba(var(--primary-rgb), 0.1)",
+                },
+              }}
+            >
+              <Search size={14} />
+              <InputBase
+                placeholder="Search chats..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{
+                  flex: 1,
+                  fontSize: "13px",
+                  color: "text.primary",
+                  "& .MuiInputBase-input::placeholder": {
+                    color: "text.secondary",
+                    opacity: 0.7,
+                  },
+                }}
+              />
+              {searchQuery && (
+                <IconButton
+                  size="small"
+                  onClick={() => setSearchQuery("")}
+                  sx={{
+                    p: 0.5,
+                    color: "text.secondary",
+                    "&:hover": { color: "text.primary" },
+                  }}
+                >
+                  <X size={12} />
+                </IconButton>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {!isCollapsed && (
           <Box
             sx={{
               px: 1.5,
@@ -340,9 +543,9 @@ export function Sidebar({
         )}
 
         {!isCollapsed && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.25 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {groupedConversations.map((group) => (
-              <SidebarGroup key={group.label} sx={{ mb: 0 }}>
+              <SidebarGroup key={group.id} sx={{ mb: 0 }}>
                 <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                 <SidebarGroupContent sx={{ mt: 0.75 }}>
                   <SidebarMenu>
@@ -363,135 +566,18 @@ export function Sidebar({
                           "&:hover .conversation-actions": { opacity: 1 },
                         }}
                       >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            width: "100%",
-                            minWidth: 0,
-                          }}
-                        >
-                          {editingId === conv.id ? (
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                width: "100%",
-                                gap: 0.5,
-                              }}
-                            >
-                              <input
-                                autoFocus
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter")
-                                    handleConfirmRename(e as any, conv.id);
-                                  if (e.key === "Escape")
-                                    handleCancelRename(e as any);
-                                }}
-                                style={{
-                                  flex: 1,
-                                  background: "transparent",
-                                  border: "none",
-                                  color: "inherit",
-                                  outline: "none",
-                                  fontSize: "inherit",
-                                  padding: 0,
-                                }}
-                              />
-                              <IconButton
-                                size="small"
-                                onClick={(e) => handleConfirmRename(e, conv.id)}
-                                sx={{ p: 0.5, color: "text.secondary" }}
-                              >
-                                <Check size={14} />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                onClick={handleCancelRename}
-                                sx={{ p: 0.5, color: "text.secondary" }}
-                              >
-                                <X size={14} />
-                              </IconButton>
-                            </Box>
-                          ) : (
-                            <>
-                              <Typography
-                                variant="body2"
-                                noWrap
-                                sx={{
-                                  flex: 1,
-                                  color:
-                                    activeConversationId === conv.id
-                                      ? "text.primary"
-                                      : "inherit",
-                                }}
-                              >
-                                {conv.title || "Untitled"}
-                              </Typography>
-                              {!isCollapsed && (
-                                <Box
-                                  className="conversation-actions"
-                                  sx={{
-                                    display: "flex",
-                                    gap: 0,
-                                    opacity: 0,
-                                    transition: "opacity 0.2s",
-                                  }}
-                                >
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger>
-                                      <IconButton
-                                        size="small"
-                                        onClick={(e) => e.stopPropagation()}
-                                        sx={{
-                                          p: 0.5,
-                                          color: "text.secondary",
-                                          "&:hover": {
-                                            color: "text.primary",
-                                            bgcolor: "action.selected",
-                                          },
-                                        }}
-                                      >
-                                        <MoreHorizontal size={14} />
-                                      </IconButton>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          handleStartRename(
-                                            {
-                                              stopPropagation: () => {},
-                                            } as any,
-                                            conv,
-                                          )
-                                        }
-                                      >
-                                        <Edit2 size={14} />
-                                        Rename
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => handleArchive(conv.id)}
-                                      >
-                                        <Archive size={14} />
-                                        Archive
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        variant="destructive"
-                                        onClick={() => handleStartDelete(conv)}
-                                      >
-                                        <Trash2 size={14} />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </Box>
-                              )}
-                            </>
-                          )}
-                        </Box>
+                        <ConversationItem
+                          conv={conv}
+                          activeConversationId={activeConversationId}
+                          editingId={editingId}
+                          editValue={editValue}
+                          setEditValue={setEditValue}
+                          handleConfirmRename={handleConfirmRename}
+                          handleCancelRename={handleCancelRename}
+                          handleStartRename={handleStartRename}
+                          handleArchive={handleArchive}
+                          handleStartDelete={handleStartDelete}
+                        />
                       </SidebarMenuButton>
                     ))}
                   </SidebarMenu>
@@ -666,7 +752,13 @@ export function SidebarGroupContent({
   );
 }
 
-export function SidebarMenu({ children }: { children: React.ReactNode }) {
+export function SidebarMenu({
+  children,
+  sx,
+}: {
+  children: React.ReactNode;
+  sx?: CSSObject;
+}) {
   const { isCollapsed } = useSidebar();
   return (
     <Box
@@ -677,6 +769,7 @@ export function SidebarMenu({ children }: { children: React.ReactNode }) {
         px: isCollapsed ? 0 : 1.5,
         alignItems: isCollapsed ? "center" : "stretch",
         width: "100%",
+        ...sx,
       }}
     >
       {children}

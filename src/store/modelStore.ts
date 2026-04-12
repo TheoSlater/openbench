@@ -6,6 +6,7 @@ export type OllamaModel = {
   name: string;
   families: string[];
   supports_vision: boolean;
+  size: number;
 };
 
 export type AvailableModels = {
