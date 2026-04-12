@@ -14,7 +14,7 @@
 
 <p align="center">
   <b>No cloud. No API keys. No nonsense.</b><br/>
-  Runs entirely on <a href="https://ollama.com/">Ollama</a>.
+  Runs entirely on <a href="https://ollama.com/">Ollama</a>. (for now)
 </p>
 
 ---
