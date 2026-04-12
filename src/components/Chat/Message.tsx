@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { isImageAttachment, createDataUrl, formatFileSize } from "@/lib/utils";
+import clsx from "clsx";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -29,6 +30,78 @@ export interface MessageProps {
   isThinking?: boolean;
   onRegenerate?: (messageIndex: number) => void;
 }
+
+const CodeBlock = ({ language, value, ...props }: { language: string | null; value: string; [key: string]: any }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
+  return (
+    <Box sx={{ position: "relative", "&:hover .copy-button": { opacity: 1 } }}>
+      <Tooltip title={copied ? "Copied!" : "Copy code"}>
+        <IconButton
+          className="copy-button"
+          size="small"
+          onClick={handleCopy}
+          sx={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 10,
+            color: "rgba(255, 255, 255, 0.4)",
+            bgcolor: "rgba(30, 30, 30, 0.4)",
+            backdropFilter: "blur(4px)",
+            opacity: 0,
+            transition: "all 0.2s ease-in-out",
+            "&:hover": {
+              color: "rgba(255, 255, 255, 0.9)",
+              bgcolor: "rgba(30, 30, 30, 0.7)",
+            },
+            "@media (hover: none)": {
+              opacity: 1,
+            },
+          }}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </IconButton>
+      </Tooltip>
+      <SyntaxHighlighter
+        style={vscDarkPlus as any}
+        language={language || undefined}
+        PreTag="pre"
+        {...props}
+      >
+        {value}
+      </SyntaxHighlighter>
+    </Box>
+  );
+};
+
+const markdownComponents = {
+  pre: ({ children }: any) => <>{children}</>,
+  code({ node, inline, className, children, ...props }: any) {
+    const match = /language-(\w+)/.exec(className || "");
+    if (!inline) {
+      return (
+        <CodeBlock
+          language={match ? match[1] : null}
+          value={String(children).replace(/\n$/, "")}
+          {...props}
+        />
+      );
+    }
+    return (
+      <code className={clsx(className, inline && "inline-code")} {...props}>
+        {children}
+      </code>
+    );
+  },
+};
 
 export function Message({
   role,
@@ -274,11 +347,20 @@ export function Message({
                     fontSize: "14px",
                     lineHeight: 1.6,
                     "& p": { mb: 1, "&:last-child": { mb: 0 } },
+                    "& pre": { mb: 2, p: 0, borderRadius: "8px", overflow: "hidden" },
+                    "& code": { fontFamily: "monospace", fontSize: "0.9em" },
+                    "& code.inline-code": {
+                      bgcolor: "action.hover",
+                      px: 0.6,
+                      py: 0.2,
+                      borderRadius: "4px",
+                    },
                   }}
                 >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
+                    components={markdownComponents}
                   >
                     {processedThinking}
                   </ReactMarkdown>
@@ -298,12 +380,14 @@ export function Message({
               "& p": { mb: 2, "&:last-child": { mb: 0 }, lineHeight: 1.6, fontSize: "15px" },
               "& pre": { mb: 2, p: 0, borderRadius: "8px", overflow: "hidden" },
               "& code": {
+                fontFamily: "monospace",
+                fontSize: "0.9em",
+              },
+              "& code.inline-code": {
                 bgcolor: "action.hover",
                 px: 0.6,
                 py: 0.2,
                 borderRadius: "4px",
-                fontFamily: "monospace",
-                fontSize: "0.9em",
               },
               "& ul, & ol": { pl: 3, mb: 2 },
               "& li": { mb: 0.5 },
@@ -334,25 +418,7 @@ export function Message({
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
-              components={{
-                code({ node, inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  return !inline && match ? (
-                    <SyntaxHighlighter
-                      style={vscDarkPlus as any}
-                      language={match[1]}
-                      PreTag="div"
-                      {...props}
-                    >
-                      {String(children).replace(/\n$/, "")}
-                    </SyntaxHighlighter>
-                  ) : (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-              }}
+              components={markdownComponents}
             >
               {processedContent}
             </ReactMarkdown>

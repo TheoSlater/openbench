@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Box, Typography, Stack, useTheme } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { motion } from "motion/react";
-import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface ThinkingIndicatorProps {
   text?: string;
@@ -99,9 +99,6 @@ const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = React.memo(
           },
         }}
       >
-        {!isActive && (
-          <Sparkles size={14} style={{ color: theme.palette.text.secondary, opacity: 0.8 }} />
-        )}
         <ShimmerContainer>
           <motion.div
             animate={
