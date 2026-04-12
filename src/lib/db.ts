@@ -35,6 +35,8 @@ export type MessageRow = {
   createdAt: string;
   attachments?: string; // JSON string
   model?: string;
+  thinking?: string;
+  thinkingDuration?: number;
 };
 
 let db: Database | null = null;
@@ -85,7 +87,8 @@ export async function initDB() {
           content TEXT,
           createdAt TEXT,
           attachments TEXT,
-          model TEXT
+          model TEXT,
+          thinking TEXT
         )
       `);
 
@@ -110,8 +113,14 @@ export async function initDB() {
         if (!columns.some((col) => col.name === "model")) {
           await db.execute("ALTER TABLE messages ADD COLUMN model TEXT");
         }
+        if (!columns.some((col) => col.name === "thinking")) {
+          await db.execute("ALTER TABLE messages ADD COLUMN thinking TEXT");
+        }
+        if (!columns.some((col) => col.name === "thinkingDuration")) {
+          await db.execute("ALTER TABLE messages ADD COLUMN thinkingDuration REAL");
+        }
       } catch (err) {
-        console.error("[db] Error checking/adding 'model' column:", err);
+        console.error("[db] Error checking/adding columns:", err);
       }
 
       // Migration: Add attachments column if it doesn't exist
@@ -200,6 +209,8 @@ export async function addMessage(msg: {
   createdAt: string;
   attachments?: any[];
   model?: string;
+  thinking?: string;
+  thinkingDuration?: number;
 }) {
   if (inMemoryMode) {
     const messageList = fallbackMessages[msg.conversationId] ?? [];
@@ -213,6 +224,8 @@ export async function addMessage(msg: {
         createdAt: msg.createdAt,
         attachments: msg.attachments ? JSON.stringify(msg.attachments) : undefined,
         model: msg.model,
+        thinking: msg.thinking,
+        thinkingDuration: msg.thinkingDuration,
       },
     ];
     const conversation = fallbackConversations[msg.conversationId];
@@ -223,7 +236,7 @@ export async function addMessage(msg: {
   }
 
   await getDB().execute(
-    `INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, thinking, thinkingDuration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       msg.id,
       msg.conversationId,
@@ -232,6 +245,8 @@ export async function addMessage(msg: {
       msg.createdAt,
       msg.attachments ? JSON.stringify(msg.attachments) : null,
       msg.model || null,
+      msg.thinking || null,
+      msg.thinkingDuration || null,
     ],
   );
 

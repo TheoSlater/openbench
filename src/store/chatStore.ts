@@ -25,6 +25,9 @@ type ChatStore = {
       createdAt?: string;
       attachments?: Attachment[];
       model?: string;
+      thinking?: string;
+      thinkingDuration?: number;
+      isThinking?: boolean;
     }) => Promise<Message>;
     loadConversations: () => Promise<void>;
     deleteConversation: (id: string) => Promise<void>;
@@ -98,6 +101,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           createdAt: m.createdAt,
           attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
           model: m.model,
+          thinking: m.thinking,
+          thinkingDuration: m.thinkingDuration,
         }));
         set({ messages, hasMoreMessages: messages.length === pageSize });
       } else {
@@ -126,6 +131,8 @@ export const useChatStore = create<ChatStore>((set) => ({
           createdAt: m.createdAt,
           attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
           model: m.model,
+          thinking: m.thinking,
+          thinkingDuration: m.thinkingDuration,
         }));
         set({
           messages: [...newMessages, ...messages],
@@ -148,6 +155,9 @@ export const useChatStore = create<ChatStore>((set) => ({
         createdAt: now,
         attachments: message.attachments,
         model: message.model,
+        thinking: message.thinking,
+        thinkingDuration: message.thinkingDuration,
+        isThinking: message.isThinking,
       };
 
       const { conversations } = useChatStore.getState();

@@ -192,6 +192,9 @@ export function ChatArea({
                         content={msg.content}
                         attachments={msg.attachments}
                         model={msg.model}
+                        thinking={msg.thinking}
+                        thinkingDuration={msg.thinkingDuration}
+                        isThinking={msg.isThinking}
                         messageIndex={turn.startIndex + 1 + msgIndex}
                         onRegenerate={onRegenerate}
                       />

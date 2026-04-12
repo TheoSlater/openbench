@@ -503,9 +503,7 @@ export function Sidebar({
       </SidebarContent>
 
       <SidebarFooter sx={{ flexDirection: "column", gap: 1, p: 1.5 }}>
-        <ProfileMenu
-          onOpenSettings={onOpenSettings}
-        />
+        <ProfileMenu onOpenSettings={onOpenSettings} />
       </SidebarFooter>
 
       <DeleteConversationDialog

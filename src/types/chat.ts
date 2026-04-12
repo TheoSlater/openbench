@@ -25,6 +25,9 @@ export interface ChatMessage {
   createdAt: string;
   attachments?: Attachment[];
   model?: string;
+  thinking?: string;
+  thinkingDuration?: number;
+  isThinking?: boolean;
 }
 
 export interface Message extends ChatMessage {}

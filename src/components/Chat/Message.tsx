@@ -2,11 +2,12 @@ import type { Role, Attachment } from "@/types/chat";
 import { Copy, MoreHorizontal, RotateCcw, Check, Paperclip } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import ThinkingIndicator from "./ThinkingIndicator";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Box, Typography, IconButton, Tooltip } from "@mui/material";
+import { Box, Typography, IconButton, Tooltip, Collapse } from "@mui/material";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +24,9 @@ export interface MessageProps {
   attachments?: Attachment[];
   messageIndex?: number;
   model?: string;
+  thinking?: string;
+  thinkingDuration?: number;
+  isThinking?: boolean;
   onRegenerate?: (messageIndex: number) => void;
 }
 
@@ -32,10 +36,42 @@ export function Message({
   attachments,
   messageIndex,
   model,
+  thinking,
+  thinkingDuration,
+  isThinking,
   onRegenerate,
 }: MessageProps) {
   const [copied, setCopied] = useState(false);
+  const [thinkingExpanded, setThinkingExpanded] = useState(isThinking || false);
   const isUser = role === "user";
+  
+  const processedContent = content
+    ? content
+        .replace(/\\\[/g, "$$$$")
+        .replace(/\\\]/g, "$$$$")
+        .replace(/\\\(/g, "$")
+        .replace(/\\\)/g, "$")
+    : "";
+
+  const processedThinking = thinking
+    ? thinking
+        .replace(/\\\[/g, "$$$$")
+        .replace(/\\\]/g, "$$$$")
+        .replace(/\\\(/g, "$")
+        .replace(/\\\)/g, "$")
+    : "";
+
+  useEffect(() => {
+    // If it's thinking, it should be expanded.
+    // If it finishes thinking, it should collapse.
+    if (isThinking) {
+      setThinkingExpanded(true);
+    } else if (thinking && !isThinking) {
+      // Small delay to let the user see it's done before collapsing?
+      // Or just collapse immediately to match the prompt "it should collapse"
+      setThinkingExpanded(false);
+    }
+  }, [isThinking, !!thinking]);
   const canRegenerate =
     typeof messageIndex === "number" && typeof onRegenerate === "function";
 
@@ -214,6 +250,43 @@ export function Message({
           </Typography>
         )}
 
+        {(thinking || isThinking) && (
+          <Box sx={{ mb: 2, maxWidth: { xs: "90%", sm: "80%" } }}>
+            <Box onClick={() => setThinkingExpanded(!thinkingExpanded)}>
+              <ThinkingIndicator
+                isActive={isThinking}
+                isExpanded={thinkingExpanded}
+                thinkingDuration={thinkingDuration}
+              />
+            </Box>
+            <Collapse in={thinkingExpanded}>
+              <Box
+                sx={{
+                  mt: 1,
+                  pl: 2,
+                  borderLeft: "2px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Box
+                  sx={{
+                    color: "text.secondary",
+                    fontSize: "14px",
+                    lineHeight: 1.6,
+                    "& p": { mb: 1, "&:last-child": { mb: 0 } },
+                  }}
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {processedThinking}
+                  </ReactMarkdown>
+                </Box>
+              </Box>
+            </Collapse>
+          </Box>
+        )}
 
         {content ? (
           <Box
@@ -281,7 +354,7 @@ export function Message({
                 },
               }}
             >
-              {content}
+              {processedContent}
             </ReactMarkdown>
           </Box>
         ) : null}

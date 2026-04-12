@@ -43,7 +43,6 @@ function App() {
   useModelPicker();
   useSystemPrompts();
 
-  // const { actions } = useChatStore();
 
   useEffect(() => {
     async function init() {
