@@ -1,40 +1,88 @@
-# Openbench
+<p align="center">
+  <h1 align="center">OpenBench</h1>
+  <p align="center">
+    Run, compare, and debug local LLMs like a developer — not a chatbot user.
+  </p>
+  <p align="center">
+    Lightweight. Local-first. Built for real workflows.
+  </p>
+</p>
 
-A lightweight desktop app for experimenting with local LLMs. Built with Tauri, React, and Rust, designed around a developer workflow rather than just a chat interface.
+<p align="center">
+  <img src="./assets/demo.gif" alt="OpenBench Demo" />
+</p>
 
-Runs on top of Ollama, so everything stays on your machine.
+<p align="center">
+  <b>No cloud. No API keys. No nonsense.</b><br/>
+  Runs entirely on <a href="https://ollama.com/">Ollama</a>.
+</p>
+
+---
+
+## Why OpenBench?
+
+Most LLM tools are just chat apps with better branding.
+
+OpenBench is built for people who actually want control:
+- Compare multiple models side-by-side  
+- Tune prompts with real parameters  
+- Inspect raw request/response data  
+
+If you're testing prompts seriously, this is the tool you wanted.
+
+---
 
 ## Features
 
-**Local-first & private.** Conversations are stored in a local SQLite database and never leave your machine.
+### Multi-model comparison
+Run multiple Ollama models simultaneously and compare outputs in real time.
 
-**Multi-model comparison.** Run multiple Ollama models side-by-side and compare outputs in real time.
+### Prompt playground
+- System prompt editing  
+- Temperature & parameter controls  
+- Full request/response inspection  
 
-**Prompt playground.** A dedicated workspace for prompt engineering: system prompt editing, temperature controls, and raw request/response inspection.
+### Incognito chats
+Temporary sessions that don’t touch your history.
 
-**Temporary chats.** Incognito sessions for one-off prompts that don't get saved to history.
+### Local-first by default
+All conversations are stored in SQLite. Nothing leaves your machine.
 
-**Rich output rendering.** GitHub Flavored Markdown, syntax-highlighted code blocks, and LaTeX via KaTeX.
+### Rich output rendering
+- GitHub Flavored Markdown  
+- Syntax-highlighted code blocks  
+- LaTeX via KaTeX  
 
-**Developer tools.** Request/response inspector and a dev mode for testing the UI without a live backend.
+### Developer tools
+- Request/response inspector  
+- Dev mode (run UI without backend)  
+
+---
 
 ## Tech Stack
 
-**Frontend:** React 19, TypeScript, Vite, Zustand, Tailwind CSS, MUI
+**Frontend**  
+React 19 · TypeScript · Vite · Zustand · Tailwind · MUI  
 
-**Backend:** Rust (Tauri 2), SQLx, ollama-rs
+**Backend**  
+Rust (Tauri 2) · SQLx · ollama-rs  
 
-**Storage:** SQLite
+**Storage**  
+SQLite  
+
+---
 
 ## Getting Started
 
-### Prerequisites
+### 1. Prerequisites
 
-- [Ollama](https://ollama.com/) installed and running
-- [Bun](https://bun.sh/) for package management
-- Rust toolchain for the Tauri backend
+- Ollama installed and running  
+- Bun  
+- Rust toolchain  
 
-### Install
+---
+
+### 2. Install
 
 ```bash
 git clone https://github.com/your-username/openbench.git
@@ -42,18 +90,24 @@ cd openbench
 bun install
 ```
 
-### Development
+---
+
+### 3. Run
 
 ```bash
 bun run tauri dev
 ```
 
-### Build
+---
+
+### 4. Build
 
 ```bash
 bun run build
 bun run tauri build
 ```
+
+---
 
 ## Shortcuts
 
@@ -62,9 +116,14 @@ bun run tauri build
 | Open settings | `Cmd + ,` | `Ctrl + ,` |
 | Toggle dev mode | `/dev on` / `/dev off` | `/dev on` / `/dev off` |
 
+---
+
 ## Contributing
 
-Bug reports, feature suggestions, and pull requests are all welcome.
+PRs, issues, and ideas are welcome.  
+If you build something cool with OpenBench, show it off.
+
+---
 
 ## License
 
