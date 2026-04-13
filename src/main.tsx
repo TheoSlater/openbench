@@ -20,8 +20,7 @@ function Root() {
   }, [mode, prefersDarkMode]);
 
   useEffect(() => {
-    const isDark =
-      mode === "dark" || (mode === "system" && prefersDarkMode);
+    const isDark = mode === "dark" || (mode === "system" && prefersDarkMode);
     document.documentElement.classList.toggle("dark", isDark);
   }, [mode, prefersDarkMode]);
 

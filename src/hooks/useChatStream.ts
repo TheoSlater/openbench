@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 import { useInspectorStore } from "@/store/inspectorStore";
+import { useToolStore } from "@/store/toolStore";
 import { cleanTitle, loggedInvoke } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,15 @@ type ThinkingPayload = {
   request_id: string;
   thinking: string;
   is_thinking: boolean;
+};
+
+// Payload emitted by the Rust backend when a tool is invoked.
+type ToolInvocationPayload = {
+  invocation_id: string;
+  request_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  requires_approval: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -133,6 +143,8 @@ export function useChatStream(
   const messageIdsRef = useRef<Record<string, string>>({});
   // Track when thinking started for each request
   const thinkingStartTimeRef = useRef<Record<string, number>>({});
+  // Track when thinking ended for each request
+  const thinkingEndTimeRef = useRef<Record<string, number>>({});
   // How many model streams are still in-flight
   const pendingStreamsRef = useRef(0);
   // Set to true when we want to ignore incoming events (conversation switch / stop)
@@ -177,6 +189,7 @@ export function useChatStream(
     delete messageIdsRef.current[requestId];
     delete thinkingAccRef.current[requestId];
     delete thinkingStartTimeRef.current[requestId];
+    delete thinkingEndTimeRef.current[requestId];
   }, []);
 
   /** Decrement pending count; clear isStreaming when all streams finish */
@@ -193,6 +206,8 @@ export function useChatStream(
     contentAccRef.current = {};
     thinkingAccRef.current = {};
     messageIdsRef.current = {};
+    thinkingStartTimeRef.current = {};
+    thinkingEndTimeRef.current = {};
     pendingStreamsRef.current = 0;
   }, []);
 
@@ -353,8 +368,9 @@ export function useChatStream(
 
         // Persist to store (only if there's something worth saving)
         const thinking = thinkingAccRef.current[request_id];
+        const endTime = thinkingEndTimeRef.current[request_id] || Date.now();
         const thinkingDuration = thinkingStartTimeRef.current[request_id] 
-          ? (Date.now() - thinkingStartTimeRef.current[request_id]) / 1000 
+          ? (endTime - thinkingStartTimeRef.current[request_id]) / 1000 
           : undefined;
 
         if (fullContent.trim() || thinking?.trim()) {
@@ -411,6 +427,11 @@ export function useChatStream(
         setStreamingMessages((prev) => {
           const existing = prev[request_id];
 
+          // Capture end time when thinking concludes
+          if (!is_thinking && thinkingStartTimeRef.current[request_id] && !thinkingEndTimeRef.current[request_id]) {
+            thinkingEndTimeRef.current[request_id] = Date.now();
+          }
+
           if (!existing) {
             // Thinking arrived before the first content chunk — create the
             // streaming message now so the UI can show the thinking indicator.
@@ -447,6 +468,60 @@ export function useChatStream(
       unlistenPromise.then((unlisten) => unlisten());
     };
   }, [mockMode, activeConversationId, getLog]);
+
+  // ------ Event listener: tool-invocation ----------------------------------
+  // This listener handles events sent by the Rust backend whenever a tool
+  // is triggered by the LLM.
+  // 
+  // FLOW:
+  // 1. Rust backend identifies a tool call in the model response.
+  // 2. Rust emits "tool-invocation" event.
+  // 3. Frontend catches it here, updates the UI with a status indicator,
+  //    and if the tool requires approval, triggers the ToolApproval modal via the toolStore.
+  useEffect(() => {
+    if (mockMode) return;
+
+    const { setPendingApproval } = useToolStore.getState().actions;
+
+    const unlistenPromise = listen<ToolInvocationPayload>(
+      "tool-invocation",
+      (event) => {
+        const { request_id, tool_name, tool_args, requires_approval, invocation_id } =
+          event.payload;
+
+        // Visual feedback: show the user that a tool is being used
+        setStreamingMessages((prev) => {
+          const existing = prev[request_id];
+          if (existing) {
+            const toolLabel = `\n\n🔧 Using tool: **${tool_name}**...`;
+            return {
+              ...prev,
+              [request_id]: {
+                ...existing,
+                content: existing.content + toolLabel,
+              },
+            };
+          }
+          return prev;
+        });
+
+        // Backend blocks execution if requires_approval is true, waiting for
+        // the "approve_tool" command from the frontend.
+        if (requires_approval) {
+          setPendingApproval({
+            invocationId: invocation_id,
+            requestId: request_id,
+            toolName: tool_name,
+            toolArgs: tool_args,
+          });
+        }
+      },
+    );
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [mockMode]);
 
   // ------ sendMessage -----------------------------------------------------
   const sendMessage = useCallback(

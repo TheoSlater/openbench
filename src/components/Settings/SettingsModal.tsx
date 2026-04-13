@@ -1,9 +1,10 @@
 import { useSettingsStore } from "@/store/settingsStore";
 import { useThemeStore, ThemeMode } from "@/store/themeStore";
 import { SystemPrompt, useModelStore } from "@/store/modelStore";
+import { useToolStore, type ToolDefinition } from "@/store/toolStore";
 import { Modal } from "@/components/ui/modal";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Settings, UserCircle, X, Sun, Moon, Monitor, Box as BoxIcon } from "lucide-react";
+import { Settings, UserCircle, X, Sun, Moon, Monitor, Box as BoxIcon, Wrench } from "lucide-react";
 import { ModelManagement } from "./ModelManagement";
 import {
   Box,
@@ -26,6 +27,7 @@ type SettingsModalProps = {
 const SIDEBAR_ITEMS = [
   { id: "general", label: "General", icon: Settings },
   { id: "models", label: "Models", icon: BoxIcon },
+  { id: "tools", label: "Tools", icon: Wrench },
   { id: "personalization", label: "Personalization", icon: UserCircle },
 ];
 
@@ -482,10 +484,162 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ModelManagement />
                 </Box>
               )}
+
+              {activeTab === "tools" && <ToolsTab />}
             </Box>
           </Box>
         </Box>
       </Box>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tools Tab Component
+// ---------------------------------------------------------------------------
+
+function ToolsTab() {
+  const muiTheme = useTheme();
+  const tools = useToolStore((s) => s.tools);
+  const isLoading = useToolStore((s) => s.isLoading);
+  const { loadTools, toggleTool } = useToolStore((s) => s.actions);
+
+  useEffect(() => {
+    loadTools();
+  }, [loadTools]);
+
+  const sourceColors: Record<string, string> = {
+    builtin: muiTheme.palette.info.main,
+    python: muiTheme.palette.success.main,
+    mcp: muiTheme.palette.warning.main,
+  };
+
+  return (
+    <Box sx={{ py: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
+      >
+        <Box>
+          <Typography sx={{ fontSize: "14px", fontWeight: 500, color: "text.primary" }}>
+            Available Tools
+          </Typography>
+          <Typography sx={{ fontSize: "13px", color: "text.secondary", mt: 0.5 }}>
+            Tools are sent to the model so it can invoke them during conversations.
+          </Typography>
+        </Box>
+        <Button
+          variant="text"
+          size="small"
+          onClick={() => loadTools()}
+          disabled={isLoading}
+          sx={{
+            textTransform: "none",
+            fontSize: "13px",
+            fontWeight: 500,
+          }}
+        >
+          {isLoading ? "Loading..." : "Reload"}
+        </Button>
+      </Box>
+
+      {tools.length === 0 && !isLoading && (
+        <Typography sx={{ fontSize: "13px", color: "text.secondary", py: 4, textAlign: "center" }}>
+          No tools registered. Tools will appear here once the backend is running.
+        </Typography>
+      )}
+
+      {tools.map((tool: ToolDefinition) => (
+        <Box
+          key={tool.name}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            py: 1.5,
+            px: 2,
+            borderRadius: "8px",
+            bgcolor: "action.hover",
+            opacity: tool.enabled ? 1 : 0.6,
+            transition: "opacity 0.2s ease",
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+              <Typography
+                sx={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  fontFamily: "monospace",
+                  color: "text.primary",
+                }}
+              >
+                {tool.name}
+              </Typography>
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.1,
+                  borderRadius: "4px",
+                  bgcolor: sourceColors[tool.source] + "22",
+                  border: `1px solid ${sourceColors[tool.source]}44`,
+                }}
+              >
+                <Typography sx={{ fontSize: "10px", fontWeight: 600, color: sourceColors[tool.source], textTransform: "uppercase" }}>
+                  {tool.source}
+                </Typography>
+              </Box>
+              {tool.requiresApproval && (
+                <Box
+                  sx={{
+                    px: 1,
+                    py: 0.1,
+                    borderRadius: "4px",
+                    bgcolor: muiTheme.palette.warning.main + "22",
+                    border: `1px solid ${muiTheme.palette.warning.main}44`,
+                  }}
+                >
+                  <Typography sx={{ fontSize: "10px", fontWeight: 600, color: muiTheme.palette.warning.main }}>
+                    APPROVAL
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+            <Typography
+              sx={{
+                fontSize: "12px",
+                color: "text.secondary",
+                lineHeight: 1.4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tool.description}
+            </Typography>
+          </Box>
+          <Button
+            variant={tool.enabled ? "outlined" : "text"}
+            size="small"
+            onClick={() => toggleTool(tool.name)}
+            sx={{
+              textTransform: "none",
+              fontSize: "12px",
+              fontWeight: 500,
+              minWidth: 70,
+              ml: 2,
+              borderColor: tool.enabled ? muiTheme.palette.divider : "transparent",
+              color: tool.enabled ? "text.primary" : "text.secondary",
+            }}
+          >
+            {tool.enabled ? "Enabled" : "Disabled"}
+          </Button>
+        </Box>
+      ))}
+    </Box>
   );
 }

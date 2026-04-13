@@ -1,5 +1,11 @@
 import type { Role, Attachment } from "@/types/chat";
-import { Copy, MoreHorizontal, RotateCcw, Check, Paperclip } from "lucide-react";
+import {
+  Copy,
+  MoreHorizontal,
+  RotateCcw,
+  Check,
+  Paperclip,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import ThinkingIndicator from "./ThinkingIndicator";
@@ -31,14 +37,25 @@ export interface MessageProps {
   onRegenerate?: (messageIndex: number) => void;
 }
 
-const CodeBlock = ({ language, value, ...props }: { language: string | null; value: string; [key: string]: any }) => {
+const CodeBlock = ({
+  language,
+  value,
+  ...props
+}: {
+  language: string | null;
+  value: string;
+  [key: string]: any;
+}) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+    navigator.clipboard
+      ?.writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
   };
 
   return (
@@ -84,7 +101,7 @@ const CodeBlock = ({ language, value, ...props }: { language: string | null; val
 
 const markdownComponents = {
   pre: ({ children }: any) => <>{children}</>,
-  code({ node, inline, className, children, ...props }: any) {
+  code({ inline, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || "");
     if (!inline) {
       return (
@@ -117,7 +134,7 @@ export function Message({
   const [copied, setCopied] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(isThinking || false);
   const isUser = role === "user";
-  
+
   const processedContent = content
     ? content
         .replace(/\\\[/g, "$$$$")
@@ -159,9 +176,12 @@ export function Message({
 
   const handleCopy = () => {
     if (!content) return;
-    navigator.clipboard?.writeText(content).then(() => {
-      setCopied(true);
-    }).catch(() => {});
+    navigator.clipboard
+      ?.writeText(content)
+      .then(() => {
+        setCopied(true);
+      })
+      .catch(() => {});
   };
 
   if (isUser) {
@@ -347,7 +367,12 @@ export function Message({
                     fontSize: "14px",
                     lineHeight: 1.6,
                     "& p": { mb: 1, "&:last-child": { mb: 0 } },
-                    "& pre": { mb: 2, p: 0, borderRadius: "8px", overflow: "hidden" },
+                    "& pre": {
+                      mb: 2,
+                      p: 0,
+                      borderRadius: "8px",
+                      overflow: "hidden",
+                    },
                     "& code": { fontFamily: "monospace", fontSize: "0.9em" },
                     "& code.inline-code": {
                       bgcolor: "action.hover",
@@ -377,7 +402,12 @@ export function Message({
               fontSize: "15px",
               lineHeight: 1.6,
               maxWidth: { xs: "90%", sm: "80%" },
-              "& p": { mb: 2, "&:last-child": { mb: 0 }, lineHeight: 1.6, fontSize: "15px" },
+              "& p": {
+                mb: 2,
+                "&:last-child": { mb: 0 },
+                lineHeight: 1.6,
+                fontSize: "15px",
+              },
               "& pre": { mb: 2, p: 0, borderRadius: "8px", overflow: "hidden" },
               "& code": {
                 fontFamily: "monospace",
@@ -424,7 +454,7 @@ export function Message({
             </ReactMarkdown>
           </Box>
         ) : null}
-        
+
         <Box
           className="action-bar"
           sx={{
@@ -438,7 +468,10 @@ export function Message({
             <IconButton
               size="small"
               onClick={handleCopy}
-              sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}
+              sx={{
+                color: "text.secondary",
+                "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+              }}
             >
               {copied ? <Check size={14} color="green" /> : <Copy size={14} />}
             </IconButton>
@@ -449,7 +482,10 @@ export function Message({
               <IconButton
                 size="small"
                 onClick={() => onRegenerate(messageIndex)}
-                sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}
+                sx={{
+                  color: "text.secondary",
+                  "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+                }}
               >
                 <RotateCcw size={14} />
               </IconButton>
@@ -458,12 +494,20 @@ export function Message({
 
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <IconButton size="small" sx={{ color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "action.hover" } }}>
+              <IconButton
+                size="small"
+                sx={{
+                  color: "text.secondary",
+                  "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+                }}
+              >
                 <MoreHorizontal size={14} />
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => {}}>More options soon</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {}}>
+                More options soon
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </Box>

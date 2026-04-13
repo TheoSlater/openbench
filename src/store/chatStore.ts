@@ -103,6 +103,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           model: m.model,
           thinking: m.thinking,
           thinkingDuration: m.thinkingDuration,
+          isThinking: false,
         }));
         set({ messages, hasMoreMessages: messages.length === pageSize });
       } else {
@@ -133,6 +134,7 @@ export const useChatStore = create<ChatStore>((set) => ({
           model: m.model,
           thinking: m.thinking,
           thinkingDuration: m.thinkingDuration,
+          isThinking: false,
         }));
         set({
           messages: [...newMessages, ...messages],

@@ -24,7 +24,7 @@ const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = React.memo(
     text,
     duration = 2,
     spread = 0.5,
-    isActive = true,
+    isActive = false,
     isExpanded = false,
     thinkingDuration,
   }) => {

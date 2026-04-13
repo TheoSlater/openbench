@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { loggedInvoke } from "@/lib/utils";
 
 export type ModelProvider = "ollama" | "anthropic" | "openai";
 
@@ -62,6 +63,7 @@ type ModelStore = {
   setPullProgress: (progress: PullProgress | null) => void;
   actions: {
     setDefaultModel: (model: string) => void;
+    cancelPull: () => Promise<void>;
     /**
      * Set the active system prompt by id.
      * @param id - The prompt id to activate, or null to clear.
@@ -176,6 +178,14 @@ export const useModelStore = create<ModelStore>((set) => ({
     setDefaultModel: (model: string) => {
       localStorage.setItem("default_model", model);
       set({ defaultModel: model });
+    },
+    cancelPull: async () => {
+      try {
+        await loggedInvoke("cancel_pull");
+        set({ pullingModel: null, pullProgress: null });
+      } catch (err) {
+        console.error("Failed to cancel pull:", err);
+      }
     },
     setSystemPrompt: (id) => set({ activeSystemPromptId: id }),
     addSystemPrompt: (prompt) =>

@@ -13,7 +13,9 @@ import { Box, Snackbar, Alert } from "@mui/material";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useToolStore } from "@/store/toolStore";
 import { AuthModal } from "@/components/Auth/AuthModal";
+import ToolApproval from "@/components/Chat/ToolApproval";
 import type { ChatMessage } from "@/types/chat";
 import "./App.css";
 import * as db from "@/lib/db";
@@ -49,13 +51,6 @@ function App() {
 
   useEffect(() => {
     async function init() {
-      const timeoutId = setTimeout(() => {
-        const { isLoading } = useAuthStore.getState();
-        if (isLoading) {
-          useAuthStore.setState({ isLoading: false });
-        }
-      }, 8000);
-
       try {
         await db.initDB().catch(() => {});
         await Promise.all([
@@ -76,9 +71,12 @@ function App() {
             .getState()
             .actions.loadConversations()
             .catch(() => {}),
+          useToolStore
+            .getState()
+            .actions.loadTools()
+            .catch(() => {}),
         ]);
       } finally {
-        clearTimeout(timeoutId);
         const { isLoading } = useAuthStore.getState();
         if (isLoading) {
           useAuthStore.setState({ isLoading: false });
@@ -372,6 +370,7 @@ function App() {
 
       <SettingsModal isOpen={isSettingsOpen} onClose={handleCloseSettings} />
       <AuthModal />
+      <ToolApproval />
 
       <Snackbar
         open={toast.open}
