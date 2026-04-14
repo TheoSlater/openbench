@@ -105,6 +105,17 @@ export async function initDB() {
         )
       `);
 
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          userId TEXT,
+          token TEXT UNIQUE NOT NULL,
+          expiresAt TEXT,
+          createdAt TEXT,
+          FOREIGN KEY(userId) REFERENCES users(id)
+        )
+      `);
+
       // Check if 'model' column exists in 'messages' table, add if missing
       try {
         const columns = await db.select<{ name: string }[]>(

@@ -1,4 +1,4 @@
-import { ModelProvider, OllamaModel, PullProgress } from "@/store/modelStore";
+import { ModelProvider, OllamaModel, PullProgress, SystemPrompt } from "@/store/modelStore";
 import {
   Box,
   Select,
@@ -10,8 +10,9 @@ import {
   IconButton,
   CircularProgress,
   LinearProgress,
+  Divider,
 } from "@mui/material";
-import { X, ChevronDown, Eye, Plus, Settings2, AlertCircle } from "lucide-react";
+import { X, ChevronDown, Eye, Plus, Settings2, AlertCircle, ScrollText } from "lucide-react";
 
 interface HeaderProps {
   availableModels: {
@@ -37,6 +38,9 @@ interface HeaderProps {
   onToggleTemporaryChat: () => void;
   pullingModel?: string | null;
   pullProgress?: PullProgress | null;
+  systemPrompts: SystemPrompt[];
+  activeSystemPromptId: string | null;
+  onSystemPromptChange: (id: string | null) => void;
 }
 
 export function Header({
@@ -55,6 +59,9 @@ export function Header({
   onToggleTemporaryChat,
   pullingModel,
   pullProgress,
+  systemPrompts,
+  activeSystemPromptId,
+  onSystemPromptChange,
 }: HeaderProps) {
   const hasAnyModels = availableModels.ollama.length > 0;
   const isOllamaLoading = isLoading && !hasAnyModels;
@@ -246,14 +253,12 @@ export function Header({
           </Box>
         )}
         <Tooltip title={isTemporary ? "Disable Temporary Chat" : "Enable Temporary Chat"}>
-          <Box
+          <IconButton
             onClick={onToggleTemporaryChat}
+            size="small"
             sx={{
               p: 0.75,
               borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               cursor: "pointer",
               color: isTemporary ? "primary.main" : "text.secondary",
               bgcolor: isTemporary ? "action.selected" : "transparent",
@@ -292,17 +297,15 @@ export function Header({
                 ></path>
               )}
             </svg>
-          </Box>
+          </IconButton>
         </Tooltip>
         <Tooltip title={isInspectorOpen ? "Close Inspector" : "Open Inspector"}>
-          <Box
+          <IconButton
             onClick={onToggleInspector}
+            size="small"
             sx={{
               p: 0.75,
               borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               cursor: "pointer",
               color: isInspectorOpen ? "primary.main" : "text.secondary",
               bgcolor: isInspectorOpen ? "action.selected" : "transparent",
@@ -314,9 +317,75 @@ export function Header({
             }}
           >
             <Settings2 size={18} />
-          </Box>
+          </IconButton>
         </Tooltip>
-      </Box>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5, height: 20, my: "auto" }} />
+
+        <Tooltip title="Switch System Prompt">
+          <FormControl size="small" sx={{ m: 0 }}>
+            <Select
+              value={activeSystemPromptId || ""}
+              onChange={(e) => onSystemPromptChange(e.target.value as string || null)}
+              displayEmpty
+              IconComponent={() => null}
+              sx={{
+                bgcolor: "transparent",
+                "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                "& .MuiSelect-select": {
+                  p: 0.75,
+                  paddingRight: "6px !important", // Match other icon buttons and remove extra space reserved for hidden MUI icon
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  color: activeSystemPromptId && activeSystemPromptId !== "default" ? "primary.main" : "text.secondary",
+                  bgcolor: activeSystemPromptId && activeSystemPromptId !== "default" ? "action.selected" : "transparent",
+                  "&:hover": {
+                    bgcolor: "action.hover",
+                    color: "text.primary",
+                  },
+                  transition: "all 0.2s ease-in-out",
+                  minHeight: "unset !important",
+                  height: "30px !important",
+                  boxSizing: "border-box",
+                  lineHeight: 1,
+                },
+              }}
+              renderValue={() => (
+                <Box sx={{ display: "flex", alignItems: "center" }}>
+                  <ScrollText size={18} />
+                </Box>
+              )}
+            MenuProps={{
+              PaperProps: {
+                sx: {
+                  bgcolor: "background.paper",
+                  mt: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  minWidth: 200,
+                },
+              },
+            }}
+          >
+            {systemPrompts.map((prompt) => (
+              <MenuItem key={prompt.id} value={prompt.id}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {prompt.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+                    {prompt.content || "Empty prompt"}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Tooltip>
     </Box>
-  );
+  </Box>
+);
 }

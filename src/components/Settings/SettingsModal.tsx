@@ -3,8 +3,8 @@ import { useThemeStore, ThemeMode } from "@/store/themeStore";
 import { SystemPrompt, useModelStore } from "@/store/modelStore";
 import { useToolStore, type ToolDefinition } from "@/store/toolStore";
 import { Modal } from "@/components/ui/modal";
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { Settings, UserCircle, X, Sun, Moon, Monitor, Box as BoxIcon, Wrench } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Settings, X, Sun, Moon, Monitor, Box as BoxIcon, Wrench, ScrollText, Plus, Trash2, Edit2, Check } from "lucide-react";
 import { ModelManagement } from "./ModelManagement";
 import {
   Box,
@@ -28,7 +28,7 @@ const SIDEBAR_ITEMS = [
   { id: "general", label: "General", icon: Settings },
   { id: "models", label: "Models", icon: BoxIcon },
   { id: "tools", label: "Tools", icon: Wrench },
-  { id: "personalization", label: "Personalization", icon: UserCircle },
+  { id: "prompts", label: "Prompt Library", icon: ScrollText },
 ];
 
 const THEME_OPTIONS = [
@@ -67,43 +67,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  // --- Personalization State ---
-  const {
-    systemPrompts,
-    activeSystemPromptId,
-    actions: modelActions,
-  } = useModelStore();
-  const activePrompt = useMemo(
-    () => systemPrompts.find((p) => p.id === activeSystemPromptId) ?? null,
-    [activeSystemPromptId, systemPrompts],
-  );
-  const [personalizationContent, setPersonalizationContent] = useState("");
-
-  useEffect(() => {
-    setPersonalizationContent(activePrompt?.content ?? "");
-  }, [activePrompt]);
-
-  const handleSavePersonalization = useCallback(() => {
-    const nextPrompt: SystemPrompt = {
-      id: activePrompt?.id ?? "default",
-      name: activePrompt?.name ?? "Default",
-      content: personalizationContent,
-      baseStyle: activePrompt?.baseStyle ?? "default",
-      characteristics: activePrompt?.characteristics ?? [],
-      instantAnswers: activePrompt?.instantAnswers ?? false,
-    };
-    if (activePrompt) {
-      modelActions.updateSystemPrompt(nextPrompt);
-    } else {
-      modelActions.addSystemPrompt(nextPrompt);
-      modelActions.setSystemPrompt(nextPrompt.id);
-    }
-  }, [activePrompt, personalizationContent, modelActions]);
-
   const handleClose = () => {
-    if (activeTab === "personalization") {
-      handleSavePersonalization();
-    }
     onClose();
   };
 
@@ -151,8 +115,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <Box
                 key={item.id}
                 onClick={() => {
-                  if (activeTab === "personalization")
-                    handleSavePersonalization();
                   setActiveTab(item.id);
                 }}
                 component="button"
@@ -405,79 +367,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </Box>
               )}
 
-              {activeTab === "personalization" && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    width: "100%",
-                    flexDirection: "column",
-                  }}
-                >
-                  <Box sx={{ py: 2 }}>
-                    <Box
-                      sx={{
-                        mb: 1.5,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 0.5,
-                      }}
-                    >
-                      <Typography
-                        component="label"
-                        htmlFor="prompt-content"
-                        sx={{
-                          fontSize: "14px",
-                          fontWeight: 500,
-                          color: "text.primary",
-                        }}
-                      >
-                        Custom instructions
-                      </Typography>
-                      <Typography
-                        sx={{
-                          color: "text.secondary",
-                          fontSize: "13px",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        What would you like the AI to know to provide better
-                        responses?
-                      </Typography>
-                    </Box>
-                    <TextField
-                      id="prompt-content"
-                      multiline
-                      minRows={10}
-                      maxRows={15}
-                      value={personalizationContent}
-                      onChange={(e) =>
-                        setPersonalizationContent(e.target.value)
-                      }
-                      placeholder="Example: I'm a developer working with React and Rust. Keep explanations concise..."
-                      fullWidth
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          borderRadius: "8px",
-                          bgcolor: "action.hover",
-                          fontSize: "14px",
-                          color: "text.primary",
-                          lineHeight: 1.5,
-                          "& fieldset": {
-                            border: "none",
-                          },
-                          "&.Mui-focused": {
-                            bgcolor: "action.hover",
-                          },
-                        },
-                        "& .MuiInputBase-input::placeholder": {
-                          color: "text.secondary",
-                          opacity: 0.7,
-                        },
-                      }}
-                    />
-                  </Box>
-                </Box>
-              )}
+              {activeTab === "prompts" && <PromptLibraryTab />}
 
               {activeTab === "models" && (
                 <Box sx={{ py: 2 }}>
@@ -491,6 +381,149 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </Box>
       </Box>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prompt Library Tab Component
+// ---------------------------------------------------------------------------
+
+function PromptLibraryTab() {
+  const { systemPrompts, activeSystemPromptId, actions } = useModelStore();
+  const [editingPrompt, setEditingPrompt] = useState<SystemPrompt | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const muiTheme = useTheme();
+
+  const handleSave = (prompt: SystemPrompt) => {
+    if (isAdding) {
+      actions.addSystemPrompt(prompt);
+      setIsAdding(false);
+    } else {
+      actions.updateSystemPrompt(prompt);
+    }
+    setEditingPrompt(null);
+  };
+
+  const handleAddNew = () => {
+    const newPrompt: SystemPrompt = {
+      id: crypto.randomUUID(),
+      name: "New Prompt",
+      content: "",
+      category: "General",
+    };
+    setEditingPrompt(newPrompt);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Are you sure you want to delete this prompt?")) {
+      actions.deleteSystemPrompt(id);
+    }
+  };
+
+  const categories = Array.from(new Set(systemPrompts.map(p => p.category || "General")));
+
+  return (
+    <Box sx={{ py: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Typography sx={{ fontSize: "14px", fontWeight: 500 }}>System Prompts</Typography>
+        {!editingPrompt && (
+          <Button
+            size="small"
+            startIcon={<Plus size={16} />}
+            onClick={handleAddNew}
+            sx={{ textTransform: "none" }}
+          >
+            Add New
+          </Button>
+        )}
+      </Box>
+
+      {editingPrompt ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, bgcolor: "action.hover", p: 2, borderRadius: "8px" }}>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <TextField
+              label="Name"
+              size="small"
+              fullWidth
+              value={editingPrompt.name}
+              onChange={(e) => setEditingPrompt({ ...editingPrompt, name: e.target.value })}
+            />
+            <TextField
+              label="Category"
+              size="small"
+              fullWidth
+              value={editingPrompt.category || ""}
+              onChange={(e) => setEditingPrompt({ ...editingPrompt, category: e.target.value })}
+              placeholder="e.g. Coding, Creative, etc."
+            />
+          </Box>
+          <TextField
+            label="System Message"
+            multiline
+            minRows={8}
+            fullWidth
+            value={editingPrompt.content}
+            onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
+          />
+          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+            <Button size="small" variant="text" onClick={() => { setEditingPrompt(null); setIsAdding(false); }}>Cancel</Button>
+            <Button size="small" variant="contained" onClick={() => handleSave(editingPrompt)}>Save</Button>
+          </Box>
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {categories.map(category => (
+            <Box key={category} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                {category}
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {systemPrompts.filter(p => (p.category || "General") === category).map(prompt => (
+                  <Box
+                    key={prompt.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: "8px",
+                      bgcolor: "action.hover",
+                      border: "1px solid",
+                      borderColor: activeSystemPromptId === prompt.id ? "primary.main" : "transparent",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      transition: "all 0.2s",
+                      "&:hover": { bgcolor: "action.selected" }
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => actions.setSystemPrompt(prompt.id)}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: activeSystemPromptId === prompt.id ? 600 : 500 }}>
+                          {prompt.name}
+                        </Typography>
+                        {activeSystemPromptId === prompt.id && (
+                          <Check size={14} style={{ color: muiTheme.palette.primary.main }} />
+                        )}
+                      </Box>
+                      <Typography variant="caption" noWrap sx={{ display: "block", color: "text.secondary" }}>
+                        {prompt.content || "No content"}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 0.5 }}>
+                      <IconButton size="small" onClick={() => setEditingPrompt(prompt)}>
+                        <Edit2 size={14} />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDelete(prompt.id)} disabled={prompt.id === "default"}>
+                        <Trash2 size={14} />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
   );
 }
 

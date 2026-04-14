@@ -205,7 +205,7 @@ export function ChatArea({
             )}
           </Box>
         ))}
-        <Box ref={bottomRef} sx={{ h: 80 }} />
+        <Box ref={bottomRef} sx={{ height: 80 }} />
       </Box>
     </Box>
   );

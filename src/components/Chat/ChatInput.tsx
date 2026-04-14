@@ -1,5 +1,5 @@
 import { Square, Plus, ArrowUp, Paperclip, X, Image as ImageIcon } from "lucide-react";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { Box, InputBase, IconButton, Typography } from "@mui/material";
 import {
   DropdownMenu,
@@ -75,38 +75,81 @@ export function ChatInput({
     }
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const processFiles = useCallback(
+    async (files: FileList | File[]) => {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+
+        const attachment: Attachment = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        };
+
+        if (isImageAttachment(file.type)) {
+          reader.onload = (e) => {
+            const base64 = e.target?.result as string;
+            // Ollama expects base64 without prefix
+            attachment.content = base64.split(",")[1];
+            addCurrentAttachment(attachment);
+          };
+          reader.readAsDataURL(file);
+        } else {
+          reader.onload = (e) => {
+            attachment.content = e.target?.result as string;
+            addCurrentAttachment(attachment);
+          };
+          reader.readAsText(file);
+        }
+      }
+    },
+    [addCurrentAttachment],
+  );
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+      e.dataTransfer.clearData();
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-
-      const attachment: Attachment = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        type: file.type,
-        size: file.size,
-      };
-
-      if (isImageAttachment(file.type)) {
-        reader.onload = (e) => {
-          const base64 = e.target?.result as string;
-          // Ollama expects base64 without prefix
-          attachment.content = base64.split(",")[1];
-          addCurrentAttachment(attachment);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        reader.onload = (e) => {
-          attachment.content = e.target?.result as string;
-          addCurrentAttachment(attachment);
-        };
-        reader.readAsText(file);
-      }
-    }
-
+    processFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -145,17 +188,21 @@ export function ChatInput({
       />
       <Box sx={{ mx: "auto", width: "100%", maxWidth: 840 }}>
         <Box
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           sx={{
             display: "flex",
             flexDirection: "column",
             minHeight: currentAttachments.length > 0 ? 160 : 120,
             width: "100%",
             borderRadius: "24px",
-            bgcolor: "background.paper",
+            bgcolor: isDragging ? "action.selected" : "background.paper",
             p: 1.5,
             transition: "all 0.2s",
-            border: isTemporary ? "1px dashed" : "1px solid",
-            borderColor: isTemporary ? "border.main" : "divider",
+            border: isDragging ? "2px dashed" : isTemporary ? "1px dashed" : "1px solid",
+            borderColor: isDragging || isTemporary ? "border.main" : "divider",
             "&:focus-within": {
               borderColor: "border.main",
               boxShadow: (theme) => `0 0 0 1px ${theme.palette.border.main}`,

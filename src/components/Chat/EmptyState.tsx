@@ -73,7 +73,7 @@ export function EmptyState({
         >
           {isMultiModel
             ? `Hello, ${userName || "User"}`
-            : selectedModels[0] || "gpt-oss:20b-cloud"}
+            : selectedModels[0] || "OpenBench"}
         </Typography>
       </Box>
 

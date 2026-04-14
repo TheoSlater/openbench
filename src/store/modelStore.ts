@@ -20,6 +20,7 @@ export type SystemPrompt = {
   id: string;
   name: string;
   content: string;
+  category?: string;
   baseStyle?: string;
   characteristics?: string[];
   instantAnswers?: boolean;

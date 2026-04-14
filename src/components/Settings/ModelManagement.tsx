@@ -11,7 +11,7 @@ import {
   LinearProgress,
   Paper,
 } from "@mui/material";
-import { Download, Trash2, RefreshCw } from "lucide-react";
+import { Download, Trash2, RefreshCw, XCircle } from "lucide-react";
 import { useModelStore, type OllamaModel, type PullProgress } from "@/store/modelStore";
 import { loggedInvoke, formatFileSize, cn } from "@/lib/utils";
 import { listen } from "@tauri-apps/api/event";
@@ -47,13 +47,21 @@ export function ModelManagement() {
       setNewModelName("");
       refreshModels();
     } catch (error) {
-      console.error("Failed to pull model:", error);
-      // We don't necessarily want to alert if it's already pulling or something,
-      // but a simple feedback is good.
+      if (error !== "Pull cancelled by user") {
+        console.error("Failed to pull model:", error);
+      }
     } finally {
       setPullingModel(null);
       setPullProgress(null);
       setIsPulling(false);
+    }
+  };
+
+  const handleCancelPull = async () => {
+    try {
+      await loggedInvoke("cancel_pull");
+    } catch (error) {
+      console.error("Failed to cancel pull:", error);
     }
   };
 
@@ -130,13 +138,18 @@ export function ModelManagement() {
               border: "none",
             }}
           >
-            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1, alignItems: "center" }}>
               <Typography variant="body2" sx={{ fontWeight: 500, fontSize: "13px" }}>
                 Pulling {pullingModel}...
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: "12px" }}>
-                {pullProgress.status}
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "12px" }}>
+                  {pullProgress.status}
+                </Typography>
+                <IconButton size="small" onClick={handleCancelPull} title="Cancel Pull" sx={{ color: "error.main", p: 0.5 }}>
+                  <XCircle size={14} />
+                </IconButton>
+              </Box>
             </Box>
             {pullProgress.total && pullProgress.completed ? (
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>

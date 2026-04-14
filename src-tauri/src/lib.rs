@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter};
 use tokio_stream::StreamExt;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::collections::HashMap;
+use tokio::sync::oneshot;
 
 use tools::{SharedToolRegistry, ToolApprovalResponse, ToolDefinition, ToolInvocationPayload};
 
@@ -46,6 +49,11 @@ const VISION_MODEL_KEYWORDS: &[&str] = &[
 // App state
 // ---------------------------------------------------------------------------
 
+struct PendingApproval {
+    sender: oneshot::Sender<bool>,
+    tool_name: String,
+}
+
 /// Global application state managed by Tauri.
 struct AppState {
     /// Monotonically increasing ID used to track the current generation.
@@ -56,6 +64,8 @@ struct AppState {
     is_pull_cancelled: AtomicBool,
     /// The centralized registry for all executable tools (MCP-compatible).
     tool_registry: SharedToolRegistry,
+    /// Channels for pending tool approvals from the frontend.
+    pending_approvals: Mutex<HashMap<String, PendingApproval>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +80,7 @@ struct StreamMetadata {
     load_duration: Option<u64>,
     prompt_eval_duration: Option<u64>,
     eval_duration: Option<u64>,
+    model: String,
 }
 
 /// Emitted on the "chat-chunk" event for every content delta and the final done=true frame.
@@ -224,14 +235,21 @@ async fn approve_tool(
     state: tauri::State<'_, AppState>,
     response: ToolApprovalResponse,
 ) -> Result<(), String> {
-    if response.always_allow {
-        state
-            .tool_registry
-            .set_always_allowed(&response.invocation_id, true)
-            .await;
+    let pending = {
+        let mut approvals = state.pending_approvals.lock().map_err(|e| e.to_string())?;
+        approvals.remove(&response.invocation_id)
+    };
+
+    if let Some(pending) = pending {
+        if response.always_allow && response.approved {
+            state
+                .tool_registry
+                .set_always_allowed(&pending.tool_name, true)
+                .await;
+        }
+        let _ = pending.sender.send(response.approved);
     }
-    // The actual approval signaling happens via the pending_approvals channel
-    // in the chat_stream flow. This command just handles the "always allow" flag.
+
     Ok(())
 }
 
@@ -391,6 +409,7 @@ async fn chat_stream(
                             load_duration: Some(fd.load_duration),
                             prompt_eval_duration: Some(fd.prompt_eval_duration),
                             eval_duration: Some(fd.eval_duration),
+                            model: model.clone(),
                         });
                     }
 
@@ -497,20 +516,47 @@ async fn chat_stream(
             let invocation_id = uuid::Uuid::new_v4().to_string();
             let needs_approval = state.tool_registry.needs_approval(tool_name).await;
 
-            let _ = app_handle.emit(
-                "tool-invocation",
-                ToolInvocationPayload {
-                    invocation_id: invocation_id.clone(),
-                    request_id: request_id.clone(),
-                    tool_name: tool_name.clone(),
-                    tool_args: tool_args.clone(),
-                    requires_approval: needs_approval,
-                },
-            );
+            if needs_approval {
+                let (tx, rx) = oneshot::channel();
+                {
+                    let mut approvals = state.pending_approvals.lock().map_err(|e| e.to_string())?;
+                    approvals.insert(invocation_id.clone(), PendingApproval {
+                        sender: tx,
+                        tool_name: tool_name.clone(),
+                    });
+                }
 
-            // For now, execute immediately (approval gating will be wired later
-            // with a channel-based approach when the frontend approval modal
-            // is connected). The event above lets the UI show what's happening.
+                let _ = app_handle.emit(
+                    "tool-invocation",
+                    ToolInvocationPayload {
+                        invocation_id: invocation_id.clone(),
+                        request_id: request_id.clone(),
+                        tool_name: tool_name.clone(),
+                        tool_args: tool_args.clone(),
+                        requires_approval: true,
+                    },
+                );
+
+                // Wait for approval from the frontend
+                let approved = rx.await.map_err(|_| "Approval channel closed".to_string())?;
+
+                if !approved {
+                    history.push(OllamaChatMessage::tool("Tool invocation denied by user".to_string()));
+                    continue;
+                }
+            } else {
+                let _ = app_handle.emit(
+                    "tool-invocation",
+                    ToolInvocationPayload {
+                        invocation_id: invocation_id.clone(),
+                        request_id: request_id.clone(),
+                        tool_name: tool_name.clone(),
+                        tool_args: tool_args.clone(),
+                        requires_approval: false,
+                    },
+                );
+            }
+
             let result = state
                 .tool_registry
                 .execute(tool_name, tool_args)
@@ -568,6 +614,7 @@ pub fn run() {
             current_generation_id: AtomicUsize::new(0),
             is_pull_cancelled: AtomicBool::new(false),
             tool_registry: SharedToolRegistry::new(),
+            pending_approvals: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             get_local_models,

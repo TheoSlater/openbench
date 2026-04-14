@@ -290,6 +290,9 @@ function App() {
           onToggleTemporaryChat={handleToggleTemporaryChat}
           pullingModel={pullingModel}
           pullProgress={pullProgress}
+          systemPrompts={systemPrompts}
+          activeSystemPromptId={activeSystemPromptId}
+          onSystemPromptChange={(id) => modelActions.setSystemPrompt(id)}
         />
 
         <Box

@@ -344,7 +344,7 @@ export function Message({
         )}
 
         {(thinking || isThinking) && (
-          <Box sx={{ mb: 2, maxWidth: { xs: "90%", sm: "80%" } }}>
+          <Box sx={{ mb: 2, maxWidth: isUser ? "100%" : { xs: "90%", sm: "80%" } }}>
             <Box onClick={() => setThinkingExpanded(!thinkingExpanded)}>
               <ThinkingIndicator
                 isActive={isThinking}
@@ -401,7 +401,7 @@ export function Message({
               color: "text.primary",
               fontSize: "15px",
               lineHeight: 1.6,
-              maxWidth: { xs: "90%", sm: "80%" },
+              maxWidth: isUser ? "100%" : { xs: "90%", sm: "80%" },
               "& p": {
                 mb: 2,
                 "&:last-child": { mb: 0 },
@@ -469,11 +469,11 @@ export function Message({
               size="small"
               onClick={handleCopy}
               sx={{
-                color: "text.secondary",
-                "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+                color: copied ? "success.main" : "text.secondary",
+                "&:hover": { color: copied ? "success.main" : "text.primary", bgcolor: "action.hover" },
               }}
             >
-              {copied ? <Check size={14} color="green" /> : <Copy size={14} />}
+              {copied ? <Check size={14} /> : <Copy size={14} />}
             </IconButton>
           </Tooltip>
 
