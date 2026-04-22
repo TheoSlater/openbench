@@ -6,8 +6,8 @@ export type ModelProvider = "ollama" | "anthropic" | "openai";
 export type OllamaModel = {
   name: string;
   families: string[];
-  supports_vision: boolean;
   size: number;
+  supports_vision?: boolean;
 };
 
 export type AvailableModels = {
@@ -195,20 +195,16 @@ export const useModelStore = create<ModelStore>((set) => ({
       })),
     deleteSystemPrompt: (id) =>
       set((state) => {
-        const nextPrompts = state.systemPrompts.filter(
-          (prompt) => prompt.id !== id,
-        );
-        const nextActive =
-          state.activeSystemPromptId === id
-            ? nextPrompts[0]?.id ?? null
-            : state.activeSystemPromptId;
+        const nextPrompts = state.systemPrompts.filter((p) => p.id !== id);
+        const wasActive = state.activeSystemPromptId === id;
+        const nextActive = wasActive ? (nextPrompts[0]?.id ?? null) : state.activeSystemPromptId;
         return {
           systemPrompts: nextPrompts,
           activeSystemPromptId: nextActive,
         };
       }),
     updateSystemPrompt: (prompt) =>
-        set((state) => ({
+      set((state) => ({
         systemPrompts: state.systemPrompts.map((item) =>
           item.id === prompt.id ? prompt : item,
         ),

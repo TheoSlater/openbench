@@ -39,20 +39,19 @@ const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = React.memo(
     }, [thinkingDuration, isActive]);
 
     useEffect(() => {
-      let interval: NodeJS.Timeout;
-      if (isActive) {
-        if (startTimeRef.current === null) {
-          startTimeRef.current = Date.now();
-        }
-        interval = setInterval(() => {
-          if (startTimeRef.current !== null) {
-            setSeconds((Date.now() - startTimeRef.current) / 1000);
-          }
-        }, 100);
+      if (!isActive) return;
+
+      if (startTimeRef.current === null) {
+        startTimeRef.current = Date.now();
       }
-      return () => {
-        if (interval) clearInterval(interval);
-      };
+
+      const interval = setInterval(() => {
+        if (startTimeRef.current !== null) {
+          setSeconds((Date.now() - startTimeRef.current) / 1000);
+        }
+      }, 100);
+
+      return () => clearInterval(interval);
     }, [isActive]);
 
     const formattedTime = useMemo(() => {

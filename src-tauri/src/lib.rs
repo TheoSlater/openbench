@@ -19,10 +19,10 @@ use tokio::sync::oneshot;
 use tools::{SharedToolRegistry, ToolApprovalResponse, ToolDefinition, ToolInvocationPayload};
 
 /// # OpenBench Backend Core
-/// 
+///
 /// This module handles the main Tauri application logic, including model management,
 /// chat streaming, and tool execution orchestration.
-/// 
+///
 /// The architecture follows these principles:
 /// 1. **Local-First**: Interactions are routed to a local Ollama instance by default.
 /// 2. **Streaming-Centric**: All model interactions use async streams to provide a snappy UI.
@@ -33,18 +33,6 @@ use tools::{SharedToolRegistry, ToolApprovalResponse, ToolDefinition, ToolInvoca
 // Constants
 // ---------------------------------------------------------------------------
 
-const VISION_MODEL_KEYWORDS: &[&str] = &[
-    "llava",
-    "moondream",
-    "vision",
-    "bakllava",
-    "llama3.2",
-    "minicpm-v",
-    "pixtral",
-    "molmo",
-    "internvl",
-];
-
 // ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
@@ -52,6 +40,11 @@ const VISION_MODEL_KEYWORDS: &[&str] = &[
 struct PendingApproval {
     sender: oneshot::Sender<bool>,
     tool_name: String,
+}
+
+#[derive(Clone)]
+struct OllamaConfig {
+    base_url: String,
 }
 
 /// Global application state managed by Tauri.
@@ -66,6 +59,8 @@ struct AppState {
     tool_registry: SharedToolRegistry,
     /// Channels for pending tool approvals from the frontend.
     pending_approvals: Mutex<HashMap<String, PendingApproval>>,
+    /// Runtime client configuration synced from the frontend settings store.
+    ollama_config: Mutex<OllamaConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +111,6 @@ struct PullProgressPayload {
 pub struct ModelDetails {
     pub name: String,
     pub families: Vec<String>,
-    pub supports_vision: bool,
     pub size: u64,
 }
 
@@ -127,8 +121,8 @@ pub struct ModelDetails {
 /// Returns a list of all models currently installed in the local Ollama instance.
 /// Detects vision capabilities based on known model keywords.
 #[tauri::command]
-async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
-    let ollama = Ollama::default();
+async fn get_local_models(state: tauri::State<'_, AppState>) -> Result<Vec<ModelDetails>, String> {
+    let ollama = ollama_client(&state)?;
     let models = ollama
         .list_local_models()
         .await
@@ -137,14 +131,9 @@ async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
     let details = models
         .into_iter()
         .map(|m| {
-            let name_lower = m.name.to_lowercase();
-            let supports_vision = VISION_MODEL_KEYWORDS
-                .iter()
-                .any(|kw| name_lower.contains(kw));
             ModelDetails {
                 name: m.name,
                 families: Vec::new(),
-                supports_vision,
                 size: m.size,
             }
         })
@@ -154,8 +143,8 @@ async fn get_local_models() -> Result<Vec<ModelDetails>, String> {
 }
 
 #[tauri::command]
-async fn delete_model(model: String) -> Result<(), String> {
-    let ollama = Ollama::default();
+async fn delete_model(state: tauri::State<'_, AppState>, model: String) -> Result<(), String> {
+    let ollama = ollama_client(&state)?;
     ollama
         .delete_model(model)
         .await
@@ -170,30 +159,27 @@ async fn pull_model(
     model: String,
 ) -> Result<(), String> {
     state.is_pull_cancelled.store(false, Ordering::SeqCst);
-    let ollama = Ollama::default();
+    let ollama = ollama_client(&state)?;
     let mut stream = ollama
         .pull_model_stream(model, false)
         .await
         .map_err(|e| e.to_string())?;
 
-    while let Some(res) = stream.next().await {
+    while let Some(result) = stream.next().await {
         if state.is_pull_cancelled.load(Ordering::SeqCst) {
             return Err("Pull cancelled by user".to_string());
         }
-        match res {
-            Ok(response) => {
-                let _ = app_handle.emit(
-                    "pull-progress",
-                    PullProgressPayload {
-                        status: response.message,
-                        digest: response.digest,
-                        total: response.total,
-                        completed: response.completed,
-                    },
-                );
-            }
-            Err(e) => return Err(e.to_string()),
-        }
+
+        let response = result.map_err(|e| e.to_string())?;
+        let _ = app_handle.emit(
+            "pull-progress",
+            PullProgressPayload {
+                status: response.message,
+                digest: response.digest,
+                total: response.total,
+                completed: response.completed,
+            },
+        );
     }
 
     Ok(())
@@ -211,6 +197,26 @@ fn cancel_chat(state: tauri::State<'_, AppState>) {
 #[tauri::command]
 fn cancel_pull(state: tauri::State<'_, AppState>) {
     state.is_pull_cancelled.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn set_ollama_config(
+    state: tauri::State<'_, AppState>,
+    base_url: String,
+    _api_key: Option<String>,
+) -> Result<(), String> {
+    let normalized = base_url.trim();
+    if normalized.is_empty() {
+        return Err("Ollama base URL cannot be empty".to_string());
+    }
+
+    let mut config = state
+        .ollama_config
+        .lock()
+        .map_err(|e| e.to_string())?;
+    config.base_url = normalized.to_string();
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,15 +246,18 @@ async fn approve_tool(
         approvals.remove(&response.invocation_id)
     };
 
-    if let Some(pending) = pending {
-        if response.always_allow && response.approved {
-            state
-                .tool_registry
-                .set_always_allowed(&pending.tool_name, true)
-                .await;
-        }
-        let _ = pending.sender.send(response.approved);
+    let Some(pending) = pending else {
+        return Ok(());
+    };
+
+    if response.always_allow && response.approved {
+        state
+            .tool_registry
+            .set_always_allowed(&pending.tool_name, true)
+            .await;
     }
+
+    let _ = pending.sender.send(response.approved);
 
     Ok(())
 }
@@ -271,22 +280,47 @@ struct ChatMessage {
     attachments: Option<Vec<ChatAttachment>>,
 }
 
+fn ollama_client(state: &tauri::State<'_, AppState>) -> Result<Ollama, String> {
+    let config = state
+        .ollama_config
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    Ollama::try_new(config.base_url).map_err(|e| e.to_string())
+}
+
+fn attachments_contain_images(attachments: Option<&[ChatAttachment]>) -> bool {
+    attachments
+        .unwrap_or_default()
+        .iter()
+        .any(|attachment| attachment.content_type.starts_with("image/"))
+}
+
+fn messages_contain_images(messages: &[ChatMessage]) -> bool {
+    messages
+        .iter()
+        .any(|message| attachments_contain_images(message.attachments.as_deref()))
+}
+
 fn build_ollama_message(msg: ChatMessage) -> OllamaChatMessage {
     let mut ollama_msg = match msg.role.as_str() {
         "assistant" => OllamaChatMessage::assistant(msg.content),
         _ => OllamaChatMessage::user(msg.content),
     };
 
-    if let Some(attachments) = msg.attachments {
-        let images: Vec<Image> = attachments
-            .into_iter()
-            .filter(|a| a.content_type.starts_with("image/"))
-            .filter_map(|a| a.content.map(|c| Image::from_base64(&c)))
-            .collect();
+    let Some(attachments) = msg.attachments else {
+        return ollama_msg;
+    };
 
-        if !images.is_empty() {
-            ollama_msg.images = Some(images);
-        }
+    let images: Vec<Image> = attachments
+        .into_iter()
+        .filter(|a| a.content_type.starts_with("image/"))
+        .filter_map(|a| a.content.map(|c| Image::from_base64(&c)))
+        .collect();
+
+    if !images.is_empty() {
+        ollama_msg.images = Some(images);
     }
 
     ollama_msg
@@ -341,9 +375,10 @@ async fn chat_stream(
             history.push(OllamaChatMessage::system(prompt.clone()));
         }
     }
+    let has_images = messages_contain_images(&messages);
     history.extend(messages.into_iter().map(build_ollama_message));
 
-    let ollama = Ollama::default();
+    let ollama = ollama_client(&state)?;
     let max_iterations = max_tool_iterations.unwrap_or(5);
 
     // Get tool definitions from the registry to send to the model.
@@ -357,7 +392,7 @@ async fn chat_stream(
         let mut request = ChatMessageRequest::new(model.clone(), history.clone());
 
         // Attach tool definitions so the model knows what's available.
-        if !tool_defs.is_empty() {
+        if !has_images && !tool_defs.is_empty() {
             let ollama_tools: Vec<ToolInfo> = tool_defs
                 .iter()
                 .filter_map(|t| {
@@ -391,70 +426,13 @@ async fn chat_stream(
         let mut final_metadata: Option<StreamMetadata> = None;
         let mut stream_done = false;
 
-        while let Some(res) = stream.next().await {
+        while let Some(result) = stream.next().await {
             if is_cancelled!() {
                 return Ok(());
             }
 
-            match res {
-                Ok(response) => {
-                    stream_done = response.done;
-
-                    // Collect final stats from the terminal frame
-                    if let Some(fd) = response.final_data {
-                        final_metadata = Some(StreamMetadata {
-                            prompt_eval_count: Some(fd.prompt_eval_count),
-                            eval_count: Some(fd.eval_count),
-                            total_duration: Some(fd.total_duration),
-                            load_duration: Some(fd.load_duration),
-                            prompt_eval_duration: Some(fd.prompt_eval_duration),
-                            eval_duration: Some(fd.eval_duration),
-                            model: model.clone(),
-                        });
-                    }
-
-                    let msg = response.message;
-
-                    // ── Thinking field (native Ollama API, ollama-rs 0.3+) ──────────
-                    if let Some(ref thinking_chunk) = msg.thinking {
-                        if !thinking_chunk.is_empty() {
-                            thinking_acc.push_str(thinking_chunk);
-
-                            let is_thinking = content_acc.is_empty();
-
-                            let _ = app_handle.emit(
-                                "chat-thinking",
-                                ThinkingPayload {
-                                    request_id: request_id.clone(),
-                                    thinking: thinking_acc.clone(),
-                                    is_thinking,
-                                },
-                            );
-                        }
-                    }
-
-                    // ── Content / tool calls ────────────────────────────────────────
-                    if !msg.content.is_empty() {
-                        content_acc.push_str(&msg.content);
-
-                        if tool_calls.is_empty() {
-                            let _ = app_handle.emit(
-                                "chat-chunk",
-                                StreamPayload {
-                                    request_id: request_id.clone(),
-                                    content: msg.content.clone(),
-                                    done: false,
-                                    metadata: None,
-                                },
-                            );
-                        }
-                    }
-
-                    if !msg.tool_calls.is_empty() {
-                        tool_calls.extend(msg.tool_calls);
-                    }
-                }
-
+            let response = match result {
+                Ok(response) => response,
                 Err(_) => {
                     let err_msg =
                         "\nError: Stream interrupted or failed in Ollama".to_string();
@@ -469,6 +447,62 @@ async fn chat_stream(
                     );
                     return Err(err_msg);
                 }
+            };
+
+            stream_done = response.done;
+
+            // Collect final stats from the terminal frame
+            if let Some(fd) = response.final_data {
+                final_metadata = Some(StreamMetadata {
+                    prompt_eval_count: Some(fd.prompt_eval_count),
+                    eval_count: Some(fd.eval_count),
+                    total_duration: Some(fd.total_duration),
+                    load_duration: Some(fd.load_duration),
+                    prompt_eval_duration: Some(fd.prompt_eval_duration),
+                    eval_duration: Some(fd.eval_duration),
+                    model: model.clone(),
+                });
+            }
+
+            let msg = response.message;
+
+            // ── Thinking field (native Ollama API, ollama-rs 0.3+) ──────────
+            if let Some(ref thinking_chunk) = msg.thinking {
+                if !thinking_chunk.is_empty() {
+                    thinking_acc.push_str(thinking_chunk);
+
+                    let is_thinking = content_acc.is_empty();
+
+                    let _ = app_handle.emit(
+                        "chat-thinking",
+                        ThinkingPayload {
+                            request_id: request_id.clone(),
+                            thinking: thinking_acc.clone(),
+                            is_thinking,
+                        },
+                    );
+                }
+            }
+
+            // ── Content / tool calls ────────────────────────────────────────
+            if !msg.content.is_empty() {
+                content_acc.push_str(&msg.content);
+
+                if tool_calls.is_empty() {
+                    let _ = app_handle.emit(
+                        "chat-chunk",
+                        StreamPayload {
+                            request_id: request_id.clone(),
+                            content: msg.content.clone(),
+                            done: false,
+                            metadata: None,
+                        },
+                    );
+                }
+            }
+
+            if !msg.tool_calls.is_empty() {
+                tool_calls.extend(msg.tool_calls);
             }
         }
 
@@ -509,14 +543,11 @@ async fn chat_stream(
 
         for tool_call in &tool_calls {
             let tool_name = &tool_call.function.name;
-            // ToolCallFunction.arguments is a serde_json::Value (usually an Object)
             let tool_args = tool_call.function.arguments.clone();
-
-            // Emit tool invocation event so the frontend can show status.
             let invocation_id = uuid::Uuid::new_v4().to_string();
             let needs_approval = state.tool_registry.needs_approval(tool_name).await;
 
-            if needs_approval {
+            let approved = if needs_approval {
                 let (tx, rx) = oneshot::channel();
                 {
                     let mut approvals = state.pending_approvals.lock().map_err(|e| e.to_string())?;
@@ -537,13 +568,7 @@ async fn chat_stream(
                     },
                 );
 
-                // Wait for approval from the frontend
-                let approved = rx.await.map_err(|_| "Approval channel closed".to_string())?;
-
-                if !approved {
-                    history.push(OllamaChatMessage::tool("Tool invocation denied by user".to_string()));
-                    continue;
-                }
+                rx.await.map_err(|_| "Approval channel closed".to_string())?
             } else {
                 let _ = app_handle.emit(
                     "tool-invocation",
@@ -555,6 +580,12 @@ async fn chat_stream(
                         requires_approval: false,
                     },
                 );
+                true
+            };
+
+            if !approved {
+                history.push(OllamaChatMessage::tool("Tool invocation denied by user".to_string()));
+                continue;
             }
 
             let result = state
@@ -590,9 +621,13 @@ async fn chat_stream(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-async fn chat(model: String, messages: Vec<ChatMessage>) -> Result<String, String> {
+async fn chat(
+    state: tauri::State<'_, AppState>,
+    model: String,
+    messages: Vec<ChatMessage>,
+) -> Result<String, String> {
     let all_messages = messages.into_iter().map(build_ollama_message).collect();
-    let ollama = Ollama::default();
+    let ollama = ollama_client(&state)?;
     let response = ollama
         .send_chat_messages(ChatMessageRequest::new(model, all_messages))
         .await
@@ -615,11 +650,15 @@ pub fn run() {
             is_pull_cancelled: AtomicBool::new(false),
             tool_registry: SharedToolRegistry::new(),
             pending_approvals: Mutex::new(HashMap::new()),
+            ollama_config: Mutex::new(OllamaConfig {
+                base_url: "http://localhost:11434".to_string(),
+            }),
         })
         .invoke_handler(tauri::generate_handler![
             get_local_models,
             pull_model,
             delete_model,
+            set_ollama_config,
             chat_stream,
             chat,
             cancel_chat,

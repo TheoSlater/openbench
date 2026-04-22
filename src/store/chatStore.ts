@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import * as db from "@/lib/db";
 import { Message, Conversation, Attachment } from "@/types/chat";
+import { startTransition } from "react";
+
+// Perf stub
+function perfLog(..._args: unknown[]): void {}
 
 export type { Conversation, Message };
 
@@ -59,7 +63,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         title: c.title,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
-        isArchived: !!c.isArchived,
+        isArchived: Boolean(c.isArchived),
       }));
       set({ conversations });
     },
@@ -68,9 +72,6 @@ export const useChatStore = create<ChatStore>((set) => ({
     createConversation: async (title = "New Chat", isTemporary = false) => {
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
-      if (!isTemporary) {
-        await db.createConversation(id, title);
-      }
       const conversation: Conversation = {
         id,
         title,
@@ -79,36 +80,53 @@ export const useChatStore = create<ChatStore>((set) => ({
         isArchived: false,
         isTemporary,
       };
-      set((state) => ({
-        conversations: [conversation, ...state.conversations],
-        activeConversationId: id,
-        messages: [],
-        hasMoreMessages: false,
-      }));
+      startTransition(() => {
+        set((state) => ({
+          conversations: [conversation, ...state.conversations],
+          activeConversationId: id,
+          messages: [],
+          hasMoreMessages: false,
+        }));
+      });
+      perfLog("store", "chatStore.createConversation.optimistic", {
+        id,
+        isTemporary,
+      });
+      if (!isTemporary) {
+        try {
+          await db.createConversation(id, title);
+        } catch (error) {
+          console.error("Failed to persist conversation:", error);
+        }
+      }
       return conversation;
     },
     // Set active conversation and load its messages
     setActiveConversationId: async (id) => {
       set({ activeConversationId: id });
-      if (id) {
-        const pageSize = 50;
-        const rawMessages = await db.getMessages(id, pageSize, 0);
-        const messages: Message[] = rawMessages.map((m) => ({
-          id: m.id,
-          conversationId: m.conversationId,
-          role: m.role,
-          content: m.content,
-          createdAt: m.createdAt,
-          attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
-          model: m.model,
-          thinking: m.thinking,
-          thinkingDuration: m.thinkingDuration,
-          isThinking: false,
-        }));
-        set({ messages, hasMoreMessages: messages.length === pageSize });
-      } else {
+
+      if (!id) {
         set({ messages: [], hasMoreMessages: false });
+        return;
       }
+
+      const pageSize = 50;
+      const rawMessages = await db.getMessages(id, pageSize, 0);
+      const messages: Message[] = rawMessages.map((m) => ({
+        id: m.id,
+        conversationId: m.conversationId,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+        attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+        model: m.model,
+        thinking: m.thinking,
+        thinkingDuration: m.thinkingDuration,
+        isThinking: false,
+      }));
+      startTransition(() => {
+        set({ messages, hasMoreMessages: messages.length === pageSize });
+      });
     },
     // Load more messages for the active conversation
     loadMoreMessages: async () => {
@@ -123,26 +141,27 @@ export const useChatStore = create<ChatStore>((set) => ({
         offset,
       );
 
-      if (rawMessages.length > 0) {
-        const newMessages: Message[] = rawMessages.map((m) => ({
-          id: m.id,
-          conversationId: m.conversationId,
-          role: m.role,
-          content: m.content,
-          createdAt: m.createdAt,
-          attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
-          model: m.model,
-          thinking: m.thinking,
-          thinkingDuration: m.thinkingDuration,
-          isThinking: false,
-        }));
-        set({
-          messages: [...newMessages, ...messages],
-          hasMoreMessages: newMessages.length === pageSize,
-        });
-      } else {
+      if (rawMessages.length === 0) {
         set({ hasMoreMessages: false });
+        return;
       }
+
+      const newMessages: Message[] = rawMessages.map((m) => ({
+        id: m.id,
+        conversationId: m.conversationId,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+        attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+        model: m.model,
+        thinking: m.thinking,
+        thinkingDuration: m.thinkingDuration,
+        isThinking: false,
+      }));
+      set({
+        messages: [...newMessages, ...messages],
+        hasMoreMessages: newMessages.length === pageSize,
+      });
     },
     // Replace current messages in state (sync)
     setMessages: (messages) => set({ messages }),
@@ -166,30 +185,47 @@ export const useChatStore = create<ChatStore>((set) => ({
       const conversation = conversations.find(c => c.id === message.conversationId);
       const isTemporary = conversation?.isTemporary ?? true; // Default to true if not found (new unsaved chat)
 
-      if (!isTemporary) {
-        await db.addMessage(payload);
-      }
-
       set((state) => ({
         messages: [...state.messages, payload],
+        conversations: state.conversations.map((c) =>
+          c.id === payload.conversationId
+            ? { ...c, updatedAt: payload.createdAt }
+            : c,
+        ),
       }));
+      perfLog("store", "chatStore.addMessage.optimistic", {
+        conversationId: payload.conversationId,
+        role: payload.role,
+        hasAttachments: (payload.attachments?.length ?? 0) > 0,
+        contentLength: payload.content.length,
+      });
+      if (!isTemporary) {
+        try {
+          await db.addMessage(payload);
+        } catch (error) {
+          console.error("Failed to persist message:", error);
+        }
+      }
       return payload;
     },
     // Delete a conversation and its messages
     deleteConversation: async (id) => {
       const { conversations } = useChatStore.getState();
-      const conversation = conversations.find(c => c.id === id);
-      if (conversation && !conversation.isTemporary) {
+      const conversation = conversations.find((c) => c.id === id);
+      const shouldPersist = conversation && !conversation.isTemporary;
+
+      if (shouldPersist) {
         await db.deleteConversation(id);
       }
+
       set((state) => {
         const newConversations = state.conversations.filter((c) => c.id !== id);
-        const newActiveId =
-          state.activeConversationId === id
-            ? (newConversations.find(c => !c.isArchived)?.id ?? null)
-            : state.activeConversationId;
-        const newMessages =
-          state.activeConversationId === id ? [] : state.messages;
+        const wasActive = state.activeConversationId === id;
+        const newActiveId = wasActive
+          ? (newConversations.find((c) => !c.isArchived)?.id ?? null)
+          : state.activeConversationId;
+        const newMessages = wasActive ? [] : state.messages;
+
         return {
           conversations: newConversations,
           activeConversationId: newActiveId,
@@ -200,20 +236,23 @@ export const useChatStore = create<ChatStore>((set) => ({
     // Archive a conversation
     archiveConversation: async (id) => {
       const { conversations } = useChatStore.getState();
-      const conversation = conversations.find(c => c.id === id);
-      if (conversation && !conversation.isTemporary) {
+      const conversation = conversations.find((c) => c.id === id);
+      const shouldPersist = conversation && !conversation.isTemporary;
+
+      if (shouldPersist) {
         await db.updateConversation(id, { isArchived: true });
       }
+
       set((state) => {
         const newConversations = state.conversations.map((c) =>
           c.id === id ? { ...c, isArchived: true } : c,
         );
-        const newActiveId =
-          state.activeConversationId === id
-            ? (newConversations.find(c => !c.isArchived)?.id ?? null)
-            : state.activeConversationId;
-        const newMessages =
-          state.activeConversationId === id ? [] : state.messages;
+        const wasActive = state.activeConversationId === id;
+        const newActiveId = wasActive
+          ? (newConversations.find((c) => !c.isArchived)?.id ?? null)
+          : state.activeConversationId;
+        const newMessages = wasActive ? [] : state.messages;
+
         return {
           conversations: newConversations,
           activeConversationId: newActiveId,
@@ -224,10 +263,13 @@ export const useChatStore = create<ChatStore>((set) => ({
     // Unarchive a conversation
     unarchiveConversation: async (id) => {
       const { conversations } = useChatStore.getState();
-      const conversation = conversations.find(c => c.id === id);
-      if (conversation && !conversation.isTemporary) {
+      const conversation = conversations.find((c) => c.id === id);
+      const shouldPersist = conversation && !conversation.isTemporary;
+
+      if (shouldPersist) {
         await db.updateConversation(id, { isArchived: false });
       }
+
       set((state) => ({
         conversations: state.conversations.map((c) =>
           c.id === id ? { ...c, isArchived: false } : c,
@@ -237,10 +279,13 @@ export const useChatStore = create<ChatStore>((set) => ({
     // Rename a conversation
     renameConversation: async (id, newTitle) => {
       const now = new Date().toISOString();
-      const conversation = useChatStore.getState().conversations.find(c => c.id === id);
-      if (conversation && !conversation.isTemporary) {
+      const conversation = useChatStore.getState().conversations.find((c) => c.id === id);
+      const shouldPersist = conversation && !conversation.isTemporary;
+
+      if (shouldPersist) {
         await db.updateConversation(id, { title: newTitle, updatedAt: now });
       }
+
       set((state) => ({
         conversations: state.conversations.map((c) =>
           c.id === id ? { ...c, title: newTitle, updatedAt: now } : c,
@@ -250,16 +295,17 @@ export const useChatStore = create<ChatStore>((set) => ({
     // Delete messages after a specific message ID (inclusive)
     deleteMessagesAfter: async (conversationId, messageId) => {
       const { conversations } = useChatStore.getState();
-      const conversation = conversations.find(c => c.id === conversationId);
-      if (conversation && !conversation.isTemporary) {
+      const conversation = conversations.find((c) => c.id === conversationId);
+      const shouldPersist = conversation && !conversation.isTemporary;
+
+      if (shouldPersist) {
         await db.deleteMessagesAfter(conversationId, messageId);
       }
+
       set((state) => {
         const index = state.messages.findIndex((m) => m.id === messageId);
         if (index === -1) return state;
-        return {
-          messages: state.messages.slice(0, index),
-        };
+        return { messages: state.messages.slice(0, index) };
       });
     },
     addCurrentAttachment: (attachment) =>

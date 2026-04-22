@@ -65,6 +65,15 @@ export function Header({
 }: HeaderProps) {
   const hasAnyModels = availableModels.ollama.length > 0;
   const isOllamaLoading = isLoading && !hasAnyModels;
+  const pullCompleted = pullProgress?.completed ?? 0;
+  const pullTotal = pullProgress?.total ?? 0;
+  const hasPullProgress =
+    typeof pullProgress?.completed === "number" &&
+    typeof pullProgress?.total === "number" &&
+    pullTotal > 0;
+  const pullProgressPercent = hasPullProgress
+    ? Math.round((pullCompleted / pullTotal) * 100)
+    : undefined;
 
   return (
     <Box
@@ -94,14 +103,14 @@ export function Header({
                   Pulling {pullingModel}...
                 </Typography>
                 <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                  {pullProgress?.completed && pullProgress.total 
-                    ? `${Math.round((pullProgress.completed / pullProgress.total) * 100)}%`
-                    : pullProgress?.status || "Starting..."}
+                  {hasPullProgress
+                    ? `${pullProgressPercent}%`
+                    : (pullProgress?.status ?? "Starting...")}
                 </Typography>
               </Box>
               <LinearProgress 
-                variant={pullProgress?.completed && pullProgress.total ? "determinate" : "indeterminate"}
-                value={pullProgress?.completed && pullProgress.total ? (pullProgress.completed / pullProgress.total) * 100 : undefined}
+                variant={hasPullProgress ? "determinate" : "indeterminate"}
+                value={pullProgressPercent}
                 sx={{ height: 4, borderRadius: 2, bgcolor: "action.hover" }}
               />
             </Box>
@@ -175,14 +184,14 @@ export function Header({
                                 }}
                               >
                                 <Typography variant="body2">{model.name}</Typography>
-                                {model.supports_vision && (
+                                {model.supports_vision ? (
                                   <Tooltip title="Supports vision">
                                     <Eye
                                       size={14}
                                       style={{ marginLeft: 8 }}
                                     />
                                   </Tooltip>
-                                )}
+                                ) : null}
                               </Box>
                             </MenuItem>
                           ))
@@ -279,23 +288,14 @@ export function Header({
               style={{ width: 18, height: 18 }}
             >
               {isTemporary ? (
-                <>
-                  <path d="M8 12L11 15L16 10" strokeLinecap="round" strokeLinejoin="round"></path>
-                  <path
-                    d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray="2.5 3.5"
-                  ></path>
-                </>
-              ) : (
-                <path
-                  d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeDasharray="2.5 3.5"
-                ></path>
-              )}
+                <path d="M8 12L11 15L16 10" strokeLinecap="round" strokeLinejoin="round"></path>
+              ) : null}
+              <path
+                d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="2.5 3.5"
+              ></path>
             </svg>
           </IconButton>
         </Tooltip>

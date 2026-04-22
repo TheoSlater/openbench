@@ -35,8 +35,9 @@ export function ModelManagement() {
   };
 
   const handlePullModel = async () => {
-    if (!newModelName.trim()) return;
-    
+    const hasModelName = newModelName.trim().length > 0;
+    if (!hasModelName) return;
+
     const modelToPull = newModelName.trim();
     setPullingModel(modelToPull);
     setIsPulling(true);
@@ -47,7 +48,8 @@ export function ModelManagement() {
       setNewModelName("");
       refreshModels();
     } catch (error) {
-      if (error !== "Pull cancelled by user") {
+      const isCancelled = error === "Pull cancelled by user";
+      if (!isCancelled) {
         console.error("Failed to pull model:", error);
       }
     } finally {
@@ -66,7 +68,8 @@ export function ModelManagement() {
   };
 
   const handleDeleteModel = async (modelName: string) => {
-    if (!confirm(`Are you sure you want to delete ${modelName}?`)) return;
+    const confirmed = confirm(`Are you sure you want to delete ${modelName}?`);
+    if (!confirmed) return;
 
     try {
       await loggedInvoke("delete_model", { model: modelName });
@@ -114,7 +117,7 @@ export function ModelManagement() {
             variant="contained"
             disableElevation
             onClick={handlePullModel}
-            disabled={isPulling || !newModelName.trim()}
+            disabled={isPulling || newModelName.trim().length === 0}
             startIcon={<Download size={16} />}
             sx={{
               borderRadius: "8px",
@@ -128,7 +131,7 @@ export function ModelManagement() {
           </Button>
         </Box>
 
-        {isPulling && pullProgress && (
+        {isPulling && pullProgress ? (
           <Paper
             variant="outlined"
             sx={{
@@ -156,9 +159,9 @@ export function ModelManagement() {
                 <LinearProgress
                   variant="determinate"
                   value={(pullProgress.completed / pullProgress.total) * 100}
-                  sx={{ 
-                    flex: 1, 
-                    height: 6, 
+                  sx={{
+                    flex: 1,
+                    height: 6,
                     borderRadius: 3,
                     bgcolor: "action.selected",
                     "& .MuiLinearProgress-bar": {
@@ -174,7 +177,7 @@ export function ModelManagement() {
               <LinearProgress sx={{ height: 4, borderRadius: 2 }} />
             )}
           </Paper>
-        )}
+        ) : null}
       </Box>
 
       {/* Local Models Section */}
@@ -204,7 +207,7 @@ export function ModelManagement() {
                   edge="end"
                   size="small"
                   onClick={() => handleDeleteModel(model.name)}
-                  sx={{ 
+                  sx={{
                     color: "text.secondary",
                     "&:hover": { color: "error.main" }
                   }}
@@ -220,34 +223,17 @@ export function ModelManagement() {
                     <Typography variant="caption" color="text.secondary" sx={{ fontSize: "12px" }}>
                       {formatFileSize(model.size)}
                     </Typography>
-                    {model.supports_vision && (
-                      <Box
-                        sx={{
-                          px: 0.8,
-                          py: 0.2,
-                          borderRadius: "4px",
-                          bgcolor: "primary.main",
-                          color: "primary.contrastText",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        Vision
-                      </Box>
-                    )}
                   </Box>
                 }
                 primaryTypographyProps={{ fontSize: "14px", fontWeight: 500 }}
               />
             </ListItem>
           ))}
-          {availableModels.ollama.length === 0 && !isRefreshing && (
+          {availableModels.ollama.length === 0 && !isRefreshing ? (
             <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4, fontSize: "13px" }}>
               No local models found.
             </Typography>
-          )}
+          ) : null}
         </List>
       </Box>
     </Box>

@@ -17,6 +17,18 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-mui": ["@mui/material", "@mui/icons-material", "@emotion/react", "@emotion/styled"],
+          "vendor-markdown": ["react-markdown", "remark-gfm", "remark-math", "rehype-katex", "react-syntax-highlighter", "katex"],
+          "vendor-motion": ["motion"],
+          "vendor-date": ["date-fns"],
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

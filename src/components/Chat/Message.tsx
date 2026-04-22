@@ -6,7 +6,7 @@ import {
   Check,
   Paperclip,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { memo, useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import ThinkingIndicator from "./ThinkingIndicator";
 import remarkGfm from "remark-gfm";
@@ -99,28 +99,9 @@ const CodeBlock = ({
   );
 };
 
-const markdownComponents = {
-  pre: ({ children }: any) => <>{children}</>,
-  code({ inline, className, children, ...props }: any) {
-    const match = /language-(\w+)/.exec(className || "");
-    if (!inline) {
-      return (
-        <CodeBlock
-          language={match ? match[1] : null}
-          value={String(children).replace(/\n$/, "")}
-          {...props}
-        />
-      );
-    }
-    return (
-      <code className={clsx(className, inline && "inline-code")} {...props}>
-        {children}
-      </code>
-    );
-  },
-};
+// markdownComponents moved inside Message component as useMemo
 
-export function Message({
+export const Message = memo(function Message({
   role,
   content,
   attachments,
@@ -135,43 +116,69 @@ export function Message({
   const [thinkingExpanded, setThinkingExpanded] = useState(isThinking || false);
   const isUser = role === "user";
 
-  const processedContent = content
-    ? content
-        .replace(/\\\[/g, "$$$$")
-        .replace(/\\\]/g, "$$$$")
-        .replace(/\\\(/g, "$")
-        .replace(/\\\)/g, "$")
-    : "";
+  // Memoize processed content to avoid re-parsing markdown on every render
+  const processedContent = useMemo(() => {
+    if (!content) return "";
+    return content
+      .replace(/\\\[/g, "$$$$")
+      .replace(/\\\]/g, "$$$$")
+      .replace(/\\\(/g, "$")
+      .replace(/\\\)/g, "$");
+  }, [content]);
 
-  const processedThinking = thinking
-    ? thinking
-        .replace(/\\\[/g, "$$$$")
-        .replace(/\\\]/g, "$$$$")
-        .replace(/\\\(/g, "$")
-        .replace(/\\\)/g, "$")
-    : "";
+  // Memoize processed thinking
+  const processedThinking = useMemo(() => {
+    if (!thinking) return "";
+    return thinking
+      .replace(/\\\[/g, "$$$$")
+      .replace(/\\\]/g, "$$$$")
+      .replace(/\\\(/g, "$")
+      .replace(/\\\)/g, "$");
+  }, [thinking]);
+
+  // Memoize markdown components to avoid recreating on every render
+  const markdownComponents = useMemo(() => ({
+    pre: ({ children }: any) => <>{children}</>,
+    code({ inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || "");
+      if (!inline) {
+        return (
+          <CodeBlock
+            language={match ? match[1] : null}
+            value={String(children).replace(/\n$/, "")}
+            {...props}
+          />
+        );
+      }
+      return (
+        <code className={clsx(className, inline && "inline-code")} {...props}>
+          {children}
+        </code>
+      );
+    },
+  }), []);
 
   useEffect(() => {
-    // If it's thinking, it should be expanded.
-    // If it finishes thinking, it should collapse.
     if (isThinking) {
       setThinkingExpanded(true);
-    } else if (thinking && !isThinking) {
-      // Small delay to let the user see it's done before collapsing?
-      // Or just collapse immediately to match the prompt "it should collapse"
+      return;
+    }
+
+    if (thinking && !isThinking) {
       setThinkingExpanded(false);
     }
-  }, [isThinking, !!thinking]);
+  }, [isThinking, Boolean(thinking)]);
   const canRegenerate =
     typeof messageIndex === "number" && typeof onRegenerate === "function";
 
   useEffect(() => {
-    if (copied) {
-      const timeout = setTimeout(() => {
-        setCopied(false);
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
+    if (!copied) return;
+
+    const timeout = setTimeout(() => {
+      setCopied(false);
+    }, 2000);
+
+    return () => clearTimeout(timeout);
   }, [copied]);
 
   const handleCopy = () => {
@@ -514,4 +521,4 @@ export function Message({
       </Box>
     </Box>
   );
-}
+});

@@ -1,5 +1,5 @@
 import { Square, Plus, ArrowUp, Paperclip, X, Image as ImageIcon } from "lucide-react";
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, memo } from "react";
 import { Box, InputBase, IconButton, Typography } from "@mui/material";
 import {
   DropdownMenu,
@@ -11,10 +11,17 @@ import { useChatStore } from "@/store/chatStore";
 import { Attachment } from "@/types/chat";
 import { isImageAttachment, createDataUrl } from "@/lib/utils";
 
+// Perf stubs
+function measureAsyncInteraction<T>(
+  _name: string,
+  _metadata: Record<string, unknown> | undefined,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  return Promise.resolve(fn());
+}
+
 interface ChatInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void | Promise<void>;
+  onSubmit: (value: string) => void | Promise<void>;
   onStop: () => void;
   isStreaming: boolean;
   selectedModel: string;
@@ -24,9 +31,7 @@ interface ChatInputProps {
   isTemporary?: boolean;
 }
 
-export function ChatInput({
-  value,
-  onChange,
+export const ChatInput = memo(function ChatInput({
   onSubmit,
   onStop,
   isStreaming,
@@ -38,26 +43,30 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState<string>("*");
+  const [draft, setDraft] = useState("");
 
   const currentAttachments = useChatStore((state) => state.currentAttachments);
-  const { addCurrentAttachment, removeCurrentAttachment } = useChatStore(
-    (state) => state.actions,
+  const addCurrentAttachment = useChatStore(
+    (state) => state.actions.addCurrentAttachment,
+  );
+  const removeCurrentAttachment = useChatStore(
+    (state) => state.actions.removeCurrentAttachment,
   );
 
   const canUploadImages = true;
 
   const handleFileClick = (accept: string) => {
     setFileAccept(accept);
-    // Use a small delay to ensure state update before triggering click
     setTimeout(() => {
       fileInputRef.current?.click();
     }, 0);
   };
 
   const handleSubmit = () => {
-    if ((!value.trim() && currentAttachments.length === 0) || isStreaming)
-      return;
-    onSubmit();
+    const hasContent = draft.trim().length > 0 || currentAttachments.length > 0;
+    if (!hasContent || isStreaming) return;
+    onSubmit(draft);
+    setDraft("");
   };
 
   const handleAction = () => {
@@ -80,33 +89,38 @@ export function ChatInput({
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const reader = new FileReader();
+      await measureAsyncInteraction(
+        "input.processFiles",
+        {
+          fileCount: files.length,
+          totalBytes: Array.from(files).reduce((sum, file) => sum + file.size, 0),
+        },
+        async () => {
+          for (const file of Array.from(files)) {
+            const reader = new FileReader();
 
-        const attachment: Attachment = {
-          id: crypto.randomUUID(),
-          name: file.name,
-          type: file.type,
-          size: file.size,
-        };
+            const attachment: Attachment = {
+              id: crypto.randomUUID(),
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            };
 
-        if (isImageAttachment(file.type)) {
-          reader.onload = (e) => {
-            const base64 = e.target?.result as string;
-            // Ollama expects base64 without prefix
-            attachment.content = base64.split(",")[1];
-            addCurrentAttachment(attachment);
-          };
-          reader.readAsDataURL(file);
-        } else {
-          reader.onload = (e) => {
-            attachment.content = e.target?.result as string;
-            addCurrentAttachment(attachment);
-          };
-          reader.readAsText(file);
-        }
-      }
+            const isImage = isImageAttachment(file.type);
+            reader.onload = (e) => {
+              const result = e.target?.result as string;
+              attachment.content = isImage ? result.split(",")[1] : result;
+              addCurrentAttachment(attachment);
+            };
+
+            if (isImage) {
+              reader.readAsDataURL(file);
+            } else {
+              reader.readAsText(file);
+            }
+          }
+        },
+      );
     },
     [addCurrentAttachment],
   );
@@ -156,14 +170,19 @@ export function ChatInput({
   };
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.max(40, Math.min(textareaRef.current.scrollHeight, 200))}px`;
-    }
-  }, [value]);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const adjustHeight = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.max(40, Math.min(textarea.scrollHeight, 200))}px`;
+    };
+
+    requestAnimationFrame(adjustHeight);
+  }, [draft]);
 
   const canSubmit =
-    value.trim() || currentAttachments.length > 0 || isStreaming;
+    draft.trim() || currentAttachments.length > 0 || isStreaming;
   const isInputDisabled = isStreaming || (!selectedModel && !allowEmptyModel);
 
   return (
@@ -209,7 +228,7 @@ export function ChatInput({
             },
           }}
         >
-          {currentAttachments.length > 0 && (
+          {currentAttachments.length > 0 ? (
             <Box
               sx={{
                 display: "flex",
@@ -268,14 +287,14 @@ export function ChatInput({
                 </Box>
               ))}
             </Box>
-          )}
+          ) : null}
 
           <InputBase
             multiline
             inputRef={textareaRef}
             placeholder="How can I help you today?"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => onFocusChange?.(true)}
             onBlur={() => onFocusChange?.(false)}
@@ -317,7 +336,7 @@ export function ChatInput({
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {canUploadImages && (
+                  {canUploadImages ? (
                     <DropdownMenuItem
                       onClick={() => handleFileClick("image/*")}
                       className="flex items-center gap-2"
@@ -325,7 +344,7 @@ export function ChatInput({
                       <ImageIcon size={16} />
                       <Typography variant="body2">Upload images</Typography>
                     </DropdownMenuItem>
-                  )}
+                  ) : null}
                   <DropdownMenuItem
                     onClick={() => handleFileClick("*")}
                     className="flex items-center gap-2"
@@ -375,4 +394,4 @@ export function ChatInput({
       </Box>
     </Box>
   );
-}
+});

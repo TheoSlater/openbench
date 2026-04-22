@@ -24,7 +24,7 @@ export function ChatArea({
   isTemporary,
 }: ChatAreaProps) {
   const hasMoreMessages = useChatStore((state) => state.hasMoreMessages);
-  const { loadMoreMessages } = useChatStore((state) => state.actions);
+  const loadMoreMessages = useChatStore((state) => state.actions.loadMoreMessages);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

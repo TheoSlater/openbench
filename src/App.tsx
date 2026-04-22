@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useDeferredValue, useMemo } from "react";
 import { useChatStream, useModelPicker, useSystemPrompts } from "@/hooks";
 import { Header, ChatArea, EmptyState, ChatInput } from "@/components/Chat";
 import { InspectorPanel } from "@/components/Inspector/InspectorPanel";
@@ -17,12 +17,27 @@ import { useToolStore } from "@/store/toolStore";
 import { AuthModal } from "@/components/Auth/AuthModal";
 import ToolApproval from "@/components/Chat/ToolApproval";
 import type { ChatMessage } from "@/types/chat";
+import { useShallow } from "zustand/react/shallow";
 import "./App.css";
 import * as db from "@/lib/db";
 
+function measureAsyncInteraction<T>(
+  _name: string,
+  _metadata: Record<string, unknown> | undefined,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  return Promise.resolve(fn());
+}
+
+function measureSyncInteraction<T>(
+  _name: string,
+  _metadata: Record<string, unknown> | undefined,
+  fn: () => T,
+): T {
+  return fn();
+}
+
 function App() {
-  const [input, setInput] = useState("");
-  const [devMode, setDevMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({
@@ -41,10 +56,27 @@ function App() {
     pullProgress,
     systemPrompts,
     activeSystemPromptId,
-    actions: modelActions,
-  } = useModelStore();
+    setSystemPrompt,
+    setDefaultModel,
+  } = useModelStore(
+    useShallow((state) => ({
+      availableModels: state.availableModels,
+      selectedModels: state.selectedModels,
+      updateSelectedModel: state.updateSelectedModel,
+      addSelectedModel: state.addSelectedModel,
+      removeSelectedModel: state.removeSelectedModel,
+      isLoading: state.isLoading,
+      ollamaError: state.ollamaError,
+      pullingModel: state.pullingModel,
+      pullProgress: state.pullProgress,
+      systemPrompts: state.systemPrompts,
+      activeSystemPromptId: state.activeSystemPromptId,
+      setSystemPrompt: state.actions.setSystemPrompt,
+      setDefaultModel: state.actions.setDefaultModel,
+    })),
+  );
 
-  const selectedModel = selectedModels[0] || "";
+  const selectedModel = selectedModels[0] ?? "";
 
   useModelPicker();
   useSystemPrompts();
@@ -100,10 +132,12 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const activeSystemPrompt =
-    systemPrompts.find((prompt) => prompt.id === activeSystemPromptId) ?? null;
+  const activeSystemPrompt = useMemo(
+    () => systemPrompts.find((p) => p.id === activeSystemPromptId) ?? null,
+    [systemPrompts, activeSystemPromptId],
+  );
 
-  const effectiveSystemPrompt = activeSystemPrompt?.content ?? "";
+  const systemPromptContent = activeSystemPrompt?.content ?? "";
 
   const {
     messages,
@@ -112,23 +146,24 @@ function App() {
     stopStreaming,
     bottomRef,
     hasMessages,
-  } = useChatStream(selectedModels, devMode, effectiveSystemPrompt);
-  const conversations = useChatStore((state) => state.conversations);
-  const activeConversationId = useChatStore(
-    (state) => state.activeConversationId,
+  } = useChatStream(selectedModels, systemPromptContent);
+  const deferredMessages = useDeferredValue(messages);
+  const { conversations, activeConversationId, currentAttachments } = useChatStore(
+    useShallow((state) => ({
+      conversations: state.conversations,
+      activeConversationId: state.activeConversationId,
+      currentAttachments: state.currentAttachments,
+    })),
   );
   const user = useAuthStore((state) => state.user);
   const {
     createConversation,
     setActiveConversationId,
-    addMessage,
     deleteConversation,
     renameConversation,
     deleteMessagesAfter,
     clearCurrentAttachments,
   } = useChatStore((state) => state.actions);
-
-  const currentAttachments = useChatStore((state) => state.currentAttachments);
 
   const ensureConversation = async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
@@ -136,127 +171,98 @@ function App() {
     return created.id;
   };
 
-  const handleDevCommand = async (command: string) => {
-    const [, arg] = command.trim().split(/\s+/);
-    let nextValue = devMode;
-
-    if (arg === "on") {
-      nextValue = true;
-    } else if (arg === "off") {
-      nextValue = false;
-    } else if (arg === "help") {
-      const conversationId = await ensureConversation();
-      await addMessage({
-        conversationId,
-        role: "user",
-        content: command,
-      });
-      await addMessage({
-        conversationId,
-        role: "assistant",
-        content: "Usage: /dev [on|off] — toggles mock responses.",
-      });
-      return;
-    } else {
-      nextValue = !devMode;
-    }
-
-    setDevMode(nextValue);
-    const conversationId = await ensureConversation();
-    await addMessage({
-      conversationId,
-      role: "user",
-      content: command,
-    });
-    await addMessage({
-      conversationId,
-      role: "assistant",
-      content: nextValue
-        ? "Developer mode enabled. Responses are mocked."
-        : "Developer mode disabled. Using the AI backend.",
-    });
-  };
-
-  const handleSend = async () => {
-    const trimmed = input.trim();
+  const handleSend = useCallback(async (content: string) => {
+    const trimmed = content.trim();
     if (!trimmed && currentAttachments.length === 0) return;
-    if (trimmed.startsWith("/dev")) {
-      await handleDevCommand(trimmed);
-      setInput("");
-      return;
-    }
-    if (!selectedModel && !devMode) {
-      return;
-    }
+    if (!selectedModel) return;
     await ensureConversation();
     sendMessage(trimmed, currentAttachments);
-    setInput("");
     clearCurrentAttachments();
-  };
+  }, [selectedModel, currentAttachments, sendMessage, clearCurrentAttachments]);
 
-  const handleRegenerate = async (messageIndex: number) => {
-    if (isStreaming || !activeConversationId) return;
+  const handleRegenerate = useCallback(async (messageIndex: number) => {
+    await measureAsyncInteraction("app.handleRegenerate", { messageIndex }, async () => {
+      if (isStreaming || !activeConversationId) return;
 
-    let previousUserMessage: ChatMessage | null = null;
-    for (let i = messageIndex - 1; i >= 0; i--) {
-      if (messages[i]?.role === "user") {
-        previousUserMessage = messages[i];
-        break;
+      const targetMessage = messages[messageIndex];
+      if (targetMessage?.role !== "assistant") return;
+
+      let previousUserMessage: ChatMessage | null = null;
+      for (let i = messageIndex - 1; i >= 0; i--) {
+        if (messages[i]?.role === "user") {
+          previousUserMessage = messages[i];
+          break;
+        }
       }
-    }
 
-    const targetMessage = messages[messageIndex];
-    if (!previousUserMessage || targetMessage?.role !== "assistant") return;
+      if (!previousUserMessage) return;
 
-    await deleteMessagesAfter(activeConversationId, targetMessage.id);
-    sendMessage(previousUserMessage.content);
-  };
+      await deleteMessagesAfter(activeConversationId, targetMessage.id);
+      sendMessage(previousUserMessage.content);
+    });
+  }, [activeConversationId, deleteMessagesAfter, isStreaming, messages, sendMessage]);
 
   const handleNewChat = (isTemporary = false) => {
-    stopStreaming();
-    if (isTemporary) {
-      void createConversation("Temporary Chat", true);
-    } else {
+    measureSyncInteraction("app.handleNewChat", { isTemporary }, () => {
+      stopStreaming();
+
+      if (isTemporary) {
+        void createConversation("Temporary Chat", true);
+        return;
+      }
+
       setActiveConversationId(null);
-    }
+    });
   };
 
   const handleSelectConversation = (id: string) => {
-    stopStreaming();
-    setActiveConversationId(id);
+    measureSyncInteraction("app.handleSelectConversation", { id }, () => {
+      stopStreaming();
+      setActiveConversationId(id);
+    });
   };
 
   const handleDeleteConversation = async (id: string) => {
-    stopStreaming();
-    await deleteConversation(id);
+    await measureAsyncInteraction(
+      "app.handleDeleteConversation",
+      { id },
+      async () => {
+        stopStreaming();
+        await deleteConversation(id);
+      },
+    );
   };
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
-    await renameConversation(id, newTitle);
+    await measureAsyncInteraction(
+      "app.handleRenameConversation",
+      { id, titleLength: newTitle.length },
+      async () => {
+        await renameConversation(id, newTitle);
+      },
+    );
   };
 
   const handleSetDefaultModel = (model: string) => {
-    modelActions.setDefaultModel(model);
+    setDefaultModel(model);
     setToast({ open: true, message: `${model} set as default` });
   };
 
-  const handleCloseToast = () => {
-    setToast({ ...toast, open: false });
-  };
+  const handleCloseToast = () => setToast({ ...toast, open: false });
 
-  const isTemporary = !!conversations.find((c) => c.id === activeConversationId)
-    ?.isTemporary;
+  const isTemporary = Boolean(conversations.find((c) => c.id === activeConversationId)?.isTemporary);
 
   const handleToggleTemporaryChat = async () => {
-    if (isStreaming) stopStreaming();
+    await measureAsyncInteraction("app.handleToggleTemporaryChat", { isTemporary }, async () => {
+      if (isStreaming) stopStreaming();
 
-    if (isTemporary) {
-      // Switch back to a new chat when disabling temporary chat
-      setActiveConversationId(null);
-    } else {
-      // If not temporary, start a new temporary chat
+      if (isTemporary) {
+        setActiveConversationId(null);
+        return;
+      }
+
       await createConversation("Temporary Chat", true);
-    }
+    });
   };
 
   return (
@@ -292,7 +298,7 @@ function App() {
           pullProgress={pullProgress}
           systemPrompts={systemPrompts}
           activeSystemPromptId={activeSystemPromptId}
-          onSystemPromptChange={(id) => modelActions.setSystemPrompt(id)}
+          onSystemPromptChange={setSystemPrompt}
         />
 
         <Box
@@ -325,26 +331,23 @@ function App() {
           >
             {hasMessages ? (
               <ChatArea
-                messages={messages}
+                messages={deferredMessages}
                 bottomRef={bottomRef}
                 onRegenerate={handleRegenerate}
                 isTemporary={isTemporary}
               />
             ) : (
               <EmptyState
-                selectedModels={devMode ? ["Dev Mode"] : selectedModels}
+                selectedModels={selectedModels}
                 userName={user?.fullName || user?.email}
                 isTemporary={isTemporary}
               >
                 <ChatInput
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={() => handleSend()}
+                  onSubmit={handleSend}
                   onStop={stopStreaming}
                   isStreaming={isStreaming}
-                  selectedModel={devMode ? "Dev Mode" : selectedModel}
+                  selectedModel={selectedModel}
                   hasMessages={hasMessages}
-                  allowEmptyModel={devMode}
                   isTemporary={isTemporary}
                 />
               </EmptyState>
@@ -352,14 +355,11 @@ function App() {
 
             {hasMessages && (
               <ChatInput
-                value={input}
-                onChange={setInput}
-                onSubmit={() => handleSend()}
+                onSubmit={handleSend}
                 onStop={stopStreaming}
                 isStreaming={isStreaming}
-                selectedModel={devMode ? "Dev Mode" : selectedModel}
+                selectedModel={selectedModel}
                 hasMessages={hasMessages}
-                allowEmptyModel={devMode}
                 isTemporary={isTemporary}
               />
             )}

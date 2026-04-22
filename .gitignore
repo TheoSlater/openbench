@@ -26,3 +26,6 @@ dist-ssr
 ./CLAUDE.md
 /.junie/memory
 /.junie
+AGENTS.md
+docs/inp-trace-playbook.md
+.claude/settings.local.json

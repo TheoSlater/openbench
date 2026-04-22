@@ -249,7 +249,7 @@ export function Sidebar({
   collapsible,
 }: SidebarProps) {
   const { isCollapsed, isMobile, openMobile, setOpenMobile } = useSidebar();
-  const { actions: chatActions } = useChatStore();
+  const archiveConversation = useChatStore((state) => state.actions.archiveConversation);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editValue, setEditValue] = React.useState("");
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
@@ -294,7 +294,7 @@ export function Sidebar({
   };
 
   const handleArchive = async (id: string) => {
-    await chatActions.archiveConversation(id);
+    await archiveConversation(id);
   };
 
   const groupedConversations = React.useMemo(() => {

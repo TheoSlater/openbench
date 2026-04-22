@@ -59,7 +59,7 @@ bun run preview
 ### Backend Structure (Rust)
 
 **Commands (`src-tauri/src/lib.rs`):**
-- `get_local_models` - Lists Ollama models with vision support detection
+- `get_local_models` - Lists Ollama models
 - `pull_model` - Downloads models with progress events
 - `chat_stream` - Streaming chat with tool support (timestamp tools built-in)
 - `chat` - Non-streaming chat (used for auto-titling)
