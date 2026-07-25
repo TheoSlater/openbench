@@ -30,7 +30,6 @@ import { Source, SourceTrigger, SourceContent } from "@/components/ui/source";
 import type { MessageProps } from "./types";
 import {
   useCopyMessage,
-  useMessageStreaming,
   useMessageMarkdown,
   useMessageTts,
 } from "./hooks";
@@ -62,7 +61,6 @@ export function AssistantMessage(props: MessageProps) {
   const notify = useNotify();
   const memoryUiEnabled = useSettingsStore((state) => state.general.memoryBeta);
 
-  const streamingDisplayContent = useMessageStreaming(content, isStreaming);
   const { processedContent, processedThinking } = useMessageMarkdown(
     content,
     thinking,
@@ -86,7 +84,10 @@ export function AssistantMessage(props: MessageProps) {
     <Box
       className="group/message mr-auto flex w-full max-w-[min(100%,48rem)] flex-col gap-2"
     >
-      <Box className="px-4 py-3 text-card-foreground">
+      {/* select-text: the app sets `user-select: none` on <body> for native
+          chrome feel, which otherwise makes model output impossible to
+          partially select and copy. */}
+      <Box className="px-4 py-3 text-card-foreground select-text">
         {model && (
           <Typography
             variant="caption"
@@ -172,16 +173,10 @@ export function AssistantMessage(props: MessageProps) {
             id={`message-${messageIndex}`}
             className="min-w-0"
           >
-            {isStreaming ? (
-              <Typography
-                as="p"
-                className="whitespace-pre-wrap text-sm leading-6"
-              >
-                {streamingDisplayContent || content}
-              </Typography>
-            ) : (
-              <MarkdownProse content={processedContent} />
-            )}
+            {/* Streaming renders through the same markdown path as the final
+                message. parseProgressive escapes half-written syntax, so the
+                answer never re-flows when the stream ends. */}
+            <MarkdownProse content={processedContent} streaming={isStreaming} />
           </Box>
         ) : showEmptyFinalNotice ? (
           <Box

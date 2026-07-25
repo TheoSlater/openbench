@@ -116,10 +116,10 @@ export function MarkdownProse({ content, streaming = false }: { content: string;
         const codeValue = String(children).replace(/\n$/, "");
         const inline = isInlineMarkdownCode(className, children);
         if (!inline && match) {
-          return <CodeBlock language={match[1]} code={codeValue} pending={streaming} />;
+          return <CodeBlock language={match[1]} code={codeValue} />;
         }
         if (!inline) {
-          return <CodeBlock language={null} code={codeValue} pending={streaming} />;
+          return <CodeBlock language={null} code={codeValue} />;
         }
 
         return (
@@ -231,7 +231,7 @@ export function MarkdownProse({ content, streaming = false }: { content: string;
         />
       ),
     }),
-    [streaming],
+    [],
   );
 
   return (
@@ -249,7 +249,6 @@ export function MarkdownProse({ content, streaming = false }: { content: string;
         <CodeBlock
           language={progressive.pendingCode.language}
           code={progressive.pendingCode.code}
-          pending
         />
       )}
     </Box>

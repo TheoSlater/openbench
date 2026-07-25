@@ -70,7 +70,7 @@ export function UserMessage({ id, conversationId, content, attachments }: Messag
         </Box>
       )}
       <Box
-        className="rounded-2xl rounded-br-sm bg-muted/70 px-3 py-2 text-foreground"
+        className="rounded-2xl rounded-br-sm bg-muted/70 px-3 py-2 text-foreground select-text"
       >
         <Typography
           className="whitespace-pre-wrap text-sm leading-6"

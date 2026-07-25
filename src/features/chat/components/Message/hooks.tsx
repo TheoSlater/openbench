@@ -3,12 +3,6 @@ import { useTtsStore } from "@/store/ttsStore";
 import { useNotify } from "@/hooks/useNotify";
 import { stripInvisible } from "./utils";
 
-export function useMessageStreaming(content: string, isStreaming?: boolean) {
-  // Content updates are already rAF-batched by StreamAccumulator — a second
-  // rAF buffer here only added a frame of latency per token flush.
-  return isStreaming && content ? content : "";
-}
-
 export function useMessageMarkdown(content: string, thinking?: string, isStreaming?: boolean) {
   const processedContent = useMemo(() => {
     if (!content) return "";
