@@ -33,7 +33,12 @@ export function SettingsDialog({ open, onOpenChange, children }: SettingsDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="grid h-[calc(100dvh-4rem)] w-[calc(100vw-4rem)] max-w-none sm:max-w-none grid-cols-1 gap-0 overflow-hidden rounded-[min(var(--radius-4xl),24px)] border-border/60 bg-card p-0 shadow-2xl md:grid-cols-[260px_minmax(0,1fr)]"
+        // Capped, not viewport-filling. Width stops at 1200px because the
+        // panel body is max-w-4xl (896px) + px-7 (56px) alongside the 260px
+        // nav — past that the extra width is empty gutter. Height subtracts
+        // the title bar as well as the margin: at `100dvh - 4rem` a centred
+        // dialog put its top edge at 32px, under the 36px title bar.
+        className="grid h-[min(760px,calc(100dvh-var(--titlebar-height)-4rem))] w-[min(1200px,calc(100vw-4rem))] max-w-none sm:max-w-none grid-cols-1 gap-0 overflow-hidden rounded-[min(var(--radius-4xl),24px)] border-border/60 bg-card p-0 shadow-2xl md:grid-cols-[260px_minmax(0,1fr)]"
       >
         {children}
       </DialogContent>
