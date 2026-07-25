@@ -18,18 +18,19 @@ export function SidebarBrand() {
   // guarantee `hidden` gave: collapsed, the button is out of the keyboard flow
   // and the accessibility tree.
   //
-  // Nothing here needs its own animation. The brand is flex-1, so it shrinks
-  // continuously with the panel's width, and the trigger's auto margins take
-  // over once the brand runs out of free space to absorb — centering it in the
-  // rail at rest. One driver: the panel width.
+  // The brand is flex-1 but capped by max-width, which is what actually eases:
+  // 100% -> 0 as the panel collapses. A plain flex-1 would swallow all the free
+  // space at every width, leaving the trigger pinned right instead of centred
+  // in the rail. As the cap closes, free space opens up and the trigger's auto
+  // margins carry it to the centre of the rail. One driver: the panel width.
   return (
     <div className="relative flex w-full items-center">
       <div
         className={cn(
           "min-w-0 flex-1 overflow-hidden",
-          isCollapsed && "opacity-0",
+          isCollapsed ? "max-w-0 opacity-0" : "max-w-full",
           !reduceMotion &&
-            "transition-opacity duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
+            "transition-[max-width,opacity] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         )}
         aria-hidden={isCollapsed}
         inert={isCollapsed}
