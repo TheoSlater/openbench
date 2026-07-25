@@ -140,6 +140,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SIDEBAR_TOGGLE_EVENT } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chatStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import type { Conversation } from "@/types/chat";
 
 // Four conversations — the row count at which the user already sees lag.
@@ -348,6 +349,42 @@ describe("sidebar render counts", () => {
     expect(view.container.querySelector('[data-slot="sidebar"]')).toBe(panel);
     expect(panel?.getAttribute("data-collapsible")).toBe("icon");
     view.unmount();
+  });
+
+  it("gates collapse motion on the app's reduce-motion setting", async () => {
+    // Only the collapse transitions, identified by the shared duration token.
+    // Hover affordances (transition-colors on icon buttons, the row action
+    // menu's opacity fade) are paint-only and stay on either way.
+    const collapseTransitions = (root: Element) =>
+      [...root.querySelectorAll("*")].filter((el) =>
+        String(el.className).includes("duration-(--sidebar-transition-duration)"),
+      ).length;
+
+    const on = render(<Harness />);
+    await settle();
+    expect(collapseTransitions(on.container)).toBeGreaterThan(0);
+    on.unmount();
+
+    // The Settings toggle is the only thing that turns the animation off --
+    // not hardware core count, not the OS media query.
+    await act(async () => {
+      useSettingsStore.setState((s) => ({
+        ...s,
+        performance: { ...s.performance, reduceMotion: true },
+      }));
+    });
+
+    const off = render(<Harness />);
+    await settle();
+    expect(collapseTransitions(off.container)).toBe(0);
+    off.unmount();
+
+    await act(async () => {
+      useSettingsStore.setState((s) => ({
+        ...s,
+        performance: { ...s.performance, reduceMotion: false },
+      }));
+    });
   });
 
   it("prints the table", () => {

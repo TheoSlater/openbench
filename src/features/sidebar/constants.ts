@@ -1,7 +1,5 @@
 import type * as React from "react"
 
-import { getMotionPolicy } from "@/lib/performance/policy"
-
 /**
  * Single source of truth for sidebar sizing, spacing and radius.
  * Consumed both as JS values and (via `sidebarStyleVars`) as CSS variables,
@@ -19,23 +17,23 @@ export const SIDEBAR_TOKENS = {
   itemRadius: "var(--radius-lg)",
   panelRadius: "var(--radius-4xl)",
   sectionGap: "0.5rem", // 8px between sidebar sections
-  /** Easing for every surface that moves when the sidebar collapses. */
+  /**
+   * One duration for every surface that moves when the sidebar collapses:
+   * panel width, row geometry, group labels, content fade, brand. These used to
+   * be 150/200/100ms independently, so rows were still resizing 50ms after the
+   * panel had settled — a visible snap at the end.
+   *
+   * Whether motion runs at all is the Settings > reduce motion toggle, applied
+   * by the components that gate their transition classes on `useReducedMotion`.
+   * Deliberately not sourced from the hardware motion policy: the sidebar
+   * animates on low-end machines too, and only the user's toggle turns it off.
+   */
+  transitionDuration: "160ms",
   transitionEasing: "ease-out",
 } as const
 
-/**
- * The collapse transition has one duration, shared by every surface that moves
- * (panel width, row geometry, content fade, rail). They used to be 150/200/100ms
- * independently, which meant rows were still resizing 50ms after the panel had
- * settled — a visible snap at the end. Sourced from the motion policy, so a
- * low-end or reduced-motion profile cuts straight to the final state at 0ms.
- */
-export function sidebarTransitionDuration(): string {
-  return `${getMotionPolicy().transitionDurationMs}ms`
-}
-
 export const sidebarStyleVars = {
-  "--sidebar-transition-duration": sidebarTransitionDuration(),
+  "--sidebar-transition-duration": SIDEBAR_TOKENS.transitionDuration,
   "--sidebar-transition-easing": SIDEBAR_TOKENS.transitionEasing,
   "--sidebar-width": SIDEBAR_TOKENS.expandedWidth,
   "--sidebar-width-icon": SIDEBAR_TOKENS.collapsedWidth,

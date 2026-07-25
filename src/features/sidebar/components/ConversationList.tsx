@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarMenuRow } from "@/features/sidebar/components/sidebar-utils";
 import { ConversationSkeleton } from "@/features/sidebar/components/ConversationSkeleton";
+import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarActions } from "@/features/sidebar/hooks/useSidebarActions";
 import { useChatStore } from "@/store/chatStore";
@@ -35,6 +37,7 @@ export function ConversationList({
   const { conv, onSelectConversation } = useSidebarActions();
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const notify = useNotify();
+  const reduceMotion = useReducedMotion();
 
   const rows = useMemo<ConversationRow[]>(
     () =>
@@ -116,7 +119,11 @@ export function ConversationList({
             // before the width had moved.
             <div
               key={row.id}
-              className="px-3 py-px transition-[padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing) group-data-[collapsible=icon]:px-1"
+              className={cn(
+                "px-3 py-px group-data-[collapsible=icon]:px-1",
+                !reduceMotion &&
+                  "transition-[padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
+              )}
             >
               <SidebarMenuButton
                 asChild
