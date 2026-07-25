@@ -5,7 +5,7 @@ import {
 } from "@/components/WindowControls";
 import { UpdateChip } from "@/components/UpdateChip";
 import { PolyUiBrand } from "@/components/PolyUiBrand";
-import { TITLE_BAR_HEIGHT } from "@/main";
+import { TITLE_BAR_HEIGHT } from "@/lib/constants/titlebar";
 
 function WindowTitleBar() {
   if (!IS_MAC && !USE_CUSTOM_WINDOW_CONTROLS) return null;

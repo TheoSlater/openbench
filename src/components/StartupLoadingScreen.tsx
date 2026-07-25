@@ -1,6 +1,6 @@
 import { memo, useEffect } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { TITLE_BAR_HEIGHT } from "@/components/Layout/WindowTitleBar";
+import { TITLE_BAR_HEIGHT } from "@/lib/constants/titlebar";
 
 type StartupLoadingScreenProps = {
   visible?: boolean;
