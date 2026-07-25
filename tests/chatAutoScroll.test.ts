@@ -5,6 +5,10 @@ const source = readFileSync(
   "src/features/chat/components/ChatArea.tsx",
   "utf8",
 );
+const scrollButtonSource = readFileSync(
+  "src/components/ui/scroll-button.tsx",
+  "utf8",
+);
 
 /** The className string on the element that carries `ref={setScrollRef}`. */
 function scrollContainerClasses(): string {
@@ -44,5 +48,13 @@ describe("chat auto-scroll", () => {
     expect(scrollEnd).toBeGreaterThan(-1);
     expect(containerClose).toBeLessThan(scrollEnd);
     expect(source).toContain("<StickToBottom");
+  });
+
+  it("shows the shared spinner while generating and restores the arrow on hover", () => {
+    expect(source).toMatch(/<ScrollButton[\s\S]*loading=\{isResponding\}/);
+    expect(scrollButtonSource).toContain('import { CircularProgress } from "@/components/ui/spinner"');
+    expect(scrollButtonSource).toContain("<CircularProgress");
+    expect(scrollButtonSource).toContain("group-hover:hidden");
+    expect(scrollButtonSource).toContain("group-hover:block");
   });
 });
