@@ -125,6 +125,12 @@ vi.mock("@/components/nav-user", async (orig) => {
   const m: any = await orig();
   return { ...m, NavUser: wrap("NavUser", m.NavUser) };
 });
+// Counted, not queried: TooltipTrigger uses asChild, so its data-slot is
+// overridden by the child's own and can't be found in the DOM.
+vi.mock("@/components/ui/tooltip", async (orig) => {
+  const m: any = await orig();
+  return { ...m, Tooltip: wrap("RadixTooltip", m.Tooltip) };
+});
 vi.mock("@/components/ui/sidebar", async (orig) => {
   const m: any = await orig();
   return { ...m, SidebarMenuButton: wrap("SidebarMenuButton", m.SidebarMenuButton) };
@@ -279,6 +285,18 @@ describe("sidebar render counts", () => {
 
     table.hover = snapshot();
     table.__meta = { rows: rows.length };
+    view.unmount();
+  });
+
+  it("mounts no Radix tooltips while the sidebar is expanded", async () => {
+    reset();
+    const view = render(<Harness />);
+    await settle();
+
+    // Expanded rows never show a tooltip. Mounting one per row anyway costs a
+    // Radix open-state machine + Floating UI positioning on every hover, which
+    // is what made hovering the list feel sluggish.
+    expect(h.counts.RadixTooltip ?? 0).toBe(0);
     view.unmount();
   });
 

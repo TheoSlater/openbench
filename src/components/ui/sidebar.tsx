@@ -31,6 +31,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH_MOBILE = SIDEBAR_TOKENS.mobileWidth
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+export const SIDEBAR_TOGGLE_EVENT = "polyui:toggle-sidebar"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -92,6 +93,12 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
+
+  React.useEffect(() => {
+    const handleToggle = () => toggleSidebar()
+    window.addEventListener(SIDEBAR_TOGGLE_EVENT, handleToggle)
+    return () => window.removeEventListener(SIDEBAR_TOGGLE_EVENT, handleToggle)
+  }, [toggleSidebar])
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -209,7 +216,7 @@ function Sidebar({
     <div
       className={cn(
         "group peer relative flex w-(--sidebar-width) shrink-0 text-sidebar-foreground max-md:hidden data-[collapsible=offcanvas]:w-0",
-        !reduceMotion && "transition-[width] duration-200 ease-out will-change-[width]",
+        !reduceMotion && "transition-[width] duration-150 ease-out",
         variant === "floating" || variant === "inset"
           ? "data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
           : "data-[collapsible=icon]:w-(--sidebar-width-icon)",
@@ -514,7 +521,10 @@ function SidebarMenuButton({
     />
   )
 
-  if (!tooltip) {
+  // The tooltip only ever shows in the collapsed rail. Mounting it the rest of
+  // the time isn't free: `hidden` only hides it visually, so Radix still runs
+  // its open-state machine and Floating UI positioning on every row hover.
+  if (!tooltip || state !== "collapsed" || isMobile) {
     return button
   }
 
@@ -527,12 +537,7 @@ function SidebarMenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed" || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   )
 }
