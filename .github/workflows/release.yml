@@ -2,8 +2,7 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:
@@ -11,49 +10,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-
-env:
-  CARGO_TERM_COLOR: always
-  OLLAMA_HOST: http://127.0.0.1:11434
-  RUST_BACKTRACE: "1"
-  MACOSX_DEPLOYMENT_TARGET: "11.0"
+  contents: read
 
 jobs:
-  build:
-    name: Build ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            os: macos-latest
-            platform: macos
-          - name: Windows
-            os: windows-latest
-            platform: windows
-            arch: x64
-          - name: Linux x64
-            os: ubuntu-24.04
-            platform: linux
-            arch: x64
-          - name: Linux arm64
-            os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-
+  verify:
+    name: Verify version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Verify tag matches configured app version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
+          fetch-depth: 1
+      - name: Tag must match package.json and tauri.conf.json
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           TAG_VERSION="${TAG_VERSION%%-*}"
@@ -61,388 +30,39 @@ jobs:
           CONF_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           if [[ "$PKG_VERSION" != "$TAG_VERSION" || "$CONF_VERSION" != "$TAG_VERSION" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json ($PKG_VERSION) or tauri.conf.json ($CONF_VERSION)."
-            echo "Bump the versions before tagging a release."
             exit 1
           fi
 
-      - name: Read Bun version
-        id: bun
-        shell: bash
-        run: |
-          BUN_VERSION="$(node -p "require('./package.json').packageManager?.replace(/^bun@/, '') || '1.3.14'")"
-          echo "version=$BUN_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.bun.outputs.version }}
-
-      - name: Cache bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Print toolchain versions
-        shell: bash
-        run: |
-          node --version
-          bun --version
-          rustc --version
-          cargo --version
-
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            src-tauri -> target
-
-      - name: Install Linux build dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libasound2-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf \
-            rpm \
-            wget \
-            xdg-utils
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Print Tauri CLI version
-        run: bun run tauri --version
-
-      - name: Typecheck and build frontend
-        run: bun run build
-
-      - name: Run lint if available
-        shell: bash
-        run: |
-          if node -e "const s=require('./package.json').scripts||{}; process.exit(s.lint ? 0 : 1)"; then
-            bun run lint
-          else
-            echo "No lint script configured; skipping."
-          fi
-
-      - name: Generate bundled release notes
-        run: bun run release-notes:generate
-
-      - name: Validate frontend build inputs
-        shell: bash
-        run: |
-          test -d dist
-          test -f dist/index.html
-          test -d dist/assets
-          find dist/assets -maxdepth 1 -name '*.js' -type f | grep -q .
-          find dist/assets -maxdepth 1 -name '*.css' -type f | grep -q .
-          test -f src/generated/releaseNotes.json
-          if grep -E 'src="/assets/|href="/assets/|href="/polyui-icon' dist/index.html; then
-            echo "dist/index.html contains absolute production asset paths."
-            exit 1
-          fi
-
-      - name: Configure macOS native build flags
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          {
-            echo "MACOSX_DEPLOYMENT_TARGET=11.0"
-            echo "CMAKE_OSX_DEPLOYMENT_TARGET=11.0"
-            echo "CMAKE_C_FLAGS=-mmacosx-version-min=11.0"
-            echo "CMAKE_CXX_FLAGS=-D_LIBCPP_DISABLE_AVAILABILITY -mmacosx-version-min=11.0"
-          } >> "$GITHUB_ENV"
-
-      - name: Build PolyUI app
-        shell: bash
-        run: |
-          rm -rf src-tauri/target/release/bundle
-          bun run tauri build --ci
-
-      - name: List Tauri bundle outputs
-        shell: bash
-        run: find src-tauri/target/release/bundle -maxdepth 4 -type f
-
-      - name: Validate Windows normal bundle
-        if: matrix.platform == 'windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $bundle = "src-tauri/target/release/bundle"
-          if (!(Test-Path "$bundle/nsis")) { throw "Missing NSIS bundle dir" }
-          if (!(Test-Path "src-tauri/target/release/polyui.exe")) { throw "Missing release executable" }
-          $nsis = Get-ChildItem "$bundle/nsis" -Filter "PolyUI_$($version)_x64-setup.exe" | Where-Object { $_.Name -notmatch "Ollama" } | Select-Object -First 1
-          if (!$nsis) { throw "Missing normal NSIS installer" }
-          $msi = Get-ChildItem "$bundle/msi" -Filter "PolyUI_$($version)_x64*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (!$msi) { throw "Missing MSI installer" }
-          New-Item -ItemType Directory -Force "release-artifacts/windows" | Out-Null
-          Copy-Item $nsis.FullName "release-artifacts/windows/PolyUI-$version-windows-x64-setup.exe"
-          Copy-Item $msi.FullName "release-artifacts/windows/PolyUI-$version-windows-x64.msi"
-
-      - name: Smoke test Windows executable
-        if: matrix.platform == 'windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $env:RUST_BACKTRACE = "1"
-          $env:RUST_LOG = "debug"
-          $exe = Resolve-Path "src-tauri/target/release/polyui.exe"
-          $stdout = Join-Path $env:RUNNER_TEMP "polyui-smoke.stdout.log"
-          $stderr = Join-Path $env:RUNNER_TEMP "polyui-smoke.stderr.log"
-          $startupLog = Join-Path $env:APPDATA "Poly UI/logs/startup.log"
-          function Write-CappedLog($path) {
-            if (Test-Path $path) {
-              Get-Content $path -Raw -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object {
-                if ($_.Length -gt 6000) { $_.Substring(0, 6000) } else { $_ }
-              }
-            }
-          }
-          Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
-          $proc = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-
-          $deadline = (Get-Date).AddSeconds(45)
-          $startupLines = @()
-          while ((Get-Date) -lt $deadline) {
-            $startupLines = @(Get-Content $startupLog -ErrorAction SilentlyContinue)
-            if ($startupLines -match "frontend loaded") {
-              break
-            }
-            if ($proc.HasExited) {
-              Write-CappedLog $stdout
-              Write-CappedLog $stderr
-              Write-CappedLog $startupLog
-              throw "PolyUI exited during Windows smoke test with code $($proc.ExitCode)"
-            }
-            Start-Sleep -Milliseconds 250
-          }
-
-          if (!($startupLines -match "frontend loaded")) {
-            Write-CappedLog $stdout
-            Write-CappedLog $stderr
-            Write-CappedLog $startupLog
-            Stop-Process -Id $proc.Id -Force
-            throw "PolyUI Windows smoke test did not reach frontend loaded"
-          }
-          Stop-Process -Id $proc.Id -Force
-
-      - name: Smoke test installed Windows app relaunch
-        if: matrix.platform == 'windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $installer = Resolve-Path "release-artifacts/windows/PolyUI-$version-windows-x64-setup.exe"
-          $installDir = Join-Path $env:LOCALAPPDATA "PolyUI"
-          $uninstall = Join-Path $installDir "uninstall.exe"
-          if (Test-Path $uninstall) {
-            Start-Process -FilePath $uninstall -ArgumentList "/S" -Wait
-          }
-          Remove-Item (Join-Path $env:APPDATA "Poly UI") -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item (Join-Path $env:APPDATA "com.tslater.polyui") -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item (Join-Path $env:LOCALAPPDATA "com.tslater.polyui") -Recurse -Force -ErrorAction SilentlyContinue
-          Start-Process -FilePath $installer -ArgumentList "/S" -Wait
-          $exe = Join-Path $installDir "polyui.exe"
-          $ort = Join-Path $installDir "onnxruntime.dll"
-          if (!(Test-Path $ort)) { throw "Installed app missing onnxruntime.dll" }
-          $sourceMigrations = (Resolve-Path "src-tauri/src/db/migrations").Path
-          $hiddenMigrations = Join-Path $env:RUNNER_TEMP "polyui-hidden-source-migrations"
-          if (Test-Path $hiddenMigrations) {
-            Remove-Item $hiddenMigrations -Recurse -Force
-          }
-          Move-Item $sourceMigrations $hiddenMigrations
-          try {
-            powershell -ExecutionPolicy Bypass -File scripts/windows-relaunch-smoke.ps1 -ExePath $exe -Cycles 10 -PostReadyHoldSeconds 6
-          } finally {
-            if (Test-Path $hiddenMigrations) {
-              Move-Item $hiddenMigrations $sourceMigrations
-            }
-          }
-          if (Test-Path $uninstall) {
-            Start-Process -FilePath $uninstall -ArgumentList "/S" -Wait
-          }
-
-      - name: Build PolyUI Ollama Windows installer
-        if: matrix.platform == 'windows'
-        run: bun run ollama-setup
-
-      - name: Validate Windows Ollama bundle
-        if: matrix.platform == 'windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $ollama = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "PolyUI-Ollama_$($version)_x64-setup.exe" | Select-Object -First 1
-          if (!$ollama) { throw "Missing Ollama NSIS installer" }
-          New-Item -ItemType Directory -Force "release-artifacts/windows-ollama" | Out-Null
-          Copy-Item $ollama.FullName "release-artifacts/windows-ollama/PolyUI-$version-windows-x64-ollama-setup.exe"
-          if (!(Test-Path "release-artifacts/windows/PolyUI-$version-windows-x64-setup.exe")) {
-            throw "Normal installer missing after Ollama bundle; output was overwritten"
-          }
-
-      - name: Validate macOS bundle
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          test -d src-tauri/target/release/bundle/macos/PolyUI.app
-          APP_EXE="$(find src-tauri/target/release/bundle/macos/PolyUI.app/Contents/MacOS -maxdepth 1 -type f | head -n 1)"
-          test -n "$APP_EXE"
-          test -f src-tauri/target/release/bundle/macos/PolyUI.app/Contents/Resources/libonnxruntime.dylib
-          test -d src-tauri/target/release/bundle/dmg
-          DMG="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -type f | head -n 1)"
-          test -n "$DMG"
-          mkdir -p release-artifacts/macos
-          cp "$DMG" "release-artifacts/macos/PolyUI-$VERSION-macos-universal.dmg"
-
-      - name: Validate Linux bundles
-        if: matrix.platform == 'linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          BUNDLE="src-tauri/target/release/bundle"
-          test -x src-tauri/target/release/polyui
-          DEB="$(find "$BUNDLE/deb" -maxdepth 1 -name '*.deb' -type f | head -n 1)"
-          RPM="$(find "$BUNDLE/rpm" -maxdepth 1 -name '*.rpm' -type f | head -n 1)"
-          APPIMAGE="$(find "$BUNDLE/appimage" -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
-          test -n "$DEB"
-          dpkg-deb -c "$DEB" | grep 'libonnxruntime.so' >/dev/null
-          # CEF runtime must ship inside the packages: libcef.so is a hard
-          # dynamic dependency of the binary, so a package without it does
-          # not even launch.
-          for cef_file in libcef.so icudtl.dat resources.pak locales/en-US.pak; do
-            dpkg-deb -c "$DEB" | grep "PolyUI/$cef_file" >/dev/null
-          done
-          test -n "$RPM"
-          test -n "$APPIMAGE"
-          mkdir -p "release-artifacts/linux-${{ matrix.arch }}"
-          cp "$DEB" "release-artifacts/linux-${{ matrix.arch }}/PolyUI-$VERSION-linux-${{ matrix.arch }}.deb"
-          cp "$RPM" "release-artifacts/linux-${{ matrix.arch }}/PolyUI-$VERSION-linux-${{ matrix.arch }}.rpm"
-          cp "$APPIMAGE" "release-artifacts/linux-${{ matrix.arch }}/PolyUI-$VERSION-linux-${{ matrix.arch }}.AppImage"
-
-      - name: Smoke test macOS app
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: |
-          set -euo pipefail
-          export RUST_BACKTRACE=1
-          export RUST_LOG=debug
-          APP_EXE="$(find src-tauri/target/release/bundle/macos/PolyUI.app/Contents/MacOS -maxdepth 1 -type f | head -n 1)"
-          test -n "$APP_EXE"
-          STDOUT="$RUNNER_TEMP/polyui-smoke.stdout.log"
-          STDERR="$RUNNER_TEMP/polyui-smoke.stderr.log"
-          STARTUP_LOG="$HOME/Library/Logs/Poly UI/startup.log"
-          rm -f "$STARTUP_LOG"
-          "$APP_EXE" >"$STDOUT" 2>"$STDERR" &
-          PID=$!
-          DEADLINE=$((SECONDS + 45))
-          FOUND=false
-          while [[ $SECONDS -lt $DEADLINE ]]; do
-            if ! kill -0 "$PID" 2>/dev/null; then
-              cat "$STDOUT" || true
-              cat "$STDERR" || true
-              cat "$STARTUP_LOG" || true
-              wait "$PID"
-              echo "PolyUI exited during macOS smoke test"
-              exit 1
-            fi
-            if grep -q "frontend loaded" "$STARTUP_LOG" 2>/dev/null; then
-              FOUND=true
-              break
-            fi
-            sleep 0.5
-          done
-          if [[ "$FOUND" != "true" ]]; then
-            cat "$STDOUT" || true
-            cat "$STDERR" || true
-            cat "$STARTUP_LOG" || true
-            kill "$PID" || true
-            echo "PolyUI macOS smoke test did not reach frontend loaded"
-            exit 1
-          fi
-          kill "$PID" || true
-
-      - name: Upload macOS DMG
-        if: matrix.platform == 'macos'
-        uses: actions/upload-artifact@v4
-        with:
-          name: polyui-macos
-          if-no-files-found: error
-          path: release-artifacts/macos/*
-
-      - name: Upload Windows installers
-        if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: polyui-windows
-          if-no-files-found: error
-          path: release-artifacts/windows/*
-
-      - name: Upload Windows Ollama installer
-        if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: polyui-windows-ollama
-          if-no-files-found: error
-          path: release-artifacts/windows-ollama/*
-
-      - name: Upload Linux bundles
-        if: matrix.platform == 'linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: polyui-linux-${{ matrix.arch }}
-          if-no-files-found: error
-          path: release-artifacts/linux-${{ matrix.arch }}/*
+  build:
+    needs: [verify]
+    # workflow_dispatch has no tag to verify, so let it through.
+    if: always() && needs.verify.result != 'failure'
+    uses: ./.github/workflows/build.yml
 
   release:
-    name: Create Draft Release
-    needs: build
-    runs-on: ubuntu-latest
+    name: Draft release
+    needs: [build]
     if: startsWith(github.ref, 'refs/tags/v')
-
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: Flatten artifacts directory
+      - name: Collect release files
         run: |
           mkdir -p release-files
-          find artifacts -type f -exec cp {} release-files/ \;
-          find release-files -maxdepth 1 -type f -print
+          find artifacts -type f -exec mv {} release-files/ \;
+          ls -la release-files/
 
-      - name: Generate changelog
-        id: changelog
-        uses: ./.github/actions/release-notes
-        with:
-          tag_name: ${{ github.ref_name }}
-
-      - name: Create release with generated notes
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body: ${{ steps.changelog.outputs.notes }}
+          # Notes come from merged PRs, grouped by .github/release.yml.
+          generate_release_notes: true
           files: release-files/*

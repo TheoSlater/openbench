@@ -3,21 +3,23 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
-    branches: [main]
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
+    paths-ignore: ["**.md", "docs/**"]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   frontend:
+    name: Typecheck, build & test
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -25,17 +27,19 @@ jobs:
         with:
           fetch-depth: 1
       - uses: oven-sh/setup-bun@v2
-      - name: Cache bun dependencies
-        uses: actions/cache@v4
+        with:
+          bun-version-file: package.json
+      - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          restore-keys: ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       - run: bun run build
+      - run: bun run test
 
   backend:
+    name: Cargo check
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -46,7 +50,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev pkg-config
+          # Only main writes the cache; PRs read it. Keeps the cache from
+          # thrashing between concurrent branches.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libasound2-dev pkg-config
       # rust-cache prunes target/debug/libonnxruntime.so but keeps st-tts's
       # build-script fingerprint, so the script never re-downloads it and
       # polyui's build.rs fails to stage the runtime. Force st-tts to rebuild
@@ -56,22 +67,4 @@ jobs:
           if [ ! -f src-tauri/target/debug/libonnxruntime.so ]; then
             cargo clean --manifest-path src-tauri/Cargo.toml -p st-tts
           fi
-      - run: cargo check --manifest-path src-tauri/Cargo.toml
-
-  test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - uses: oven-sh/setup-bun@v2
-      - name: Cache bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - run: bun run test
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --locked
