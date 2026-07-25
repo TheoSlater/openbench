@@ -87,10 +87,10 @@ function buildGroups(items: CommandPaletteItem[], query: string) {
 }
 
 function catIcon(category: CommandPaletteCategory) {
-  if (category === "conversation") return <MessageSquare size={15} />;
-  if (category === "feature") return <Zap size={15} />;
-  if (category === "setting") return <Settings size={15} />;
-  return <Sparkles size={15} />;
+  if (category === "conversation") return <MessageSquare size={16} />;
+  if (category === "feature") return <Zap size={16} />;
+  if (category === "setting") return <Settings size={16} />;
+  return <Sparkles size={16} />;
 }
 
 export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProps) {
@@ -234,7 +234,7 @@ function CmdRow({ item, onSelect }: {
       ) : null}
       {isFeature ? (
         <span className={isOn ? "text-success" : "text-muted-foreground/40"}>
-          {isOn ? <Check size={13} /> : <X size={13} />}
+          {isOn ? <Check size={14} /> : <X size={14} />}
         </span>
       ) : null}
     </CommandItem>

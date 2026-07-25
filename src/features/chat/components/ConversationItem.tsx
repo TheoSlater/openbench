@@ -147,7 +147,7 @@ export const ConversationItem = React.memo(function ConversationItem({
         </Box>
       ) : (
         <>
-        <span className="shrink-0 text-[11px] text-muted-foreground group-hover/row:hidden group-focus-within/row:hidden group-has-data-[state=open]/row:hidden [@media(hover:none)]:hidden">
+        <span className="shrink-0 text-xs text-muted-foreground group-hover/row:hidden group-focus-within/row:hidden group-has-data-[state=open]/row:hidden [@media(hover:none)]:hidden">
           {shortTimeAgo(conv.updatedAt || conv.createdAt)}
         </span>
         <Box

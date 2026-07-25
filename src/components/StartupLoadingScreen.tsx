@@ -24,7 +24,7 @@ function StartupLoadingScreen({
       }`}
       style={{ top: TITLE_BAR_HEIGHT }}
     >
-      <p className="text-[28px] font-bold text-foreground">
+      <p className="text-3xl font-bold text-foreground">
         PolyUI
       </p>
       <Spinner className="size-7 text-foreground" />

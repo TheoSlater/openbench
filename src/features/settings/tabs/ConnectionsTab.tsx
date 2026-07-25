@@ -58,15 +58,15 @@ const statusChipColor: Record<
 };
 
 const presetIcons: Record<string, React.ReactNode> = {
-  openai: <Sparkles size={22} />,
-  openrouter: <Route size={22} />,
-  groq: <Zap size={22} />,
-  together: <Globe size={22} />,
-  deepseek: <Search size={22} />,
-  anthropic: <Brain size={22} />,
-  gemini: <Gem size={22} />,
-  ollama: <Cpu size={22} />,
-  custom: <Settings size={22} />,
+  openai: <Sparkles size={20} />,
+  openrouter: <Route size={20} />,
+  groq: <Zap size={20} />,
+  together: <Globe size={20} />,
+  deepseek: <Search size={20} />,
+  anthropic: <Brain size={20} />,
+  gemini: <Gem size={20} />,
+  ollama: <Cpu size={20} />,
+  custom: <Settings size={20} />,
 };
 
 const KIND_TO_PROVIDER_TYPE: Record<ProviderKind, ProviderType> = {
@@ -182,7 +182,7 @@ function ProviderCard({
           <Box />
           {editing ? (
             <IconButton size="small" aria-label="Close edit" onClick={closeEdit}>
-              <X size={15} />
+              <X size={16} />
             </IconButton>
           ) : (
             <IconButton
@@ -190,7 +190,7 @@ function ProviderCard({
               aria-label={`Edit ${preset.label}`}
               onClick={openEdit}
             >
-              <Settings size={15} />
+              <Settings size={16} />
             </IconButton>
           )}
           {!isOllama && onDelete && (
@@ -199,7 +199,7 @@ function ProviderCard({
               aria-label={`Delete ${preset.label}`}
               onClick={onDelete}
             >
-              <Trash2 size={15} />
+              <Trash2 size={16} />
             </IconButton>
           )}
         </Stack>
@@ -257,7 +257,7 @@ function ProviderCard({
                         aria-label={showKey ? "Hide API key" : "Show API key"}
                         onClick={() => setShowKey(!showKey)}
                       >
-                        {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
                       </IconButton>
                     ),
                   },
@@ -400,7 +400,7 @@ export function ConnectionsTab() {
           <Button
             size="sm"
             variant="default"
-            startIcon={<Plus size={15} />}
+            startIcon={<Plus size={16} />}
             onClick={() => setAddOpen(true)}
           >
             Add LLM
@@ -500,7 +500,7 @@ export function ConnectionsTab() {
                   <Box
                     className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"
                   >
-                    {presetIcons[preset.id] ?? <Settings size={22} />}
+                    {presetIcons[preset.id] ?? <Settings size={20} />}
                   </Box>
                   <Typography
                     variant="body2"
@@ -558,7 +558,7 @@ export function ConnectionsTab() {
                               aria-label={showAddKey ? "Hide API key" : "Show API key"}
                               onClick={() => setShowAddKey(!showAddKey)}
                             >
-                              {showAddKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                              {showAddKey ? <EyeOff size={16} /> : <Eye size={16} />}
                             </IconButton>
                           ),
                         },

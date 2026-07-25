@@ -243,7 +243,7 @@ export const Header = memo(function Header({
               onClick={() => setMemoryPanelOpen(true)}
               className="gap-1"
             >
-              <Brain size={15} />
+              <Brain size={16} />
               <Typography variant="caption">{memoryCount}</Typography>
             </IconButton>
           </Tooltip>

@@ -64,7 +64,7 @@ export function BrowserToolbar({
           disabled={!canReload}
           className="text-muted-foreground"
         >
-          <RotateCw size={15} />
+          <RotateCw size={16} />
         </IconButton>
       </div>
       <form
@@ -80,7 +80,7 @@ export function BrowserToolbar({
           placeholder="Enter a URL"
           spellCheck={false}
           autoComplete="off"
-          className="h-10 rounded-[18px] border border-transparent bg-transparent px-5 pr-11 text-center text-[15px] text-foreground shadow-none transition-colors placeholder:text-muted-foreground hover:bg-sidebar-accent focus:bg-transparent focus:text-left focus-visible:border-ring focus-visible:ring-0"
+          className="h-10 rounded-[18px] border border-transparent bg-transparent px-5 pr-11 text-center text-sm text-foreground shadow-none transition-colors placeholder:text-muted-foreground hover:bg-sidebar-accent focus:bg-transparent focus:text-left focus-visible:border-ring focus-visible:ring-0"
         />
         <button
           type="submit"

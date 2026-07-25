@@ -51,7 +51,7 @@ export const WebSearchDisclosure = React.memo(
       >
         <ReasoningTrigger>
           <span className="inline-flex items-center gap-1.5">
-            <Globe size={13} />
+            <Globe size={14} />
             {isSearching ? (
               <TextShimmer as="span" duration={2} spread={15}>
                 {label}

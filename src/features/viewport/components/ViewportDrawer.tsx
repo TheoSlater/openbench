@@ -155,7 +155,7 @@ export function ViewportDrawer() {
           title="Hide viewport"
           onClick={hideViewportDrawer}
         >
-          <PanelRightIcon className="-scale-x-100" size={15} />
+          <PanelRightIcon className="-scale-x-100" size={16} />
         </IconButton>
       </header>
       <section className="flex min-h-0 flex-1 flex-col bg-sidebar">

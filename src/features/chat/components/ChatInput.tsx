@@ -431,16 +431,16 @@ export const ChatInput = memo(function ChatInput({
 
         <Box
           className={cn(
-            "chat-file-drop-target w-full rounded-3xl border bg-popover px-4 py-3 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
+            "chat-file-drop-target w-full rounded-3xl border bg-popover px-4 py-2.5 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
             isTemporary
-              ? "border-dashed border-border/60"
-              : "border-transparent hover:border-border/60 focus-within:border-border/60",
+              ? "border-dashed border-border"
+              : "border-border/70 hover:border-border focus-within:border-border",
           )}
           aria-label="Chat message composer. Drop files here to attach them."
           aria-describedby={isDraggingFiles ? "chat-file-drop-status" : undefined}
           data-file-drag-active={isDraggingFiles ? "true" : "false"}
         >
-          <Box className="relative flex min-h-16 flex-col">
+          <Box className="relative flex min-h-11 flex-col">
             <Box
               id="chat-file-drop-status"
               className="sr-only"
@@ -502,7 +502,7 @@ export const ChatInput = memo(function ChatInput({
                 </Box>
               )}
 
-            <Box className="mt-5 flex items-center justify-between gap-2 px-0 pb-0">
+            <Box className="mt-2 flex items-center justify-between gap-2 px-0 pb-0">
               <Box className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
