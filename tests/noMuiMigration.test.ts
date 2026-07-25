@@ -14,6 +14,19 @@ const bannedPatterns = [
   /\bstyled\(/,
   /\bMui[A-Z]/,
   /\.Mui[A-Za-z-]+/,
+  // Button/Chip aliases that duplicated an existing variant, plus props that
+  // were accepted and silently discarded. `size="small"` is deliberately not
+  // banned: it is still IconButton's own API.
+  /variant="contained"/,
+  /variant="outlined"/,
+  /\bdisableElevation\b/,
+  /\bdisableRipple\b/,
+  // Deleted modules. dialog-panel exported Dialog/DialogContent/DialogTitle
+  // that collided with dialog.tsx; modal-root hand-rolled a modal without a
+  // focus trap; Paper was a styleless wrapper.
+  /ui\/dialog-panel/,
+  /ui\/modal-root/,
+  /ui\/Paper/,
 ];
 
 const textFilePattern = /\.(ts|tsx|js|jsx|css|json)$/;

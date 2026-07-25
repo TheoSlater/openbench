@@ -4,6 +4,7 @@ type ConfirmRequest = {
   title: string;
   description?: string;
   confirmLabel?: string;
+  destructive?: boolean;
   onConfirm: () => void;
 };
 

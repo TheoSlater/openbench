@@ -1,5 +1,5 @@
 mod auth;
-#[cfg(target_os = "linux")]
+#[cfg(cef)]
 pub mod cef_osr;
 mod commands;
 mod db;
@@ -83,7 +83,7 @@ fn initialize_onnxruntime(app: &tauri::App) -> Result<(), String> {
 fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
     let env = app.env();
     app.run_on_main_thread(move || {
-        #[cfg(target_os = "linux")]
+        #[cfg(cef)]
         cef_osr::shutdown();
         tauri::process::restart(&env);
     })
@@ -102,7 +102,7 @@ pub fn run() {
     // segfaults. Tauri calls gtk_init while building the app, so CEF cannot
     // wait for the setup hook. Failure is non-fatal: it costs the viewport,
     // not the app.
-    #[cfg(target_os = "linux")]
+    #[cfg(cef)]
     {
         if cef_osr::enabled_on_next_start() {
             startup_log::log_phase("CEF initialization");
@@ -264,20 +264,20 @@ pub fn run() {
             check_for_updates,
             download_update,
             install_update,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_open,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_resize,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_close,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_reload,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_input,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_set_enabled,
-            #[cfg(target_os = "linux")]
-            cef_osr::cef_viewport_is_enabled,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_open,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_resize,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_close,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_reload,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_input,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_set_enabled,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_is_enabled,
             restart_app,
             get_whisper_models_status,
             download_whisper_model,
@@ -321,7 +321,7 @@ pub fn run() {
             // skips destructors, and CEF's child processes would outlive us as
             // zombies. Shut it down explicitly first, from the same main
             // application thread that initialized it.
-            #[cfg(target_os = "linux")]
+            #[cfg(cef)]
             {
                 startup_log::log_phase("CEF shutdown");
                 cef_osr::shutdown();

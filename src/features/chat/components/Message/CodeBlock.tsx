@@ -42,18 +42,18 @@ function getHighlightedHtml(value: string, language?: string | null): string | n
 export const CodeBlock = memo(function CodeBlock({
   code,
   language,
-  pending = false,
 }: {
   code: string;
   language?: string | null;
-  pending?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notify = useNotify();
+  // Highlight partial code too — sugar-high tokenizes incomplete input
+  // fine, and deferring it made finished blocks visibly recolour.
   const highlightedHtml = useMemo(
-    () => pending ? null : getHighlightedHtml(code, language),
-    [code, language, pending],
+    () => getHighlightedHtml(code, language),
+    [code, language],
   );
   const label = language?.trim() || "text";
 
@@ -67,8 +67,9 @@ export const CodeBlock = memo(function CodeBlock({
     navigator.clipboard
       ?.writeText(code)
       .then(() => {
+        // The icon swap below is the confirmation; a toast on top of it
+        // was double feedback for a one-click action.
         setCopied(true);
-        notify.success("Copied to clipboard");
         if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
         copiedTimerRef.current = setTimeout(() => {
           copiedTimerRef.current = null;
@@ -122,13 +123,6 @@ export const CodeBlock = memo(function CodeBlock({
           className="overflow-x-auto p-3 text-sm leading-6"
         >
           <code>{code}</code>
-        </Box>
-      )}
-      {pending && (
-        <Box
-          className="px-3 pb-3 text-xs text-muted-foreground"
-        >
-          rendering...
         </Box>
       )}
     </Box>

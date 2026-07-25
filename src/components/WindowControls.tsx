@@ -10,7 +10,7 @@ export function TitlebarSidebarButton() {
       onClick={() => window.dispatchEvent(new Event(SIDEBAR_TOGGLE_EVENT))}
       title="Toggle sidebar"
     >
-      <PanelLeft size={15} strokeWidth={1.5} />
+      <PanelLeft size={16} strokeWidth={1.5} />
     </WinButton>
   );
 }
@@ -55,20 +55,20 @@ export function WindowControls({ closeOnly = false }: { closeOnly?: boolean }) {
             className="mx-0.5 h-4 w-px bg-sidebar-border/70"
           />
           <WinButton onClick={() => void w.minimize()} title="Minimize">
-            <Minus size={15} strokeWidth={1.5} />
+            <Minus size={16} strokeWidth={1.5} />
           </WinButton>
 
           <WinButton
             onClick={() => void w.toggleMaximize()}
             title={maximized ? "Restore" : "Maximize"}
           >
-            <Square size={13} strokeWidth={1.5} />
+            <Square size={14} strokeWidth={1.5} />
           </WinButton>
         </>
       )}
 
       <WinButton close onClick={() => void w.close()} title="Close">
-        <X size={15} strokeWidth={1.5} />
+        <X size={16} strokeWidth={1.5} />
       </WinButton>
     </div>
   );

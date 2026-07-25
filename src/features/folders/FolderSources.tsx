@@ -29,7 +29,7 @@ function FolderChip({ name }: { name: string }) {
   return (
     <Box
       as="span"
-      className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+      className="rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
     >
       {name}
     </Box>
@@ -113,7 +113,7 @@ export function FolderSources({ folder }: FolderSourcesProps) {
   return (
     <Box className="flex flex-col gap-4">
       <Box>
-        <Typography className="mb-1.5 text-[13px] font-semibold">Folder context</Typography>
+        <Typography className="mb-1.5 text-sm font-semibold">Folder context</Typography>
         {scopedFolders.filter((candidate) => candidate.systemPrompt?.trim()).map((candidate) => (
           <Box key={`${candidate.id}-prompt`} className="mb-1.5 rounded-lg bg-muted/50 px-2.5 py-2">
             <Box className="mb-0.5 flex items-center gap-1.5">
@@ -129,16 +129,16 @@ export function FolderSources({ folder }: FolderSourcesProps) {
           )
         ) : contextSources.map((source) => (
           <Box key={source.id} className="flex items-center gap-2 border-b border-border py-1">
-            <FileText size={15} className="shrink-0 text-muted-foreground" />
-            <Typography className="min-w-0 flex-1 truncate text-[13px]">{source.name}</Typography>
+            <FileText size={16} className="shrink-0 text-muted-foreground" />
+            <Typography className="min-w-0 flex-1 truncate text-sm">{source.name}</Typography>
             <FolderChip name={source.folderName} />
-            <Typography className="text-[11px] text-muted-foreground">{Math.ceil(source.size / 1024)} KB</Typography>
+            <Typography className="text-xs text-muted-foreground">{Math.ceil(source.size / 1024)} KB</Typography>
           </Box>
         ))}
       </Box>
 
       <Box>
-        <Typography className="mb-1.5 text-[13px] font-semibold">Web sources</Typography>
+        <Typography className="mb-1.5 text-sm font-semibold">Web sources</Typography>
         {isLoading ? (
           <Box className="flex items-center gap-2 text-muted-foreground">
             <CircularProgress size={14} /><Typography className="text-xs">Loading sources...</Typography>
@@ -151,10 +151,10 @@ export function FolderSources({ folder }: FolderSourcesProps) {
           <Box key={source.url} className="border-b border-border py-1.5">
             <Box className="flex items-center gap-1.5">
               <Globe size={14} className="shrink-0 text-muted-foreground" />
-              <Link href={source.url} target="_blank" rel="noopener noreferrer" underline="hover" className="min-w-0 flex-1 text-[13px] font-semibold">
-                {source.title || source.url} <ExternalLink size={11} className="inline" />
+              <Link href={source.url} target="_blank" rel="noopener noreferrer" underline="hover" className="min-w-0 flex-1 text-sm font-semibold">
+                {source.title || source.url} <ExternalLink size={12} className="inline" />
               </Link>
-              {source.count > 1 ? <Typography className="text-[11px] text-muted-foreground">{source.count} uses</Typography> : null}
+              {source.count > 1 ? <Typography className="text-xs text-muted-foreground">{source.count} uses</Typography> : null}
             </Box>
             {source.highlights?.[0] ? <Typography className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{source.highlights[0]}</Typography> : null}
             <Box className="mt-1.5 flex flex-wrap gap-0.5">

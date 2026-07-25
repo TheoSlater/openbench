@@ -20,6 +20,9 @@ function mergeMessage(
 
 export type { Conversation, Message };
 
+/** Draft key for the composer before a conversation row exists. */
+export const NEW_CHAT_DRAFT_KEY = "__new__";
+
 export type QueuedMessage = {
   id: string;
   conversationId: string;
@@ -35,11 +38,26 @@ type ChatStore = {
   messages: Message[];
   streamingMessages: Record<string, Message>;
   hasMoreMessages: boolean;
-  currentAttachments: Attachment[];
+  // Pending attachments, keyed like `drafts` — they belong to the chat you
+  // attached them to, not to the app.
+  attachmentsByChat: Record<string, Attachment[]>;
+  // Composer text, keyed by conversation id (NEW_CHAT_DRAFT_KEY for the
+  // not-yet-created chat). Lives here rather than in ChatInput so it neither
+  // follows you into another conversation nor dies when the composer
+  // remounts between the empty state and the message list.
+  drafts: Record<string, string>;
+  // Features (web search, ...) enabled for the conversation on screen.
+  // Deliberately NOT persisted: the saved default lives in settings, and
+  // opening an old chat must not rewrite it.
+  activeFeatureIds: string[];
   messageQueue: QueuedMessage[];
   accountId: string | null;
   deletedConversationIds: string[];
   actions: {
+    setDraft: (key: string, value: string) => void;
+    clearDraft: (key: string) => void;
+    setActiveFeatureIds: (ids: string[]) => void;
+    toggleFeature: (id: string) => void;
     setAccountId: (accountId: string | null) => void;
     createConversation: (title?: string, isTemporary?: boolean, folderId?: string) => Promise<Conversation>;
     setActiveConversationId: (id: string | null) => Promise<void>;
@@ -81,9 +99,9 @@ type ChatStore = {
       conversationId: string,
       messageId: string,
     ) => Promise<void>;
-    addCurrentAttachment: (attachment: Attachment) => void;
-    removeCurrentAttachment: (id: string) => void;
-    clearCurrentAttachments: () => void;
+    addAttachment: (key: string, attachment: Attachment) => void;
+    removeAttachment: (key: string, id: string) => void;
+    clearAttachments: (key: string) => void;
     enqueueMessage: (msg: QueuedMessage) => void;
     dequeueMessage: (id: string) => void;
     clearQueue: () => void;
@@ -101,11 +119,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   streamingMessages: {},
   hasMoreMessages: false,
-  currentAttachments: [],
+  attachmentsByChat: {},
+  drafts: {},
+  activeFeatureIds: [],
   messageQueue: [],
   accountId: null,
   deletedConversationIds: [],
   actions: {
+    setDraft: (key, value) =>
+      set((state) => ({ drafts: { ...state.drafts, [key]: value } })),
+    clearDraft: (key) =>
+      set((state) => {
+        if (!(key in state.drafts)) return {};
+        const { [key]: _removed, ...rest } = state.drafts;
+        return { drafts: rest };
+      }),
+    setActiveFeatureIds: (ids) => set({ activeFeatureIds: [...ids].sort() }),
+    toggleFeature: (id) =>
+      set((state) => ({
+        activeFeatureIds: state.activeFeatureIds.includes(id)
+          ? state.activeFeatureIds.filter((featureId) => featureId !== id)
+          : [...state.activeFeatureIds, id].sort(),
+      })),
     setAccountId: (accountId) => set({ accountId }),
     loadConversations: async () => {
       const userId = get().accountId;
@@ -522,14 +557,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             : chat,
         ),
       })),
-    addCurrentAttachment: (attachment) =>
+    addAttachment: (key, attachment) =>
       set((state) => ({
-        currentAttachments: [...state.currentAttachments, attachment],
+        attachmentsByChat: {
+          ...state.attachmentsByChat,
+          [key]: [...(state.attachmentsByChat[key] ?? []), attachment],
+        },
       })),
-    removeCurrentAttachment: (id) =>
+    removeAttachment: (key, id) =>
       set((state) => ({
-        currentAttachments: state.currentAttachments.filter((a) => a.id !== id),
+        attachmentsByChat: {
+          ...state.attachmentsByChat,
+          [key]: (state.attachmentsByChat[key] ?? []).filter((a) => a.id !== id),
+        },
       })),
-    clearCurrentAttachments: () => set({ currentAttachments: [] }),
+    clearAttachments: (key) =>
+      set((state) => {
+        if (!(key in state.attachmentsByChat)) return {};
+        const { [key]: _removed, ...rest } = state.attachmentsByChat;
+        return { attachmentsByChat: rest };
+      }),
   },
 }));

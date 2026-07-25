@@ -173,10 +173,24 @@ export const ChatArea = memo(function ChatArea({
   );
 
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
   const streamingMessagesList = useMemo(
     () => Object.values(streamingMessages).filter((m) => m.conversationId === activeConvId),
     [activeConvId, streamingMessages],
   );
+
+  // Announce the reply once, when it lands — not while it streams.
+  const isResponding = streamingMessagesList.length > 0;
+  const wasRespondingRef = useRef(false);
+  useEffect(() => {
+    if (wasRespondingRef.current && !isResponding) {
+      const last = messages[messages.length - 1];
+      const words = last?.content?.trim().split(/\s+/).filter(Boolean).length ?? 0;
+      setAnnouncement(words > 0 ? `Response complete, ${words} words.` : "Response complete.");
+    }
+    if (isResponding) setAnnouncement("");
+    wasRespondingRef.current = isResponding;
+  }, [isResponding, messages]);
 
   const setScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -355,10 +369,16 @@ export const ChatArea = memo(function ChatArea({
       <Box
         ref={setScrollRef}
         role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
+        // No aria-live here. With `aria-relevant="additions text"` a screen
+        // reader read out every streamed token, and because the list is
+        // virtualized it re-announced old turns as rows recycled on scroll.
+        // Completion is announced once, from the region below.
+        aria-busy={isResponding}
         className="relative flex min-h-0 flex-1 overflow-y-auto px-4 py-6"
       >
+        <Box className="sr-only" role="status" aria-live="polite">
+          {announcement}
+        </Box>
       <Box
         ref={setContentRef}
         className="relative mx-auto w-full max-w-3xl"

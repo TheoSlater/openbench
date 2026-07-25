@@ -45,6 +45,7 @@ import { useDevStore } from "@/store/devStore";
 import { getDevComponentGalleryAction } from "@/features/dev/componentGalleryAction";
 import { useViewportStore } from "@/features/viewport/viewportStore";
 import { listen } from "@tauri-apps/api/event";
+import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
 
 const AuthModalLazy = lazy(() =>
   import("@/features/auth/AuthModal").then((module) => ({
@@ -62,7 +63,7 @@ const SettingsModalLazy = lazy(() =>
   })),
 );
 const ViewportDrawerLazy = lazy(() =>
-  import("@/features/viewport/ViewportDrawer").then((module) => ({
+  import("@/features/viewport/components/ViewportDrawer").then((module) => ({
     default: module.ViewportDrawer,
   })),
 );
@@ -72,6 +73,7 @@ function App() {
     useState<SettingsTab>("general");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isArchivedOpen, setIsArchivedOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const viewportActive = useViewportStore(
     (state) => Boolean(state.session || state.browserOpen),
   );
@@ -128,10 +130,20 @@ function App() {
     [],
   );
 
+  const handleStopStreaming = useCallback(() => {
+    stopStreamingRef.current?.();
+  }, []);
+  const handleOpenShortcuts = useCallback(() => setIsShortcutsOpen(true), []);
+  const newChatRef = useRef<() => void>(() => {});
+  const triggerNewChat = useCallback(() => newChatRef.current(), []);
+
   useKeyboardShortcuts({
     onOpenSettings: handleOpenSettings,
     isAuthGateOpen,
     setIsCommandPaletteOpen,
+    onNewChat: triggerNewChat,
+    onStopStreaming: handleStopStreaming,
+    onOpenShortcuts: handleOpenShortcuts,
   });
 
   useEffect(() => {
@@ -185,6 +197,7 @@ function App() {
     useFolderStore.getState().actions.setActiveFolderId(null);
     setActiveConversationId(null);
   }, [setActiveConversationId]);
+  newChatRef.current = handleNewChat;
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -277,6 +290,7 @@ function App() {
     onSetTheme: handleSetTheme,
     onSelectConversation: handleSelectConversation,
     onOpenArchived: handleOpenArchived,
+    onOpenShortcuts: handleOpenShortcuts,
     notify,
     registeredActions: devComponentGalleryAction
       ? [...registeredActions, devComponentGalleryAction]
@@ -338,6 +352,10 @@ function App() {
         open={!isAuthGateOpen && isCommandPaletteOpen}
         onOpenChange={setIsCommandPaletteOpen}
         items={commandPaletteItems as CommandPaletteItem[]}
+      />
+      <ShortcutsDialog
+        open={isShortcutsOpen}
+        onOpenChange={setIsShortcutsOpen}
       />
       <GlobalConfirmDialog />
       <Suspense fallback={null}>

@@ -9,7 +9,7 @@ import {
   memoryUpdateSettings,
 } from "@/features/memory/memoryClient";
 import { getCurrentProviderAccountId } from "@/features/providers";
-import { IS_LINUX } from "@/lib/utils/platform";
+import { SUPPORTS_CHROMIUM_BROWSER } from "@/lib/utils/platform";
 import { useConfirmStore } from "@/store/confirmStore";
 import { useNotify } from "@/hooks/useNotify";
 import * as native from "@/features/viewport/native";
@@ -103,7 +103,7 @@ export function AdvancedSettingsContent() {
           A Memory tab appears in Settings when enabled.
         </p>
       </SettingRow>
-      {IS_LINUX ? (
+      {SUPPORTS_CHROMIUM_BROWSER ? (
         <SettingRow
           title="Experimental Chromium browser"
           description="Use Chromium instead of the iframe browser for viewport pages."

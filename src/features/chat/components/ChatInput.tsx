@@ -9,7 +9,6 @@ import {
   Mic,
   X,
   MoreHorizontal,
-  Globe,
   AudioLines,
 } from "lucide-react";
 import { useState, memo, useEffect, useCallback, useMemo, useRef } from "react";
@@ -29,7 +28,11 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-import { useFeatures, type FeatureDef } from "@/lib/featureRegistry";
+import {
+  getDefaultFeatureIds,
+  useFeatures,
+  type FeatureDef,
+} from "@/lib/featureRegistry";
 import { useChatAttachments } from "@/features/chat/hooks/useChatAttachments";
 import { useFileDragDetection } from "@/features/chat/hooks/useFileDragDetection";
 import {
@@ -42,9 +45,10 @@ import { DictationModelDialog } from "@/features/dictation/DictationModelDialog"
 import { SlashCommandMenu } from "@/features/chat/components/ChatInput/SlashCommandMenu";
 import { ChatAttachmentsList } from "@/features/chat/components/ChatInput/ChatAttachmentsList";
 import { cn } from "@/lib/utils";
+import { FOCUS_COMPOSER_EVENT } from "@/features/shortcuts/registry";
 
 import { useSettingsStore } from "@/store/settingsStore";
-import { useChatStore } from "@/store/chatStore";
+import { NEW_CHAT_DRAFT_KEY, useChatStore } from "@/store/chatStore";
 import type { ConversationMetadata } from "@/types/chat";
 
 interface ChatInputProps {
@@ -69,7 +73,21 @@ export const ChatInput = memo(function ChatInput({
   conversationId,
   onOpenVoiceMode,
 }: ChatInputProps) {
-  const [draft, setDraft] = useState("");
+  const draftKey = conversationId ?? NEW_CHAT_DRAFT_KEY;
+  const draft = useChatStore((state) => state.drafts[draftKey] ?? "");
+  const { setDraft: setDraftForKey, clearDraft } = useChatStore(
+    (state) => state.actions,
+  );
+  const setDraft = useCallback(
+    (value: string | ((prev: string) => string)) => {
+      const current = useChatStore.getState().drafts[draftKey] ?? "";
+      setDraftForKey(
+        draftKey,
+        typeof value === "function" ? value(current) : value,
+      );
+    },
+    [draftKey, setDraftForKey],
+  );
   const [pastedPreview, setPastedPreview] = useState<{
     id: string;
     text: string;
@@ -77,7 +95,6 @@ export const ChatInput = memo(function ChatInput({
     lines: number;
     chars: number;
   } | null>(null);
-  const restoringChatIdRef = useRef<string | null>(null);
   const activeConversation = useChatStore((state) =>
     conversationId ? state.conversations.find((c) => c.id === conversationId) : undefined,
   );
@@ -100,7 +117,7 @@ export const ChatInput = memo(function ChatInput({
     openFilePicker,
     handleFileChange,
     handlePaste,
-  } = useChatAttachments();
+  } = useChatAttachments(draftKey);
   const { isDraggingFiles } = useFileDragDetection({
     onFilesDropped: processFiles,
   });
@@ -168,6 +185,19 @@ export const ChatInput = memo(function ChatInput({
   }, []);
 
   const textareaRef = useAutoResizeTextarea(draft);
+
+  // The composer remounts when the workspace swaps the empty state for the
+  // message list, which silently dropped focus mid-sentence on the first
+  // message of every chat.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [textareaRef]);
+
+  useEffect(() => {
+    const focus = () => textareaRef.current?.focus();
+    window.addEventListener(FOCUS_COMPOSER_EVENT, focus);
+    return () => window.removeEventListener(FOCUS_COMPOSER_EVENT, focus);
+  }, [textareaRef]);
   const { showSlashMenu, slashQuery, closeSlashMenu } = useSlashCommand(draft);
 
   const features = useFeatures();
@@ -189,31 +219,32 @@ export const ChatInput = memo(function ChatInput({
     setSlashMenuIndex(0);
   }, [slashQuery]);
 
-  const webSearchFeature = features.find((feature) => feature.id === "web_search");
-  const moreFeatures = features.filter((feature) => feature.id !== "web_search");
+  const pinnedFeatures = features.filter((feature) => feature.pinned);
+  const moreFeatures = features.filter((feature) => !feature.pinned);
   const activeFeatureIds = useMemo(
     () => features.filter((feature) => feature.active).map((feature) => feature.id).sort(),
     [features],
   );
   const activeFeatureKey = activeFeatureIds.join(",");
 
+  // Seed the composer's feature toggles when the conversation changes: from
+  // that chat's own metadata, or from the saved default for a new chat. The
+  // old version pushed metadata back into persisted settings, so merely
+  // opening an old chat rewrote your global web-search default.
   useEffect(() => {
-    if (!conversationId || !activeConversation?.metadata) return;
-    restoringChatIdRef.current = conversationId;
-    const ids = new Set(activeConversation.metadata.activeFeatureIds ?? []);
-    const settings = useSettingsStore.getState();
-
-    settings.actions.updateGeneral({
-      webSearchEnabled: ids.has("web_search"),
-    });
-    requestAnimationFrame(() => {
-      if (restoringChatIdRef.current === conversationId) restoringChatIdRef.current = null;
-    });
-  }, [activeConversation?.metadata, conversationId]);
+    const stored = activeConversation?.metadata?.activeFeatureIds;
+    useChatStore
+      .getState()
+      .actions.setActiveFeatureIds(
+        stored ?? (conversationId ? [] : getDefaultFeatureIds()),
+      );
+    // Only on conversation switch — reacting to metadata would undo the
+    // user's toggle the moment the write-back below lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   useEffect(() => {
     if (!conversationId || !activeConversation) return;
-    if (restoringChatIdRef.current === conversationId) return;
     const next: ConversationMetadata = {
       ...activeConversation.metadata,
       activeFeatureIds,
@@ -290,13 +321,15 @@ export const ChatInput = memo(function ChatInput({
 
     const trimmed = finalText.trim();
     onSubmit(trimmed);
-    setDraft("");
+    clearDraft(draftKey);
     setPastedPreview(null);
   }, [
     hasContent,
     draft,
     pastedPreview,
     onSubmit,
+    clearDraft,
+    draftKey,
   ]);
 
   const handleAction = useCallback(() => {
@@ -398,16 +431,16 @@ export const ChatInput = memo(function ChatInput({
 
         <Box
           className={cn(
-            "chat-file-drop-target w-full rounded-3xl border bg-popover px-4 py-3 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
+            "chat-file-drop-target w-full rounded-3xl border bg-popover px-4 py-2.5 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
             isTemporary
-              ? "border-dashed border-border/60"
-              : "border-transparent hover:border-border/60 focus-within:border-border/60",
+              ? "border-dashed border-border"
+              : "border-border/70 hover:border-border focus-within:border-border",
           )}
           aria-label="Chat message composer. Drop files here to attach them."
           aria-describedby={isDraggingFiles ? "chat-file-drop-status" : undefined}
           data-file-drag-active={isDraggingFiles ? "true" : "false"}
         >
-          <Box className="relative flex min-h-16 flex-col">
+          <Box className="relative flex min-h-11 flex-col">
             <Box
               id="chat-file-drop-status"
               className="sr-only"
@@ -469,7 +502,7 @@ export const ChatInput = memo(function ChatInput({
                 </Box>
               )}
 
-            <Box className="mt-5 flex items-center justify-between gap-2 px-0 pb-0">
+            <Box className="mt-2 flex items-center justify-between gap-2 px-0 pb-0">
               <Box className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -505,22 +538,29 @@ export const ChatInput = memo(function ChatInput({
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {webSearchFeature && (
-                  <Button
-                    variant="outline"
-                    disabled={isStreaming}
-                    onClick={() => webSearchFeature.toggle()}
-                    title={webSearchFeature.warning ?? "Search"}
-                    className={cn(
-                      "rounded-full",
-                      webSearchFeature.active && "bg-info-soft text-info hover:bg-info-soft hover:text-info",
-                    )}
-                  >
-                    <Globe size={18} />
-                    Search
-                  </Button>
-                )}
+                {pinnedFeatures.map((feature) => {
+                  const Icon = feature.icon;
+                  const label = feature.shortName ?? feature.name;
 
+                  return (
+                    <Button
+                      key={feature.id}
+                      variant="outline"
+                      disabled={isStreaming}
+                      onClick={() => feature.toggle()}
+                      title={feature.warning ?? label}
+                      className={cn(
+                        "rounded-full",
+                        feature.active && "bg-info-soft text-info hover:bg-info-soft hover:text-info",
+                      )}
+                    >
+                      <Icon size={18} />
+                      {label}
+                    </Button>
+                  );
+                })}
+
+                {moreFeatures.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -567,6 +607,7 @@ export const ChatInput = memo(function ChatInput({
                     })}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                )}
               </Box>
 
               <Box className="flex items-center gap-2">

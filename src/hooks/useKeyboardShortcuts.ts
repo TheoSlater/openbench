@@ -1,39 +1,86 @@
 import { useEffect } from "react";
 import type { SettingsTab } from "@/features/settings/SettingsModal";
+import { requestComposerFocus } from "@/features/shortcuts/registry";
 
+/**
+ * One listener for every global shortcut. Previously each binding registered
+ * its own `window` listener, which made ordering between them undefined and
+ * left no obvious place to add the next one.
+ */
 export function useKeyboardShortcuts({
   onOpenSettings,
   isAuthGateOpen,
   setIsCommandPaletteOpen,
+  onNewChat,
+  onStopStreaming,
+  onOpenShortcuts,
 }: {
   onOpenSettings: (tab: SettingsTab) => void;
   isAuthGateOpen: boolean;
   setIsCommandPaletteOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+  onNewChat: () => void;
+  onStopStreaming: () => void;
+  onOpenShortcuts: () => void;
 }) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
-        event.preventDefault();
-        onOpenSettings("general");
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onOpenSettings]);
-
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        if (event.repeat) return;
-        if (isAuthGateOpen) {
-          setIsCommandPaletteOpen(false);
+      // Escape is the only unmodified binding, so it is the only one that has
+      // to yield: to an open dialog, menu or combobox, which close on Escape
+      // themselves.
+      if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
+        if (
+          document.querySelector("[role='dialog'],[role='menu'],[role='listbox']")
+        ) {
           return;
         }
-        setIsCommandPaletteOpen((open) => !open);
+        onStopStreaming();
+        return;
+      }
+
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod || event.repeat) return;
+
+      switch (event.key.toLowerCase()) {
+        case "k":
+          event.preventDefault();
+          if (isAuthGateOpen) {
+            setIsCommandPaletteOpen(false);
+            return;
+          }
+          setIsCommandPaletteOpen((open) => !open);
+          return;
+        case ",":
+          event.preventDefault();
+          onOpenSettings("general");
+          return;
+        case "n":
+          if (isAuthGateOpen) return;
+          event.preventDefault();
+          onNewChat();
+          requestComposerFocus();
+          return;
+        case "l":
+          if (isAuthGateOpen) return;
+          event.preventDefault();
+          requestComposerFocus();
+          return;
+        case "/":
+          event.preventDefault();
+          onOpenShortcuts();
+          return;
+        default:
       }
     };
+
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isAuthGateOpen, setIsCommandPaletteOpen]);
+  }, [
+    isAuthGateOpen,
+    onNewChat,
+    onOpenSettings,
+    onOpenShortcuts,
+    onStopStreaming,
+    setIsCommandPaletteOpen,
+  ]);
 }

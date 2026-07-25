@@ -6,7 +6,7 @@ import { ChatInput } from "@/features/chat/components/ChatInput";
 import { EmptyState } from "@/features/chat/components/EmptyState";
 import { Header } from "@/features/chat/components/Header";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
-import { useChatStore } from "@/store/chatStore";
+import { NEW_CHAT_DRAFT_KEY, useChatStore } from "@/store/chatStore";
 import { useModelStore } from "@/store/modelStore";
 import type { ModelProvider } from "@/store/modelStore";
 import type { ModelChoice } from "@/lib/models/model-choice";
@@ -17,6 +17,9 @@ import { FolderHome } from "@/features/folders/FolderHome";
 import { useOllama } from "@/features/ollama";
 import { useViewStore, getViewComponent } from "@/lib/view-registry";
 import { useNotify } from "@/hooks/useNotify";
+import { useConfirmStore } from "@/store/confirmStore";
+
+const EMPTY_ATTACHMENTS: never[] = [];
 
 const VoiceModeOverlayLazy = lazy(() =>
   import("@/features/chat/components/VoiceModeOverlay"),
@@ -52,17 +55,16 @@ export default function ChatWorkspace({
     : systemPromptContent;
   const { messages, isStreaming, sendMessage, regenerateMessage, stopStreaming, bottomRef, hasMessages } =
     useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
-  const { activeConversationId, currentAttachments } = useChatStore(
-    useShallow((state) => ({
-      activeConversationId: state.activeConversationId,
-      currentAttachments: state.currentAttachments,
-    })),
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const chatKey = activeConversationId ?? NEW_CHAT_DRAFT_KEY;
+  const currentAttachments = useChatStore(
+    useShallow((state) => state.attachmentsByChat[chatKey] ?? EMPTY_ATTACHMENTS),
   );
   const {
     createConversation,
     setActiveConversationId,
     deleteMessagesAfter,
-    clearCurrentAttachments,
+    clearAttachments,
   } = useChatStore((state) => state.actions);
 
   const modelUpdateSelectedModel = useModelStore((s) => s.updateSelectedModel);
@@ -123,14 +125,15 @@ export default function ChatWorkspace({
       ]);
       await sendMessage(trimmed, attachments);
       currentAttachments.forEach(releaseImageAttachment);
-      clearCurrentAttachments();
+      clearAttachments(chatKey);
     },
     [
       activeFolder?.contextFiles,
+      chatKey,
       currentAttachments,
       ensureConversation,
       sendMessage,
-      clearCurrentAttachments,
+      clearAttachments,
     ],
   );
 
@@ -141,9 +144,27 @@ export default function ChatWorkspace({
       const targetMessage = messages[messageIndex];
       if (targetMessage?.role !== "assistant") return;
 
-      await deleteMessagesAfter(activeConversationId, targetMessage.id);
+      const run = async () => {
+        await deleteMessagesAfter(activeConversationId, targetMessage.id);
+        regenerateMessage(activeConversationId);
+      };
 
-      regenerateMessage(activeConversationId);
+      // Regenerating mid-conversation throws away every later message, with
+      // no undo. Regenerating the last reply loses nothing, so it stays a
+      // one-click action.
+      const discarded = messages.length - messageIndex - 1;
+      if (discarded <= 0) {
+        await run();
+        return;
+      }
+
+      useConfirmStore.getState().actions.request({
+        title: "Regenerate this response?",
+        description: `The ${discarded} message${discarded === 1 ? "" : "s"} after it will be permanently deleted.`,
+        confirmLabel: "Regenerate",
+        destructive: true,
+        onConfirm: () => void run(),
+      });
     },
     [
       activeConversationId,

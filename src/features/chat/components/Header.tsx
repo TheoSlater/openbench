@@ -236,20 +236,20 @@ export const Header = memo(function Header({
 
       <Box className="flex shrink-0 items-center gap-2">
         {memoryCount > 0 && (
-          <Tooltip title={`${memoryCount} ${memoryCount === 1 ? "memory" : "memories"} in this conversation`}>
+          <Tooltip placement="bottom" title={`${memoryCount} ${memoryCount === 1 ? "memory" : "memories"} in this conversation`}>
             <IconButton
               aria-label="View conversation memories"
               size="small"
               onClick={() => setMemoryPanelOpen(true)}
               className="gap-1"
             >
-              <Brain size={15} />
+              <Brain size={16} />
               <Typography variant="caption">{memoryCount}</Typography>
             </IconButton>
           </Tooltip>
         )}
         {ollama.state !== "online" && (
-          <Tooltip title={ollama.state === "reconnecting" ? "Reconnecting to providers..." : "Providers offline"}>
+          <Tooltip placement="bottom" title={ollama.state === "reconnecting" ? "Reconnecting to providers..." : "Providers offline"}>
             <Box className="inline-flex items-center gap-1.5 text-muted-foreground">
               {ollama.state === "reconnecting" ? (
                 <CircularProgress size={12} color="inherit" />
@@ -265,6 +265,7 @@ export const Header = memo(function Header({
           </Tooltip>
         )}
         <Tooltip
+          placement="bottom"
           title={
             isTemporary ? "Disable Temporary Chat" : "Enable Temporary Chat"
           }
@@ -300,7 +301,7 @@ export const Header = memo(function Header({
           </IconButton>
         </Tooltip>
         {!viewportDrawerOpen ? (
-          <Tooltip title="Open viewport drawer">
+          <Tooltip placement="bottom" title="Open viewport drawer">
             <IconButton
               aria-label="Open viewport drawer"
               onClick={openEmptyViewport}

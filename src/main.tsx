@@ -14,12 +14,13 @@ import {
   startupPhase,
 } from "./lib/utils/startupDiagnostics";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/utils/platform";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { TITLE_BAR_HEIGHT } from "@/lib/constants/titlebar";
 import "./App.css";
 import App from "./App";
 
-export const TITLE_BAR_HEIGHT = 36;
 document.documentElement.style.setProperty(
   "--titlebar-height",
   `${TITLE_BAR_HEIGHT}px`,
@@ -88,16 +89,16 @@ function Root() {
     document.documentElement.classList.toggle("dark", isDark);
   }, [mode, prefersDarkMode]);
 
+  // `reduce-motion` is the single gate every CSS animation checks, so it has
+  // to reflect the OS preference too — not just the in-app setting.
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
-    document.documentElement.classList.toggle(
-      "reduce-motion",
-      performance.reduceMotion,
-    );
+    document.documentElement.classList.toggle("reduce-motion", reduceMotion);
     document.documentElement.classList.toggle(
       "reduce-transparency",
       performance.reduceTransparency,
     );
-  }, [performance.reduceMotion, performance.reduceTransparency]);
+  }, [reduceMotion, performance.reduceTransparency]);
 
   useEffect(() => {
     const appZoom = Math.min(2, Math.max(0.5, performance.appZoom || 1));

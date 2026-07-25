@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box } from "@/components/ui/Box";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { Dialog } from "@/components/ui/dialog-panel";
-import { DialogActions } from "@/components/ui/dialog-panel";
-import { DialogContent } from "@/components/ui/dialog-panel";
-import { DialogTitle } from "@/components/ui/dialog-panel";
+import { Modal } from "@/components/ui/modal";
 import { Divider } from "@/components/ui/divider";
 import {
   Select,
@@ -23,6 +20,8 @@ import { Typography } from "@/components/ui/Typography";
 import { FlaskConical, RefreshCcw, Search, Trash2 } from "lucide-react";
 import { EmptyState, SectionHeader, SettingCard } from "@/features/settings/SettingComponents";
 import { useNotify } from "@/hooks/useNotify";
+import { useConfirmStore } from "@/store/confirmStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { getCurrentProviderAccountId } from "@/features/providers";
 import {
   memoryClearAll,
@@ -85,6 +84,32 @@ function defaultSettings(ownerId: string, current?: MemorySettings | null): Memo
   };
 }
 
+function askConfirm({
+  title,
+  description,
+  run,
+}: {
+  title: string;
+  description: string;
+  run: () => Promise<void>;
+}) {
+  useConfirmStore.getState().actions.request({
+    title,
+    description,
+    confirmLabel: "Confirm",
+    destructive: true,
+    onConfirm: () => {
+      void run().catch((error) => {
+        useNotificationStore.getState().actions.add({
+          type: "error",
+          message: "Memory action failed",
+          description: String(error),
+        });
+      });
+    },
+  });
+}
+
 export function MemoryTab() {
   const notify = useNotify();
   const ownerId = getCurrentProviderAccountId();
@@ -97,7 +122,6 @@ export function MemoryTab() {
   const [query, setQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [editing, setEditing] = useState<MemoryRecord | null>(null);
-  const [confirm, setConfirm] = useState<null | { title: string; body: string; run: () => Promise<void> }>(null);
 
   const loadSettings = useCallback(async () => {
     if (!ownerId) return;
@@ -181,9 +205,9 @@ export function MemoryTab() {
   };
 
   const removeMemory = (record: MemoryRecord) => {
-    setConfirm({
+    askConfirm({
       title: "Delete memory",
-      body: record.summary,
+      description: record.summary,
       run: async () => {
         await memoryDelete(ownerId, record.id);
         notify.success("Memory deleted");
@@ -193,9 +217,9 @@ export function MemoryTab() {
   };
 
   const clearAll = () => {
-    setConfirm({
+    askConfirm({
       title: "Clear all memories",
-      body: "Deletes all memories for current profile.",
+      description: "Deletes all memories for current profile.",
       run: async () => {
         await memoryClearAll(ownerId);
         notify.success("All memories cleared");
@@ -235,8 +259,8 @@ export function MemoryTab() {
         description={`${activeCount} active shown.`}
         action={
           <Stack direction="row" spacing={1}>
-            <Button size="small" startIcon={<RefreshCcw size={14} />} onClick={loadRecords}>Refresh</Button>
-            <Button size="small" disabled={testing} onClick={testConnection}>{testing ? "Testing..." : "Test"}</Button>
+            <Button size="sm" startIcon={<RefreshCcw size={14} />} onClick={loadRecords}>Refresh</Button>
+            <Button size="sm" disabled={testing} onClick={testConnection}>{testing ? "Testing..." : "Test"}</Button>
           </Stack>
         }
       />
@@ -247,7 +271,7 @@ export function MemoryTab() {
         ))}
       </Stack>
       <Stack direction="row" spacing={1}>
-        <Button size="small" color="error" variant="text" onClick={clearAll} startIcon={<Trash2 size={14} />}>
+        <Button size="sm" variant="destructive" onClick={clearAll} startIcon={<Trash2 size={14} />}>
           Clear all
         </Button>
       </Stack>
@@ -314,7 +338,7 @@ export function MemoryTab() {
             title="Run extraction on last turn"
             description="Debug: re-runs memory extraction against the most recent completed turn."
             action={
-              <Button size="small" startIcon={<FlaskConical size={14} />} disabled={extracting || !settingsReady.enabled} onClick={runDebugExtraction}>
+              <Button size="sm" startIcon={<FlaskConical size={14} />} disabled={extracting || !settingsReady.enabled} onClick={runDebugExtraction}>
                 {extracting ? "Running..." : "Run"}
               </Button>
             }
@@ -323,7 +347,6 @@ export function MemoryTab() {
       </details>
 
       <EditMemoryDialog record={editing} ownerId={ownerId} onClose={() => setEditing(null)} onSaved={loadRecords} />
-      <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
     </Stack>
   );
 }
@@ -337,8 +360,8 @@ function MemoryRow({ record, onEdit, onDelete }: { record: MemoryRecord; onEdit:
           <Typography>{record.canonicalKey ?? "uncategorized"} · {record.scope} · {record.category}</Typography>
         </Box>
         <Stack direction="row" spacing={0.5}>
-          <Button size="small" onClick={() => onEdit(record)}>Edit</Button>
-          <Button size="small" color="error" onClick={() => onDelete(record)}>Delete</Button>
+          <Button size="sm" onClick={() => onEdit(record)}>Edit</Button>
+          <Button size="sm" variant="destructive" onClick={() => onDelete(record)}>Delete</Button>
         </Stack>
       </Stack>
       <Divider />
@@ -386,45 +409,26 @@ function EditMemoryDialog({ record, ownerId, onClose, onSaved }: { record: Memor
   };
 
   return (
-    <Dialog open={Boolean(record)} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Edit memory</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2}>
-          <TextField label="Summary" value={summary} onChange={(e) => setSummary(e.target.value)} size="small" fullWidth />
-          <TextField label="Value" value={value} onChange={(e) => setValue(e.target.value)} size="small" fullWidth multiline minRows={5} />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={save} disabled={saving || !summary.trim()} variant="contained" disableElevation>Save</Button>
-      </DialogActions>
-    </Dialog>
+    <Modal
+      open={Boolean(record)}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="Edit memory"
+      maxWidth={384}
+      contentClassName="p-5"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving || !summary.trim()}>Save</Button>
+        </div>
+      }
+    >
+      <Stack spacing={2}>
+        <TextField label="Summary" value={summary} onChange={(e) => setSummary(e.target.value)} size="small" fullWidth />
+        <TextField label="Value" value={value} onChange={(e) => setValue(e.target.value)} size="small" fullWidth multiline minRows={5} />
+      </Stack>
+    </Modal>
   );
 }
 
-function ConfirmDialog({ confirm, onClose }: { confirm: null | { title: string; body: string; run: () => Promise<void> }; onClose: () => void }) {
-  const notify = useNotify();
-  const [running, setRunning] = useState(false);
-  const run = async () => {
-    if (!confirm) return;
-    setRunning(true);
-    try {
-      await confirm.run();
-      onClose();
-    } catch (error) {
-      notify.error("Memory action failed", String(error));
-    } finally {
-      setRunning(false);
-    }
-  };
-  return (
-    <Dialog open={Boolean(confirm)} onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>{confirm?.title}</DialogTitle>
-      <DialogContent><Typography>{confirm?.body}</Typography></DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button color="error" variant="contained" disabled={running} onClick={run} disableElevation>Confirm</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}

@@ -19,10 +19,6 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/30",
         link: "text-primary underline-offset-4 hover:underline",
-        contained: "bg-primary text-primary-foreground hover:bg-primary/80",
-        outlined:
-          "border-border/60 bg-background hover:bg-foreground/[0.06] hover:text-foreground aria-expanded:bg-foreground/[0.08] aria-expanded:text-foreground dark:bg-transparent",
-        text: "hover:bg-foreground/[0.06] hover:text-foreground aria-expanded:bg-foreground/[0.08] aria-expanded:text-foreground",
       },
       size: {
         default:
@@ -34,9 +30,6 @@ const buttonVariants = cva(
         "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-7",
         "icon-lg": "size-9",
-        small: "h-7 gap-1 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        medium:
-          "h-8 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
       },
     },
     defaultVariants: {
@@ -54,9 +47,6 @@ function Button({
   fullWidth,
   startIcon,
   endIcon,
-  disableElevation: _disableElevation,
-  disableRipple: _disableRipple,
-  color: _color,
   children,
   ...props
 }: React.ComponentProps<"button"> &
@@ -65,9 +55,6 @@ function Button({
     fullWidth?: boolean
     startIcon?: React.ReactNode
     endIcon?: React.ReactNode
-    disableElevation?: boolean
-    disableRipple?: boolean
-    color?: string
   }) {
   const Comp = asChild ? Slot.Root : "button"
 

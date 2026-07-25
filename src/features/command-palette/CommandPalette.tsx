@@ -16,8 +16,8 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "@/components/ui/command";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import type { CommandPaletteCategory, CommandPaletteItem } from "./types";
 import { getIntentSummary, parseCommandIntent, type ParsedIntent } from "./intentParser";
@@ -87,10 +87,10 @@ function buildGroups(items: CommandPaletteItem[], query: string) {
 }
 
 function catIcon(category: CommandPaletteCategory) {
-  if (category === "conversation") return <MessageSquare size={15} />;
-  if (category === "feature") return <Zap size={15} />;
-  if (category === "setting") return <Settings size={15} />;
-  return <Sparkles size={15} />;
+  if (category === "conversation") return <MessageSquare size={16} />;
+  if (category === "feature") return <Zap size={16} />;
+  if (category === "setting") return <Settings size={16} />;
+  return <Sparkles size={16} />;
 }
 
 export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProps) {
@@ -225,14 +225,16 @@ function CmdRow({ item, onSelect }: {
         {item.icon ?? catIcon(item.category)}
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-foreground">{title}</span>
-      {item.shortcut ? (
-        <CommandShortcut className="tracking-normal text-muted-foreground/70">
-          {item.shortcut}
-        </CommandShortcut>
+      {item.shortcut?.length ? (
+        <KbdGroup className="ml-auto">
+          {item.shortcut.map((key) => (
+            <Kbd key={key}>{key}</Kbd>
+          ))}
+        </KbdGroup>
       ) : null}
       {isFeature ? (
         <span className={isOn ? "text-success" : "text-muted-foreground/40"}>
-          {isOn ? <Check size={13} /> : <X size={13} />}
+          {isOn ? <Check size={14} /> : <X size={14} />}
         </span>
       ) : null}
     </CommandItem>

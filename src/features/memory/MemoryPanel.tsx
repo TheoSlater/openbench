@@ -160,7 +160,7 @@ function MemoryPanelRow({
             {record.summary}
           </Typography>
         </button>
-        <Button size="small" color="error" onClick={() => onDelete(record)}>
+        <Button size="sm" variant="destructive" onClick={() => onDelete(record)}>
           Delete
         </Button>
       </Box>

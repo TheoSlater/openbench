@@ -1,6 +1,7 @@
 import { Globe } from "lucide-react";
 import React from "react";
 import { getWebSearchWarning } from "@/features/web-search/useWebSearchConfig";
+import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 
 export type FeatureKind = "toggle" | "forced_toggle";
@@ -16,6 +17,10 @@ export interface FeatureDef {
   toggle: () => void;
   getWarning?: () => string | undefined;
   experimental?: boolean;
+  /** Show as its own button in the composer instead of inside the "..." menu. */
+  pinned?: boolean;
+  /** Shorter label for the pinned button; falls back to `name`. */
+  shortName?: string;
 }
 
 export const featureRegistry: FeatureDef[] = [
@@ -25,12 +30,13 @@ export const featureRegistry: FeatureDef[] = [
     kind: "forced_toggle",
     description: "Search the web for real-time information",
     icon: Globe,
-    useIsActive: () => useSettingsStore((state) => state.general.webSearchEnabled),
-    getIsActive: () => useSettingsStore.getState().general.webSearchEnabled,
-    toggle: () => {
-      const state = useSettingsStore.getState();
-      state.actions.updateGeneral({ webSearchEnabled: !state.general.webSearchEnabled });
-    },
+    pinned: true,
+    shortName: "Search",
+    useIsActive: () =>
+      useChatStore((state) => state.activeFeatureIds.includes("web_search")),
+    getIsActive: () =>
+      useChatStore.getState().activeFeatureIds.includes("web_search"),
+    toggle: () => useChatStore.getState().actions.toggleFeature("web_search"),
     getWarning: getWebSearchWarning,
   },
 ];
@@ -41,16 +47,25 @@ export function isFeatureAIActive(featureId: string): boolean {
   return feature.getIsActive();
 }
 
+/**
+ * Features a brand-new conversation starts with, from saved settings.
+ * Settings hold the *default*; the live per-conversation state lives in
+ * chatStore.activeFeatureIds.
+ */
+export function getDefaultFeatureIds(): string[] {
+  const { general } = useSettingsStore.getState();
+  return general.webSearchEnabled ? ["web_search"] : [];
+}
+
 export function useFeatures() {
-  const webSearchEnabled = useSettingsStore((state) => state.general.webSearchEnabled);
+  const activeFeatureIds = useChatStore((state) => state.activeFeatureIds);
   const experimentalEnabled = useSettingsStore((state) => state.general.experimentalFeatures);
 
   return featureRegistry
     .filter((feature) => !feature.experimental || experimentalEnabled)
-    .map((feature) => {
-      let active: boolean;
-      if (feature.id === "web_search") active = webSearchEnabled;
-      else active = feature.getIsActive();
-      return { ...feature, active, warning: feature.getWarning?.() };
-    });
+    .map((feature) => ({
+      ...feature,
+      active: activeFeatureIds.includes(feature.id),
+      warning: feature.getWarning?.(),
+    }));
 }

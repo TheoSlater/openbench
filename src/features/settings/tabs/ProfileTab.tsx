@@ -208,7 +208,7 @@ export function ProfileTab() {
               <Typography>
                 {avatarFileName ? `Selected ${avatarFileName}` : "Click avatar to choose a local image."}
               </Typography>
-              <Button size="small" variant="contained" disableElevation startIcon={<Save size={14} />} onClick={saveProfile} disabled={isLoading || profileSaving || emailInvalid || !profileDirty}>
+              <Button size="sm" startIcon={<Save size={14} />} onClick={saveProfile} disabled={isLoading || profileSaving || emailInvalid || !profileDirty}>
                 {profileSaving ? "Saving..." : "Save"}
               </Button>
             </Stack>
@@ -224,7 +224,7 @@ export function ProfileTab() {
             <TextField label="New password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} error={passwordInvalid} helperText={passwordInvalid ? PASSWORD_HELP : " "} fullWidth size="small" autoComplete="new-password" slotProps={{ htmlInput: { maxLength: 128 } }} />
             <TextField label="Confirm new password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} error={passwordMismatch} helperText={passwordMismatch ? "Passwords do not match." : " "} fullWidth size="small" autoComplete="new-password" slotProps={{ htmlInput: { maxLength: 128 } }} />
             <Box>
-              <Button size="small" variant="outlined" startIcon={<Lock size={14} />} onClick={savePassword} disabled={isLoading || passwordSaving || passwordInvalid || passwordMismatch || !currentPassword || !newPassword || !confirmPassword}>
+              <Button size="sm" variant="outline" startIcon={<Lock size={14} />} onClick={savePassword} disabled={isLoading || passwordSaving || passwordInvalid || passwordMismatch || !currentPassword || !newPassword || !confirmPassword}>
                 {passwordSaving ? "Updating..." : "Update password"}
               </Button>
             </Box>

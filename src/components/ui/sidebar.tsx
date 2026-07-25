@@ -25,7 +25,7 @@ import {
   SIDEBAR_TOKENS,
   sidebarStyleVars,
 } from "@/features/sidebar/constants"
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion"
+import { useReducedMotion } from "@/hooks/useReducedMotion"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7

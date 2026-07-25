@@ -59,7 +59,7 @@ export function ArchivedChatsDialog({
                   >
                     <Stack direction="row" alignItems="center" spacing={1.5}>
                       <Box className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground">
-                        <MessageSquare size={17} />
+                        <MessageSquare size={16} />
                       </Box>
                       <Box className="min-w-0">
                         <Typography className="truncate text-sm font-medium">
@@ -130,7 +130,7 @@ function SearchField({
 }) {
   return (
     <Box className="flex h-10 items-center gap-2 border-b border-border/60 px-3 text-muted-foreground transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)] focus-within:border-muted-foreground">
-      <Search size={17} />
+      <Search size={16} />
       <InputBase
         placeholder="Search archived chats..."
         value={value}

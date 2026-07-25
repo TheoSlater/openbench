@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 type ButtonBaseProps = {
   as?: React.ElementType;
   component?: React.ElementType;
-  disableRipple?: boolean;
   className?: string;
   type?: React.ButtonHTMLAttributes<HTMLButtonElement>["type"];
   children?: React.ReactNode;
@@ -17,7 +16,6 @@ type ButtonBaseProps = {
 export function ButtonBase({
   as,
   component,
-  disableRipple: _disableRipple,
   type,
   className,
   ...props

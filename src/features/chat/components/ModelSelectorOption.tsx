@@ -18,6 +18,7 @@ export function ModelSelectorStatus({
   return (
     <Box
       role="status"
+      className="flex items-center gap-2 px-3 py-4"
     >
       {icon}
       <Typography>{text}</Typography>
@@ -48,7 +49,6 @@ export function ModelSelectorOption({
     <ButtonBase
       as="div"
       role="option"
-      disableRipple
       aria-selected={selected}
       className={`flex items-center justify-between gap-3 px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-muted ${
         highlighted ? "bg-muted" : ""
@@ -58,25 +58,25 @@ export function ModelSelectorOption({
       style={style}
     >
       <Box className="flex min-w-0 items-center gap-2">
-        <Cpu size={15} />
+        <Cpu size={16} />
         <Typography noWrap className="min-w-0">
           {option.name}
         </Typography>
         {external ? (
           <Tooltip title={`External API: ${externalApiUrl}`} arrow>
             <Box as="span">
-              <Link2 size={13} />
+              <Link2 size={14} />
             </Box>
           </Tooltip>
         ) : option.supports_vision ? (
           <Tooltip title="Supports vision" arrow>
             <Box as="span">
-              <Eye size={13} />
+              <Eye size={14} />
             </Box>
           </Tooltip>
         ) : null}
       </Box>
-      {selected ? <Check size={15} /> : null}
+      {selected ? <Check size={16} /> : null}
     </ButtonBase>
   );
 }

@@ -7,7 +7,7 @@ fn main() {
     // This must stay the first statement in main: CEF forks a zygote on Linux,
     // and forking a process that already has threads is undefined behaviour.
     // See cef_osr's module docs.
-    #[cfg(target_os = "linux")]
+    #[cfg(cef)]
     if polyui_lib::cef_osr::enabled_on_next_start() {
         if let Some(code) = polyui_lib::cef_osr::execute_subprocess() {
             std::process::exit(code);
