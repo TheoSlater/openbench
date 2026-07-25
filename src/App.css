@@ -594,23 +594,6 @@ code {
     animation: spin 1s linear infinite;
 }
 
-/* Conversation actions in sidebar */
-.conversation-actions {
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-soft);
-}
-
-*:hover > .conversation-actions,
-*:focus-within > .conversation-actions {
-    opacity: 1;
-}
-
-@media (hover: none) {
-    .conversation-actions {
-        opacity: 1;
-    }
-}
-
 .animate-toast-in {
     animation: toast-in var(--dur-fast) var(--ease-premium) forwards;
 }

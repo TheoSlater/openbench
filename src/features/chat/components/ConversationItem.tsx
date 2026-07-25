@@ -22,7 +22,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { activateRowOnKeyDown } from "@/features/sidebar/components/sidebar-utils";
+import {
+  activateRowOnKeyDown,
+  shortTimeAgo,
+} from "@/features/sidebar/components/sidebar-utils";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import type { Conversation } from "@/store/chatStore";
 import { cn } from "@/lib/utils";
@@ -143,8 +146,15 @@ export const ConversationItem = React.memo(function ConversationItem({
           <Spinner className="size-3" />
         </Box>
       ) : (
+        <>
+        <span className="shrink-0 text-[11px] text-muted-foreground group-hover/row:hidden group-focus-within/row:hidden group-has-data-[state=open]/row:hidden [@media(hover:none)]:hidden">
+          {shortTimeAgo(conv.updatedAt || conv.createdAt)}
+        </span>
         <Box
-          className="conversation-actions shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+          // `has-data-[state=open]` keeps the trigger mounted while its menu is
+          // open, otherwise moving the pointer off the row would unmount the
+          // open dropdown. Touch devices have no hover, so show it there.
+          className="hidden shrink-0 group-hover/row:block group-focus-within/row:block has-data-[state=open]:block [@media(hover:none)]:block"
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -172,6 +182,7 @@ export const ConversationItem = React.memo(function ConversationItem({
             </DropdownMenuContent>
           </DropdownMenu>
         </Box>
+        </>
       )}
     </Box>
   );
@@ -187,7 +198,7 @@ export const ConversationItem = React.memo(function ConversationItem({
         onKeyDown={activateRowOnKeyDown}
         onClick={onClick}
         className={cn(
-          "group flex w-full min-w-0 items-center gap-1.5 rounded-lg p-1.5 text-left text-sm hover:bg-muted",
+          "group/row flex w-full min-w-0 items-center gap-1.5 rounded-lg p-1.5 text-left text-sm hover:bg-muted",
           isActive && "bg-muted",
         )}
       >
@@ -198,7 +209,7 @@ export const ConversationItem = React.memo(function ConversationItem({
 
   return (
     <Box
-      className="group flex h-full w-full min-w-0 items-center rounded-lg text-left text-sm"
+      className="group/row flex h-full w-full min-w-0 items-center rounded-lg text-left text-sm"
       onClick={onClick}
     >
       {content}

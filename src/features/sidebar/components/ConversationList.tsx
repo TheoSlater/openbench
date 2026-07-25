@@ -5,9 +5,12 @@ import {
   SidebarGroupLabel,
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
-import { SidebarMenuRow } from "@/features/sidebar/components/sidebar-utils";
+import {
+  SidebarMenuRow,
+  SidebarSectionHeader,
+} from "@/features/sidebar/components/sidebar-utils";
 import { ConversationSkeleton } from "@/features/sidebar/components/ConversationSkeleton";
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarActions } from "@/features/sidebar/hooks/useSidebarActions";
@@ -103,6 +106,9 @@ export function ConversationList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-0.5 px-5 group-data-[collapsible=icon]:hidden">
+        <SidebarSectionHeader label="Chats" />
+      </div>
       {/* Row counts here are small (tens), so the list renders in normal flow.
           Virtualizing it cost more than it saved: a ResizeObserver per row plus
           a measure/re-render pass on every commit. */}
@@ -133,7 +139,7 @@ export function ConversationList({
                   onSelectConversation(row.conversation.id);
                   if (isMobile) setOpenMobile(false);
                 }}
-                className="px-2 hover:[&_.conversation-actions]:opacity-100 focus-within:[&_.conversation-actions]:opacity-100"
+                className="px-2"
               >
                 {/* Row embeds its own action buttons, so it can't be a
                     real <button>. */}
