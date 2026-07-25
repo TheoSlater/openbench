@@ -339,7 +339,13 @@ export const ChatArea = memo(function ChatArea({
         // virtualized it re-announced old turns as rows recycled on scroll.
         // Completion is announced once, from the region below.
         aria-busy={isResponding}
-        className="relative flex min-h-0 flex-1 overflow-y-auto px-4 py-6"
+        // Block layout, deliberately not `flex`. As a flex row with a definite
+        // height, `align-items: stretch` pinned the content child's height to
+        // this container's height, so it never grew. use-stick-to-bottom drives
+        // auto-scroll from a ResizeObserver on that child, which therefore
+        // never fired: sending a message or streaming a reply scrolled nothing.
+        // `mx-auto max-w-3xl` still centres the content in normal flow.
+        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6"
       >
         <Box className="sr-only" role="status" aria-live="polite">
           {announcement}
