@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/polyui-logo.png" alt="PolyUI logo" width="144" />
+  <img src="public/polyui-icon.png" alt="PolyUI logo" width="144" />
 </p>
 
 <h1 align="center">PolyUI</h1>
