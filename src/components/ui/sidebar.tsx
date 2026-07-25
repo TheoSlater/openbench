@@ -216,7 +216,8 @@ function Sidebar({
     <div
       className={cn(
         "group peer relative flex w-(--sidebar-width) shrink-0 text-sidebar-foreground max-md:hidden data-[collapsible=offcanvas]:w-0",
-        !reduceMotion && "transition-[width] duration-150 ease-out",
+        !reduceMotion &&
+          "transition-[width] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         variant === "floating" || variant === "inset"
           ? "data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
           : "data-[collapsible=icon]:w-(--sidebar-width-icon)",
@@ -282,7 +283,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 transition-all duration-200 ease-out group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
+        "absolute inset-y-0 z-20 hidden w-4 transition-all duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing) group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
@@ -403,7 +404,8 @@ function SidebarGroupLabel({
       data-sidebar="group-label"
       className={cn(
         "flex h-7 shrink-0 items-center rounded-xl px-3 text-xs font-medium text-sidebar-foreground/60 ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-3 [&>svg]:size-4 [&>svg]:shrink-0",
-        !reduceMotion && "transition-[margin,opacity] duration-200 ease-out",
+        !reduceMotion &&
+          "transition-[margin,opacity] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         className
       )}
       {...props}
@@ -514,7 +516,8 @@ function SidebarMenuButton({
       data-active={isActive}
       className={cn(
         sidebarMenuButtonVariants({ variant, size }),
-        !reduceMotion && "transition-[width,height,padding] duration-200 ease-out",
+        !reduceMotion &&
+          "transition-[width,height,padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         className,
       )}
       {...props}

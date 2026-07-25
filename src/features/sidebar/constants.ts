@@ -1,5 +1,7 @@
 import type * as React from "react"
 
+import { getMotionPolicy } from "@/lib/performance/policy"
+
 /**
  * Single source of truth for sidebar sizing, spacing and radius.
  * Consumed both as JS values and (via `sidebarStyleVars`) as CSS variables,
@@ -17,9 +19,24 @@ export const SIDEBAR_TOKENS = {
   itemRadius: "var(--radius-lg)",
   panelRadius: "var(--radius-4xl)",
   sectionGap: "0.5rem", // 8px between sidebar sections
+  /** Easing for every surface that moves when the sidebar collapses. */
+  transitionEasing: "ease-out",
 } as const
 
+/**
+ * The collapse transition has one duration, shared by every surface that moves
+ * (panel width, row geometry, content fade, rail). They used to be 150/200/100ms
+ * independently, which meant rows were still resizing 50ms after the panel had
+ * settled — a visible snap at the end. Sourced from the motion policy, so a
+ * low-end or reduced-motion profile cuts straight to the final state at 0ms.
+ */
+export function sidebarTransitionDuration(): string {
+  return `${getMotionPolicy().transitionDurationMs}ms`
+}
+
 export const sidebarStyleVars = {
+  "--sidebar-transition-duration": sidebarTransitionDuration(),
+  "--sidebar-transition-easing": SIDEBAR_TOKENS.transitionEasing,
   "--sidebar-width": SIDEBAR_TOKENS.expandedWidth,
   "--sidebar-width-icon": SIDEBAR_TOKENS.collapsedWidth,
   "--sidebar-padding": SIDEBAR_TOKENS.sidebarPadding,
