@@ -13,12 +13,10 @@ import { Message } from "./Message";
 import { Box } from "@/components/ui/Box";
 import { CircularProgress } from "@/components/ui/spinner";
 import { Typography } from "@/components/ui/Typography";
-import { IconButton } from "@/components/ui/icon-button";
-import { Fade } from "@/components/ui/visibility";
 import { useChatStore } from "@/store/chatStore";
-import { ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useStickToBottom } from "use-stick-to-bottom";
+import { StickToBottom, useStickToBottom } from "use-stick-to-bottom";
+import { ScrollButton } from "@/components/ui/scroll-button";
 import { PRETEXT_FONTS, PRETEXT_LINE_HEIGHTS, measureTextHeight } from "@/lib/utils/pretext";
 import { getMotionPolicy } from "@/lib/performance/policy";
 
@@ -158,7 +156,6 @@ export const ChatArea = memo(function ChatArea({
   const activeConvId = useChatStore((state) => state.activeConversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const scrollFrameRef = useRef<number | null>(null);
   const stickToBottom = useStickToBottom({ initial: "smooth", resize: "smooth" });
   const [viewportWidth, setViewportWidth] = useState(768);
   const scrollAnchorRef = useRef<{
@@ -166,13 +163,11 @@ export const ChatArea = memo(function ChatArea({
     scrollTop: number;
     pending: boolean;
   } | null>(null);
-  const showScrollButtonRef = useRef(false);
   const onRegenCb = useCallback(
     (i: number) => onRegenerate?.(i),
     [onRegenerate],
   );
 
-  const [showScrollButton, setShowScrollButton] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const streamingMessagesList = useMemo(
     () => Object.values(streamingMessages).filter((m) => m.conversationId === activeConvId),
@@ -206,10 +201,6 @@ export const ChatArea = memo(function ChatArea({
     },
     [stickToBottom.contentRef],
   );
-
-  const handleScrollToBottom = useCallback(() => {
-    void stickToBottom.scrollToBottom("smooth");
-  }, [stickToBottom]);
 
   // Scroll anchoring for load-more: restore position after prepending
   useLayoutEffect(() => {
@@ -253,38 +244,6 @@ export const ChatArea = memo(function ChatArea({
 
     return () => observer.disconnect();
   }, [hasMoreMessages, handleLoadMore]);
-
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-
-    const updateScrollState = () => {
-      scrollFrameRef.current = null;
-      const distFromBottom =
-        element.scrollHeight - element.scrollTop - element.clientHeight;
-      const shouldShowScrollButton = distFromBottom > 300;
-      if (showScrollButtonRef.current !== shouldShowScrollButton) {
-        showScrollButtonRef.current = shouldShowScrollButton;
-        setShowScrollButton(shouldShowScrollButton);
-      }
-    };
-
-    const scheduleScrollStateUpdate = () => {
-      if (scrollFrameRef.current !== null) return;
-      scrollFrameRef.current = requestAnimationFrame(updateScrollState);
-    };
-
-    element.addEventListener("scroll", scheduleScrollStateUpdate, {
-      passive: true,
-    });
-
-    return () => {
-      element.removeEventListener("scroll", scheduleScrollStateUpdate);
-      if (scrollFrameRef.current !== null) {
-        cancelAnimationFrame(scrollFrameRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -366,6 +325,12 @@ export const ChatArea = memo(function ChatArea({
   const virtualRows = rowVirtualizer.getVirtualItems();
 
   return (
+    // StickToBottom only supplies context here — it reuses the instance above
+    // rather than binding its own refs, so the scroll element stays ours.
+    <StickToBottom
+      instance={stickToBottom}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
       <Box
         ref={setScrollRef}
         role="log"
@@ -442,20 +407,16 @@ export const ChatArea = memo(function ChatArea({
         <Box ref={bottomRef} className="h-px" />
       </Box>
 
-      <Fade in={showScrollButton} timeout={200}>
-        <Box
-          className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2"
-        >
-          <IconButton
-            size="small"
-            aria-label="Scroll to latest messages"
-            onClick={handleScrollToBottom}
-            className="pointer-events-auto rounded-full border border-border/60 bg-background/90 shadow-md"
-          >
-            <ChevronDown size={18} />
-          </IconButton>
-        </Box>
-      </Fade>
-    </Box>
+      </Box>
+
+      {/* Deliberately a sibling of the scroll container, not a child: an
+          absolutely positioned descendant of a scrolling element scrolls away
+          with the content, which is why the old button drifted out of view.
+          Sitting at the bottom of the chat area puts it directly above the
+          composer. */}
+      <Box className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+        <ScrollButton className="pointer-events-auto bg-background/90 shadow-md backdrop-blur-sm" />
+      </Box>
+    </StickToBottom>
   );
 });
