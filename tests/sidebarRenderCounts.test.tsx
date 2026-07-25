@@ -328,6 +328,28 @@ describe("sidebar render counts", () => {
     view.unmount();
   });
 
+  it("survives rapid toggling without remounting the panel", async () => {
+    const view = render(<Harness />);
+    await settle();
+
+    const panel = view.container.querySelector('[data-slot="sidebar"]');
+    expect(panel).toBeTruthy();
+
+    // A CSS transition interpolates from whatever value it is currently at, so
+    // interruption is continuous for free — as long as the element is the same
+    // one. A remount or a changed key would restart it from the target state.
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        window.dispatchEvent(new Event(SIDEBAR_TOGGLE_EVENT));
+      });
+    }
+    await settle();
+
+    expect(view.container.querySelector('[data-slot="sidebar"]')).toBe(panel);
+    expect(panel?.getAttribute("data-collapsible")).toBe("icon");
+    view.unmount();
+  });
+
   it("prints the table", () => {
     const names = new Set<string>();
     for (const [k, v] of Object.entries(table)) {
