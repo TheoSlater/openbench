@@ -8,7 +8,7 @@ import { initRepository } from "@/lib/repositories";
 import { startUpdateChecker } from "@/store/updateStore";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { backupCorruptStorageItem, startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
-import { IS_LINUX } from "@/lib/utils/platform";
+import { SUPPORTS_CHROMIUM_BROWSER } from "@/lib/utils/platform";
 import { cefViewportIsEnabled } from "@/features/viewport/native";
 
 const SYSTEM_PROMPTS_STORAGE_KEY = "polyui.systemPrompts";
@@ -99,7 +99,7 @@ async function initializeStores() {
   restoreSystemPrompts();
   startSystemPromptPersistence();
 
-  if (IS_LINUX) {
+  if (SUPPORTS_CHROMIUM_BROWSER) {
     await cefViewportIsEnabled()
       .then((enabled) => {
         useSettingsStore.getState().actions.updateGeneral({
@@ -107,6 +107,12 @@ async function initializeStores() {
         });
       })
       .catch((error) => startupError("CEF preference sync failed", error));
+  } else {
+    // Settings restored from a build that has CEF can carry the flag onto one
+    // that does not, where nothing renders the toggle to turn it back off.
+    useSettingsStore.getState().actions.updateGeneral({
+      experimentalChromiumBrowser: false,
+    });
   }
 
   startupPhase("repository init start");
