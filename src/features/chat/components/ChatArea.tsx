@@ -277,17 +277,31 @@ export const ChatArea = memo(function ChatArea({
     const element = scrollRef.current;
     if (!element) return;
 
-    const onResize = () => {
+    // Committing the width on every ResizeObserver callback made the sidebar
+    // collapse animation drag the whole chat panel with it: each frame
+    // re-rendered this component, recomputed estimateTurnHeight across every
+    // turn in the conversation, and invalidated the virtualizer's sizes.
+    // The width only feeds *estimated* heights for unmeasured rows, so it is
+    // enough to commit once the resize has settled.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const commit = () => {
       setViewportWidth((current) =>
         Math.abs(current - element.clientWidth) < 1 ? current : element.clientWidth,
       );
     };
+    const onResize = () => {
+      clearTimeout(settle);
+      settle = setTimeout(commit, getMotionPolicy().transitionDurationMs);
+    };
 
     const observer = new ResizeObserver(onResize);
     observer.observe(element);
-    onResize();
+    commit();
 
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(settle);
+      observer.disconnect();
+    };
   }, []);
 
   const turns = useMemo(() => {
