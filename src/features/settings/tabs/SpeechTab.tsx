@@ -540,8 +540,7 @@ export function SpeechTab() {
 
       <Box>
         <Button
-          variant="contained"
-          disableElevation
+          variant="default"
           onClick={handleTestSpeech}
           disabled={isDisabled}
           startIcon={
@@ -655,8 +654,8 @@ export function SpeechTab() {
             }
             action={
               <Button
-                size="small"
-                variant="outlined"
+                size="sm"
+                variant="outline"
                 onClick={() => setManageOpen(true)}
               >
                 {models.length > 0 ? "Manage models" : "Install model"}

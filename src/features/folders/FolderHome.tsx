@@ -189,7 +189,7 @@ export function FolderHome({ folder, onSubmit, onStop, isStreaming, providerOnli
             <Typography>No provider connected</Typography>
             <Typography>Start Ollama, then connect it to chat in this folder.</Typography>
           </Box>
-          <Button variant="outlined" onClick={onOpenConnections}>
+          <Button variant="outline" onClick={onOpenConnections}>
             Open Connections
           </Button>
         </Box>

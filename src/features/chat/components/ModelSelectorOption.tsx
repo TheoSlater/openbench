@@ -18,6 +18,7 @@ export function ModelSelectorStatus({
   return (
     <Box
       role="status"
+      className="flex items-center gap-2 px-3 py-4"
     >
       {icon}
       <Typography>{text}</Typography>
@@ -48,7 +49,6 @@ export function ModelSelectorOption({
     <ButtonBase
       as="div"
       role="option"
-      disableRipple
       aria-selected={selected}
       className={`flex items-center justify-between gap-3 px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-muted ${
         highlighted ? "bg-muted" : ""

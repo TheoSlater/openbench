@@ -124,8 +124,8 @@ export function DataControlsTab() {
         description="Export all conversations as JSON."
         action={
           <Button
-            size="small"
-            variant="outlined"
+            size="sm"
+            variant="outline"
             onClick={handleExport}
             disabled={exporting}
             startIcon={
@@ -142,8 +142,8 @@ export function DataControlsTab() {
         description="Move all conversations to the archived state."
         action={
           <Button
-            size="small"
-            variant="outlined"
+            size="sm"
+            variant="outline"
             color="warning"
             onClick={() => setArchiveOpen(true)}
             startIcon={<Archive size={14} />}
@@ -158,9 +158,8 @@ export function DataControlsTab() {
         description="Permanently remove all conversations and messages."
         action={
           <Button
-            size="small"
-            variant="outlined"
-            color="error"
+            size="sm"
+            variant="outline"
             onClick={() => setDeleteOpen(true)}
             startIcon={<Trash2 size={14} />}
           >

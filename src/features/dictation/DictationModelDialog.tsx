@@ -1,10 +1,7 @@
 import { Box } from "@/components/ui/Box";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
-import { Dialog } from "@/components/ui/dialog-panel";
-import { DialogActions } from "@/components/ui/dialog-panel";
-import { DialogContent } from "@/components/ui/dialog-panel";
-import { DialogTitle } from "@/components/ui/dialog-panel";
+import { Modal } from "@/components/ui/modal";
 import { LinearProgress } from "@/components/ui/linear-progress";
 import { Stack } from "@/components/ui/Stack";
 import { Typography } from "@/components/ui/Typography";
@@ -33,14 +30,22 @@ export function DictationModelDialog({
   onSelect,
 }: DictationModelDialogProps) {
   return (
-    <Dialog
+    <Modal
       open={open}
-      onClose={onClose}
-      fullWidth
-      maxWidth="sm"
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="Install dictation model"
+      maxWidth={384}
+      contentClassName="p-5"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose} disabled={!!installingModelId}>
+            Cancel
+          </Button>
+        </div>
+      }
     >
-      <DialogTitle>Install dictation model</DialogTitle>
-      <DialogContent>
         <Typography variant="body2" color="muted" className="mb-4">
           Dictation runs locally. Choose a Whisper model to download before recording.
         </Typography>
@@ -87,8 +92,8 @@ export function DictationModelDialog({
                   </Box>
 
                   <Button
-                    size="small"
-                    variant={model.installed ? "outlined" : "contained"}
+                    size="sm"
+                    variant={model.installed ? "outline" : "default"}
                     disabled={!!installingModelId}
                     onClick={() =>
                       model.installed
@@ -121,12 +126,6 @@ export function DictationModelDialog({
             );
           })}
         </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={!!installingModelId}>
-          Cancel
-        </Button>
-      </DialogActions>
-    </Dialog>
+    </Modal>
   );
 }

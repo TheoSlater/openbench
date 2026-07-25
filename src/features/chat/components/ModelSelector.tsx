@@ -183,7 +183,6 @@ export function ModelSelector({
             <ButtonBase
               key={item.id}
               role="tab"
-              disableRipple
               aria-selected={filter === item.id}
               onClick={() => setFilter(item.id)}
               className="rounded-xl bg-transparent px-3 py-1.5 text-xs text-muted-foreground transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)] hover:bg-muted/60 hover:text-foreground aria-selected:bg-accent aria-selected:text-foreground"

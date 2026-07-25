@@ -3,13 +3,9 @@ import { Box } from "@/components/ui/Box";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Collapse } from "@/components/ui/visibility";
-import { Dialog } from "@/components/ui/dialog-panel";
-import { DialogActions } from "@/components/ui/dialog-panel";
-import { DialogContent } from "@/components/ui/dialog-panel";
-import { DialogTitle } from "@/components/ui/dialog-panel";
+import { Modal } from "@/components/ui/modal";
 import { Divider } from "@/components/ui/divider";
 import { IconButton } from "@/components/ui/icon-button";
-import { Paper } from "@/components/ui/Paper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stack } from "@/components/ui/Stack";
 import { Switch } from "@/components/ui/switch";
@@ -281,8 +277,8 @@ function ProviderCard({
               />
               <Box />
               <Button
-                size="small"
-                variant="outlined"
+                size="sm"
+                variant="outline"
                 disabled={!dirty || saving || !host.trim()}
                 onClick={save}
               >
@@ -402,8 +398,8 @@ export function ConnectionsTab() {
         description="Connect local or cloud model providers."
         action={
           <Button
-            size="small"
-            variant="contained"
+            size="sm"
+            variant="default"
             startIcon={<Plus size={15} />}
             onClick={() => setAddOpen(true)}
           >
@@ -458,16 +454,29 @@ export function ConnectionsTab() {
       />
       <WebSearchSettings />
 
-      <Dialog open={addOpen} onClose={handleCloseAdd} maxWidth="sm" fullWidth>
-        <DialogTitle
-          className="flex items-center justify-between gap-3"
-        >
-          Add LLM Connection
-          <IconButton size="small" aria-label="Close" onClick={handleCloseAdd}>
-            <X size={18} />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent className="flex flex-col gap-4">
+      <Modal
+        open={addOpen}
+        onOpenChange={(next) => {
+          if (!next) handleCloseAdd();
+        }}
+        title="Add LLM Connection"
+        maxWidth={384}
+        contentClassName="flex flex-col gap-4 p-5"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={handleCloseAdd}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              disabled={!selectedPreset || !addApiBaseUrl.trim() || addingProvider}
+              onClick={saveAdd}
+            >
+              {addingProvider ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        }
+      >
           <Typography className="text-sm text-muted-foreground">
             Pick a provider preset or configure a custom connection.
           </Typography>
@@ -478,11 +487,12 @@ export function ConnectionsTab() {
             {PROVIDER_PRESETS.map((preset) => {
               const selected = selectedPreset?.id === preset.id;
               return (
-                <Paper
+                <button
                   key={preset.id}
-                  variant="outlined"
+                  type="button"
+                  aria-pressed={selected}
                   className={cn(
-                    "flex cursor-pointer items-center gap-3 rounded-xl border-border/70 bg-background/40 p-3 transition-colors hover:bg-muted/60",
+                    "flex items-center gap-3 rounded-xl border border-border/70 bg-background/40 p-3 text-left text-card-foreground transition-colors hover:bg-muted/60",
                     selected && "border-primary bg-primary/10",
                   )}
                   onClick={() => selectPreset(preset)}
@@ -498,7 +508,7 @@ export function ConnectionsTab() {
                   >
                     {preset.label}
                   </Typography>
-                </Paper>
+                </button>
               );
             })}
           </Box>
@@ -565,21 +575,7 @@ export function ConnectionsTab() {
               )}
             </Stack>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAdd}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disableElevation
-            disabled={!selectedPreset || !addApiBaseUrl.trim() || addingProvider}
-            onClick={saveAdd}
-          >
-            {addingProvider ? "Saving..." : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
