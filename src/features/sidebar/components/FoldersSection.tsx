@@ -57,7 +57,9 @@ export function FoldersSection({
 
   return (
     <SidebarGroup className="mb-1">
-      <div className="mb-0.5 px-3">
+      {/* px-2.5 + the group's own 10px padding lines this label up with the
+          chat rows and the "Chats" header below it. */}
+      <div className="mb-0.5 px-2.5">
         <SidebarSectionHeader
           label="Folders"
           disclosure={{
