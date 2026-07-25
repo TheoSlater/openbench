@@ -87,7 +87,12 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 24;
+const SETTINGS_VERSION = 25;
+
+function osPrefersReducedMotion(): boolean {
+  return typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
 
 export const defaultDictation: DictationSettings = {
   enabled: true,
@@ -97,7 +102,7 @@ export const defaultDictation: DictationSettings = {
 };
 
 export const defaultPerformance: PerformanceSettings = {
-  reduceMotion: false,
+  reduceMotion: osPrefersReducedMotion(),
   reduceTransparency: false,
   appZoom: 1,
   keepViewportActive: false,
@@ -282,6 +287,13 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 24 && state?.general) {
           state.general.memoryBeta = false;
+        }
+        if (version < 25 && osPrefersReducedMotion()) {
+          state.performance = {
+            ...defaultPerformance,
+            ...state.performance,
+            reduceMotion: true,
+          };
         }
         startupPhase("settings migration complete");
         return state as SettingsState;

@@ -70,7 +70,7 @@ export function InterfaceTab() {
       >
         <SettingRow
           title="Reduce motion"
-          description="Minimize animated transitions and loaders."
+          description="Starts from your OS preference. Override it here anytime."
           action={
             <Switch
               checked={performance.reduceMotion}

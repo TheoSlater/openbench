@@ -23,11 +23,7 @@ export function getPerformanceProfile(
   const hardwareConcurrency =
     hints.hardwareConcurrency ?? nav?.hardwareConcurrency ?? 4;
   const deviceMemory = hints.deviceMemory ?? nav?.deviceMemory ?? null;
-  const reducedMotion =
-    hints.reducedMotion ??
-    (typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) ??
-    false;
+  const reducedMotion = hints.reducedMotion ?? false;
 
   const lowCpu = hardwareConcurrency <= 2;
   const lowMemory = deviceMemory !== null && deviceMemory <= 2;

@@ -453,7 +453,10 @@ export const ChatArea = memo(function ChatArea({
           Sitting at the bottom of the chat area puts it directly above the
           composer. */}
       <Box className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
-        <ScrollButton className="pointer-events-auto bg-background/90 shadow-md backdrop-blur-sm" />
+        <ScrollButton
+          loading={isResponding}
+          className="pointer-events-auto bg-background/90 shadow-md backdrop-blur-sm"
+        />
       </Box>
     </StickToBottom>
   );

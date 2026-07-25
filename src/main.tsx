@@ -89,8 +89,7 @@ function Root() {
     document.documentElement.classList.toggle("dark", isDark);
   }, [mode, prefersDarkMode]);
 
-  // `reduce-motion` is the single gate every CSS animation checks, so it has
-  // to reflect the OS preference too — not just the in-app setting.
+  // OS preference seeds this setting once; user choice controls it afterward.
   const reduceMotion = useReducedMotion();
   useEffect(() => {
     document.documentElement.classList.toggle("reduce-motion", reduceMotion);
