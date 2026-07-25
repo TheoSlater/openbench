@@ -534,7 +534,7 @@ fn is_sse_response(response: &reqwest::Response) -> bool {
         .unwrap_or(false)
 }
 
-fn extract_error_message(body: &str) -> Option<String> {
+pub(crate) fn extract_error_message(body: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(body).ok()?;
     value
         .get("error")
@@ -559,7 +559,7 @@ fn normalize_network_error(error: reqwest::Error) -> String {
 }
 
 #[derive(Default)]
-struct SseParser {
+pub(crate) struct SseParser {
     buffer: Vec<u8>,
 }
 
@@ -569,12 +569,12 @@ impl SseParser {
         self.push_bytes(chunk.as_bytes())
     }
 
-    fn push_bytes(&mut self, chunk: &[u8]) -> Vec<String> {
+    pub(crate) fn push_bytes(&mut self, chunk: &[u8]) -> Vec<String> {
         self.buffer.extend_from_slice(chunk);
         self.drain(false)
     }
 
-    fn finish(&mut self) -> Vec<String> {
+    pub(crate) fn finish(&mut self) -> Vec<String> {
         self.drain(true)
     }
 

@@ -240,10 +240,7 @@ export function useCommandPaletteItems({
     const featureItems: CommandPaletteItem[] = features.map((feature) => {
       const Icon = feature.icon;
       const active = feature.active;
-      const title =
-        feature.id === "poly-agent"
-          ? "Experimental Agent Mode"
-          : feature.name;
+      const title = feature.name;
       return {
         id: `feature:${feature.id}`,
         title: `${active ? "\u2713" : "\u2715"} ${title}`,

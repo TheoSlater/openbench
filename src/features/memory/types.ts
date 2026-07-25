@@ -1,4 +1,4 @@
-export type MemoryScope = "user" | "project" | "chat" | "agent";
+export type MemoryScope = "user" | "project" | "chat";
 export type MemoryCategory =
   | "identity"
   | "preference"
@@ -18,7 +18,6 @@ export type MemorySettings = {
   enableUserMemory: boolean;
   enableProjectMemory: boolean;
   enableChatMemory: boolean;
-  enableAgentMemory: boolean;
   allowTemporaryRecall: boolean;
   retrievalLimit: number;
   tokenBudget: number;

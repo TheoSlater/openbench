@@ -3,8 +3,7 @@ use super::providers::{
 };
 use super::ranking::rank_and_fuse;
 use super::types::{
-    ProviderFailure, RawSearchResult, SearchResult, SearchWebRequest, SearchWebResponse,
-    WebSearchError,
+    ProviderFailure, RawSearchResult, SearchWebRequest, SearchWebResponse, WebSearchError,
 };
 use reqwest::{redirect::Policy, Client};
 use std::collections::HashMap;
@@ -17,8 +16,6 @@ const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 static CLIENT: OnceLock<Client> = OnceLock::new();
 static SEARCH_CACHE: OnceLock<Mutex<HashMap<String, (Instant, SearchWebResponse)>>> =
     OnceLock::new();
-type SessionEntry = (Instant, String, SearchResult);
-static SESSION: OnceLock<Mutex<HashMap<String, SessionEntry>>> = OnceLock::new();
 
 pub async fn search_web(mut request: SearchWebRequest) -> SearchWebResponse {
     request.query = request.query.trim().to_string();
@@ -56,7 +53,6 @@ pub async fn search_web(mut request: SearchWebRequest) -> SearchWebResponse {
 
     raw.retain(|item| domain_allowed(item.url.host_str().unwrap_or_default(), &request));
     let results = rank_and_fuse(&request.query, raw, max);
-    store_session(&request.query, &results);
     let response = SearchWebResponse {
         query: request.query,
         results,
@@ -66,16 +62,6 @@ pub async fn search_web(mut request: SearchWebRequest) -> SearchWebResponse {
     };
     put_cache(cache_key, response.clone());
     response
-}
-
-pub fn resolve_result(result_id: &str) -> Option<(String, SearchResult)> {
-    let session = SESSION.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = session.lock().ok()?;
-    let now = Instant::now();
-    guard.retain(|_, (created, _, _)| now.duration_since(*created) < Duration::from_secs(30 * 60));
-    guard
-        .get(result_id)
-        .map(|(_, query, result)| (query.clone(), result.clone()))
 }
 
 pub fn http_client() -> &'static Client {
@@ -177,20 +163,5 @@ fn put_cache(key: String, response: SearchWebResponse) {
             guard.clear();
         }
         guard.insert(key, (Instant::now(), response));
-    }
-}
-
-fn store_session(query: &str, results: &[SearchResult]) {
-    let session = SESSION.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut guard) = session.lock() {
-        if guard.len() > 256 {
-            guard.clear();
-        }
-        for result in results {
-            guard.insert(
-                result.id.clone(),
-                (Instant::now(), query.to_string(), result.clone()),
-            );
-        }
     }
 }

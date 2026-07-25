@@ -67,7 +67,6 @@ function defaultSettings(ownerId: string, current?: MemorySettings | null): Memo
     enableUserMemory: true,
     enableProjectMemory: true,
     enableChatMemory: true,
-    enableAgentMemory: true,
     allowTemporaryRecall: false,
     retrievalLimit: 8,
     tokenBudget: 600,
@@ -287,7 +286,6 @@ export function MemoryTab() {
             ["enableUserMemory", "User memory", "Across chats for current profile."],
             ["enableProjectMemory", "Project memory", "Only inside relevant workspace or folder."],
             ["enableChatMemory", "Chat memory", "Only inside originating conversation."],
-            ["enableAgentMemory", "Agent memory", "Only for matching agent configuration."],
           ].map(([key, title, description]) => (
             <SettingCard
               key={key}

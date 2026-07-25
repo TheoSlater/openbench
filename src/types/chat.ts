@@ -1,5 +1,4 @@
 import type { ModelProvider } from "@/store/modelStore";
-import type { AgentMessageState, AgentWorkspaceSelection } from "@/features/agent/types";
 
 export type Role = "user" | "assistant";
 
@@ -19,9 +18,6 @@ export interface Conversation {
 
 export interface ConversationMetadata {
   activeFeatureIds?: string[];
-  agent?: {
-    workspaceSelection?: AgentWorkspaceSelection;
-  };
   surfaces?: Array<{
     kind: string;
     id: string;
@@ -73,7 +69,6 @@ export interface ChatMessage {
   status?: "queued" | "streaming" | "complete" | "error" | "aborted";
   errorMessage?: string;
   webSearch?: WebSearchEvent;
-  agent?: AgentMessageState;
   /** Summaries of memories saved from this turn. In-memory only, not persisted. */
   memoryUpdates?: string[];
 }

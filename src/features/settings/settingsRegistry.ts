@@ -132,7 +132,7 @@ export const ADVANCED_SETTINGS_ITEM: AdvancedSettingsNavItem = {
   label: "Advanced",
   description: "Experimental, developer, diagnostics, and low-level configuration.",
   icon: SlidersHorizontal,
-  keywords: ["advanced", "developer", "experimental", "agent", "diagnostics", "sql"],
+  keywords: ["advanced", "developer", "experimental", "diagnostics", "sql"],
   viewId: ADVANCED_SETTINGS_VIEW_ID,
 };
 

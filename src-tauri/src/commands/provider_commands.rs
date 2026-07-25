@@ -47,7 +47,10 @@ fn normalize_account_arg(account_id: Option<String>) -> Option<String> {
 fn should_preload_models(provider_type: ProviderType) -> bool {
     matches!(
         provider_type,
-        ProviderType::OllamaLocal | ProviderType::OpenAICompatible
+        ProviderType::OllamaLocal
+            | ProviderType::OpenAICompatible
+            | ProviderType::AnthropicNative
+            | ProviderType::GeminiNative
     )
 }
 

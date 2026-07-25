@@ -1,6 +1,8 @@
+use crate::providers::anthropic::AnthropicNativeProvider;
 use crate::providers::base::{
     ChatProvider, LocalModelManager, ModelCatalog, ProviderConfig, ProviderType,
 };
+use crate::providers::gemini::GeminiNativeProvider;
 use crate::providers::ollama::OllamaProvider;
 use crate::providers::openai_compatible::OpenAICompatibleProvider;
 use crate::providers::profile::ProviderProfile;
@@ -25,6 +27,14 @@ impl ProviderFactory {
                 profile.api_key.unwrap_or_default(),
                 profile.headers,
             ))),
+            ProviderType::AnthropicNative => Some(Box::new(AnthropicNativeProvider::new(
+                profile.endpoint,
+                profile.api_key,
+            ))),
+            ProviderType::GeminiNative => Some(Box::new(GeminiNativeProvider::new(
+                profile.endpoint,
+                profile.api_key,
+            ))),
         }
     }
 
@@ -44,6 +54,14 @@ impl ProviderFactory {
                 profile.endpoint,
                 profile.api_key.unwrap_or_default(),
                 profile.headers,
+            ))),
+            ProviderType::AnthropicNative => Some(Box::new(AnthropicNativeProvider::new(
+                profile.endpoint,
+                profile.api_key,
+            ))),
+            ProviderType::GeminiNative => Some(Box::new(GeminiNativeProvider::new(
+                profile.endpoint,
+                profile.api_key,
             ))),
         }
     }

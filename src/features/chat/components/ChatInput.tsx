@@ -43,12 +43,7 @@ import { SlashCommandMenu } from "@/features/chat/components/ChatInput/SlashComm
 import { ChatAttachmentsList } from "@/features/chat/components/ChatInput/ChatAttachmentsList";
 import { cn } from "@/lib/utils";
 
-import {
-  DRAFT_WORKSPACE_SELECTION_CHAT_ID,
-  useAgentStore,
-} from "@/features/agent/agentStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { AgentComposerControls } from "@/features/agent/AgentComposerControls";
 import { useChatStore } from "@/store/chatStore";
 import type { ConversationMetadata } from "@/types/chat";
 
@@ -83,11 +78,6 @@ export const ChatInput = memo(function ChatInput({
     chars: number;
   } | null>(null);
   const restoringChatIdRef = useRef<string | null>(null);
-  const experimentalFeatures = useSettingsStore(
-    (state) => state.general.experimentalFeatures,
-  );
-  const agentEnabled =
-    useAgentStore((state) => state.enabled) && experimentalFeatures;
   const activeConversation = useChatStore((state) =>
     conversationId ? state.conversations.find((c) => c.id === conversationId) : undefined,
   );
@@ -99,20 +89,6 @@ export const ChatInput = memo(function ChatInput({
   );
   const voiceModeExperimental = useSettingsStore(
     (state) => state.general.voiceModeExperimental,
-  );
-
-  const workspaceSelectionKey =
-    conversationId ?? DRAFT_WORKSPACE_SELECTION_CHAT_ID;
-
-  const hasWorkspace = !!useAgentStore((state) =>
-    workspaceSelectionKey
-      ? state.workspaceSelections[workspaceSelectionKey]
-      : undefined,
-  );
-  const workspaceSelection = useAgentStore((state) =>
-    workspaceSelectionKey
-      ? state.workspaceSelections[workspaceSelectionKey]
-      : undefined,
   );
 
   const {
@@ -226,18 +202,10 @@ export const ChatInput = memo(function ChatInput({
     restoringChatIdRef.current = conversationId;
     const ids = new Set(activeConversation.metadata.activeFeatureIds ?? []);
     const settings = useSettingsStore.getState();
-    const agent = useAgentStore.getState();
 
     settings.actions.updateGeneral({
       webSearchEnabled: ids.has("web_search"),
     });
-    if (settings.general.experimentalFeatures) {
-      agent.actions.setEnabled(ids.has("poly-agent"));
-    }
-    const savedSelection = activeConversation.metadata.agent?.workspaceSelection;
-    if (savedSelection) {
-      agent.actions.setSelectedWorkspaceSelection(conversationId, savedSelection);
-    }
     requestAnimationFrame(() => {
       if (restoringChatIdRef.current === conversationId) restoringChatIdRef.current = null;
     });
@@ -249,9 +217,6 @@ export const ChatInput = memo(function ChatInput({
     const next: ConversationMetadata = {
       ...activeConversation.metadata,
       activeFeatureIds,
-      agent: workspaceSelection
-        ? { ...activeConversation.metadata?.agent, workspaceSelection }
-        : activeConversation.metadata?.agent,
     };
     if (JSON.stringify(next) === JSON.stringify(activeConversation.metadata ?? {})) return;
     void updateConversationMetadata(conversationId, next);
@@ -261,7 +226,6 @@ export const ChatInput = memo(function ChatInput({
     activeFeatureIds,
     conversationId,
     updateConversationMetadata,
-    workspaceSelection,
   ]);
 
   const hasContent =
@@ -318,8 +282,6 @@ export const ChatInput = memo(function ChatInput({
 
   const handleSubmit = useCallback(() => {
     if (!hasContent && !pastedPreview) return;
-    if (agentEnabled && !hasWorkspace) return;
-
     const finalText = pastedPreview
       ? draft.trim()
         ? `${draft}\n\n${pastedPreview.text}`
@@ -332,8 +294,6 @@ export const ChatInput = memo(function ChatInput({
     setPastedPreview(null);
   }, [
     hasContent,
-    agentEnabled,
-    hasWorkspace,
     draft,
     pastedPreview,
     onSubmit,
@@ -466,13 +426,7 @@ export const ChatInput = memo(function ChatInput({
               multiline
               inputRef={textareaRef}
               minRows={1}
-              placeholder={
-                agentEnabled
-                  ? hasWorkspace
-                    ? "Ask Poly Agent..."
-                    : "Select a project or sandbox to use Poly Agent..."
-                  : "How can I help you today?"
-              }
+              placeholder="How can I help you today?"
               value={draft}
               className="min-h-8 resize-none text-sm leading-6 placeholder:text-muted-foreground"
               onChange={(e) => setDraft(e.target.value)}
@@ -651,7 +605,7 @@ export const ChatInput = memo(function ChatInput({
                       ? false
                       : isStreaming
                         ? false
-                        : !hasContent || (agentEnabled && !hasWorkspace)
+                        : !hasContent
                   }
                   aria-label={
                     showVoiceModeAction
@@ -675,15 +629,6 @@ export const ChatInput = memo(function ChatInput({
           </Box>
         </Box>
 
-        {agentEnabled && (
-          <Box className="mt-2 flex items-center gap-2 px-1">
-            <AgentComposerControls
-              disabled={isStreaming}
-              chatId={workspaceSelectionKey}
-              mode="all"
-            />
-          </Box>
-        )}
       </Box>
 
       <DictationModelDialog

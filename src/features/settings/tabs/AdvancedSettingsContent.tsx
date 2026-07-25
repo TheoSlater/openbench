@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection, SettingRow } from "../SettingsShell";
 import { useSettingsStore } from "@/store/settingsStore";
-import { useAgentStore } from "@/features/agent/agentStore";
 import {
   disableMemoryForOwner,
   memoryGetSettings,
@@ -13,7 +12,7 @@ import { getCurrentProviderAccountId } from "@/features/providers";
 import { IS_LINUX } from "@/lib/utils/platform";
 import { useConfirmStore } from "@/store/confirmStore";
 import { useNotify } from "@/hooks/useNotify";
-import * as native from "@/features/agent/native";
+import * as native from "@/features/viewport/native";
 
 export function AdvancedSettingsContent() {
   const { experimentalChromiumBrowser, experimentalFeatures, memoryBeta, actions } = useSettingsStore(
@@ -24,16 +23,11 @@ export function AdvancedSettingsContent() {
       actions: state.actions,
     })),
   );
-  const agentEnabled = useAgentStore((state) => state.enabled);
-  const setAgentEnabled = useAgentStore((state) => state.actions.setEnabled);
   const notify = useNotify();
 
   const handleExperimentalToggle = useCallback((checked: boolean) => {
     actions.updateGeneral({ experimentalFeatures: checked });
-    if (!checked) {
-      setAgentEnabled(false);
-    }
-  }, [actions, setAgentEnabled]);
+  }, [actions]);
 
   const handleMemoryToggle = useCallback((checked: boolean) => {
     actions.updateGeneral({ memoryBeta: checked });
@@ -87,7 +81,7 @@ export function AdvancedSettingsContent() {
     >
       <SettingRow
         title="Enable experimental features"
-        description="Unlocks in-development features like Poly Agent."
+        description="Unlocks in-development features."
         action={
           <Switch
             checked={experimentalFeatures}
@@ -95,21 +89,6 @@ export function AdvancedSettingsContent() {
           />
         }
       />
-      <SettingRow
-        title="Poly Agent"
-        description="Experimental agent mode for workspace inspection and file edits."
-        action={
-          <Switch
-            checked={experimentalFeatures && agentEnabled}
-            disabled={!experimentalFeatures}
-            onCheckedChange={setAgentEnabled}
-          />
-        }
-      >
-        <p className="text-sm text-muted-foreground">
-          Off by default. Requires explicit tool approvals unless you choose a broader approval preset in chat.
-        </p>
-      </SettingRow>
       <SettingRow
         title="Memory (Beta)"
         description="Remember information across chats. Poly extracts and recalls relevant context automatically."
@@ -127,7 +106,7 @@ export function AdvancedSettingsContent() {
       {IS_LINUX ? (
         <SettingRow
           title="Experimental Chromium browser"
-          description="Use Chromium instead of the iframe browser for agent viewport pages."
+          description="Use Chromium instead of the iframe browser for viewport pages."
           action={
             <Switch
               checked={experimentalChromiumBrowser}

@@ -581,13 +581,13 @@ impl MemoryRepository for SqliteMemoryRepository {
             INSERT INTO memory_settings (
                 owner_id, enabled, provider, automatic_extraction,
                 require_sensitive_confirmation, enable_user_memory, enable_project_memory,
-                enable_chat_memory, enable_agent_memory, allow_temporary_recall,
+                enable_chat_memory, allow_temporary_recall,
                 retrieval_limit, token_budget, extraction_provider_id,
                 extraction_provider, extraction_model, extraction_api_base_url,
                 embedding_provider_id, embedding_provider, embedding_model,
                 embedding_api_base_url, mem0_endpoint, locality, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?23)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?22)
             ON CONFLICT(owner_id) DO UPDATE SET
                 enabled = excluded.enabled,
                 provider = excluded.provider,
@@ -596,7 +596,6 @@ impl MemoryRepository for SqliteMemoryRepository {
                 enable_user_memory = excluded.enable_user_memory,
                 enable_project_memory = excluded.enable_project_memory,
                 enable_chat_memory = excluded.enable_chat_memory,
-                enable_agent_memory = excluded.enable_agent_memory,
                 allow_temporary_recall = excluded.allow_temporary_recall,
                 retrieval_limit = excluded.retrieval_limit,
                 token_budget = excluded.token_budget,
@@ -621,7 +620,6 @@ impl MemoryRepository for SqliteMemoryRepository {
         .bind(settings.enable_user_memory)
         .bind(settings.enable_project_memory)
         .bind(settings.enable_chat_memory)
-        .bind(settings.enable_agent_memory)
         .bind(settings.allow_temporary_recall)
         .bind(settings.retrieval_limit.clamp(1, 50))
         .bind(settings.token_budget.clamp(64, 4_000))
@@ -1056,10 +1054,10 @@ impl MemoryRepository for SqliteMemoryRepository {
             INSERT OR IGNORE INTO memory_processing_queue (
                 turn_id, owner_id, conversation_id, user_message_id, assistant_message_id,
                 user_scope_owner_id, project_scope_owner_id, chat_scope_owner_id,
-                agent_scope_owner_id, state, last_error, created_at, updated_at,
+                state, last_error, created_at, updated_at,
                 completed_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?13)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12)
             "#,
         )
         .bind(&turn_id)
@@ -1070,7 +1068,6 @@ impl MemoryRepository for SqliteMemoryRepository {
         .bind(input.user_scope_owner_id)
         .bind(input.project_scope_owner_id)
         .bind(input.chat_scope_owner_id)
-        .bind(input.agent_scope_owner_id)
         .bind(state.to_string())
         .bind(reason)
         .bind(&now)
@@ -1110,7 +1107,6 @@ fn row_to_settings(row: sqlx::sqlite::SqliteRow) -> Result<MemorySettings, Memor
         enable_user_memory: row.get::<bool, _>("enable_user_memory"),
         enable_project_memory: row.get::<bool, _>("enable_project_memory"),
         enable_chat_memory: row.get::<bool, _>("enable_chat_memory"),
-        enable_agent_memory: row.get::<bool, _>("enable_agent_memory"),
         allow_temporary_recall: row.get::<bool, _>("allow_temporary_recall"),
         retrieval_limit: row.get("retrieval_limit"),
         token_budget: row.get("token_budget"),
@@ -1229,7 +1225,6 @@ mod tests {
                 MemoryScope::User => "user-1",
                 MemoryScope::Project => "project-1",
                 MemoryScope::Chat => "chat-1",
-                MemoryScope::Agent => "agent-1",
             }
             .to_string(),
             category: MemoryCategory::Preference,
@@ -1448,7 +1443,6 @@ mod tests {
             user_scope_owner_id: Some("user-1".to_string()),
             project_scope_owner_id: None,
             chat_scope_owner_id: Some("chat-1".to_string()),
-            agent_scope_owner_id: None,
             skip_reason: Some("temporary chats do not run automatic memory extraction".to_string()),
             user_content: "Remember my preference".to_string(),
             assistant_content: "Done".to_string(),
@@ -1472,7 +1466,6 @@ mod tests {
             user_scope_owner_id: Some("user-1".to_string()),
             project_scope_owner_id: None,
             chat_scope_owner_id: Some("chat-1".to_string()),
-            agent_scope_owner_id: None,
             skip_reason: None,
             user_content: "My name is Theo".to_string(),
             assistant_content: "Got it".to_string(),

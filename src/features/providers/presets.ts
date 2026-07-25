@@ -1,4 +1,8 @@
-export type ProviderKind = "ollama-local" | "openai-compatible";
+export type ProviderKind =
+  | "ollama-local"
+  | "openai-compatible"
+  | "anthropic-native"
+  | "gemini-native";
 
 export interface ProviderPreset {
   id: string;
@@ -62,6 +66,22 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: "https://api.deepseek.com/v1",
     requiresApiKey: true,
     modelSuggestions: ["deepseek-chat", "deepseek-reasoner"],
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    kind: "anthropic-native",
+    baseUrl: "https://api.anthropic.com/v1",
+    requiresApiKey: true,
+    modelSuggestions: ["claude-sonnet-4-20250514", "claude-haiku-4-20250414"],
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    kind: "gemini-native",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    requiresApiKey: true,
+    modelSuggestions: ["gemini-2.5-pro", "gemini-2.5-flash"],
   },
   {
     id: "ollama",

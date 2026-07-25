@@ -9,10 +9,6 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub use exa::ExaWebSearchClient;
-pub use local::{
-    read_web_results, search_web,
-    types::{ReadWebResultsRequest, ReadWebResultsResponse, SearchWebRequest, SearchWebResponse},
-};
 pub use ollama::OllamaWebSearchClient;
 pub use tavily::TavilyWebSearchClient;
 

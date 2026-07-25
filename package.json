@@ -11,7 +11,6 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync-agent-types": "node scripts/sync-agent-types.mjs",
     "release-notes:generate": "node scripts/generate-release-notes.mjs",
     "ollama-setup": "node scripts/build-with-ollama.mjs"
   },

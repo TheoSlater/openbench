@@ -1,8 +1,7 @@
-import { Bot, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import React from "react";
 import { getWebSearchWarning } from "@/features/web-search/useWebSearchConfig";
 import { useSettingsStore } from "@/store/settingsStore";
-import { useAgentStore } from "@/features/agent/agentStore";
 
 export type FeatureKind = "toggle" | "forced_toggle";
 
@@ -20,28 +19,6 @@ export interface FeatureDef {
 }
 
 export const featureRegistry: FeatureDef[] = [
-  {
-    id: "poly-agent",
-    name: "Poly Agent",
-    kind: "toggle",
-    description: "Experimental coding agent for inspecting and editing the selected workspace.",
-    icon: Bot,
-    useIsActive: () => {
-      const experimentalEnabled = useSettingsStore((state) => state.general.experimentalFeatures);
-      const agentEnabled = useAgentStore((state) => state.enabled);
-      return experimentalEnabled && agentEnabled;
-    },
-    getIsActive: () =>
-      useSettingsStore.getState().general.experimentalFeatures &&
-      useAgentStore.getState().enabled,
-    toggle: () => {
-      if (!useSettingsStore.getState().general.experimentalFeatures) return;
-      const state = useAgentStore.getState();
-      state.actions.setEnabled(!state.enabled);
-    },
-    experimental: true,
-    getWarning: () => "Experimental",
-  },
   {
     id: "web_search",
     name: "Web search",
@@ -66,7 +43,6 @@ export function isFeatureAIActive(featureId: string): boolean {
 
 export function useFeatures() {
   const webSearchEnabled = useSettingsStore((state) => state.general.webSearchEnabled);
-  const agentEnabled = useAgentStore((state) => state.enabled);
   const experimentalEnabled = useSettingsStore((state) => state.general.experimentalFeatures);
 
   return featureRegistry
@@ -74,7 +50,6 @@ export function useFeatures() {
     .map((feature) => {
       let active: boolean;
       if (feature.id === "web_search") active = webSearchEnabled;
-      else if (feature.id === "poly-agent") active = experimentalEnabled && agentEnabled;
       else active = feature.getIsActive();
       return { ...feature, active, warning: feature.getWarning?.() };
     });

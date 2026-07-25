@@ -34,7 +34,7 @@ export function mapRowToConversation(row: { id: string; title: string; createdAt
   };
 }
 
-export function mapRowToMessage(row: { id: string; conversationId: string; role: "user" | "assistant"; content: string; createdAt: string; attachments?: string; model?: string; provider?: Message["provider"]; thinking?: string; thinkingDuration?: number; webSearch?: string; agent?: string; status?: Message["status"]; errorMessage?: string; memoryUpdates?: string }): Message {
+export function mapRowToMessage(row: { id: string; conversationId: string; role: "user" | "assistant"; content: string; createdAt: string; attachments?: string; model?: string; provider?: Message["provider"]; thinking?: string; thinkingDuration?: number; webSearch?: string; status?: Message["status"]; errorMessage?: string; memoryUpdates?: string }): Message {
   return {
     id: row.id,
     conversationId: row.conversationId,
@@ -47,7 +47,6 @@ export function mapRowToMessage(row: { id: string; conversationId: string; role:
     thinking: row.thinking,
     thinkingDuration: row.thinkingDuration,
     webSearch: row.webSearch ? JSON.parse(row.webSearch) : undefined,
-    agent: row.agent ? JSON.parse(row.agent) : undefined,
     status: row.status,
     errorMessage: row.errorMessage,
     memoryUpdates: row.memoryUpdates ? JSON.parse(row.memoryUpdates) : undefined,

@@ -1,4 +1,4 @@
-import { moveBrowserHistory, pushBrowserHistory, resolveBrowserInput } from "../src/features/agent/browserNavigation";
+import { moveBrowserHistory, pushBrowserHistory, resolveBrowserInput } from "../src/features/viewport/browserNavigation";
 
 describe("browser navigation input", () => {
   it("keeps full http urls", () => {

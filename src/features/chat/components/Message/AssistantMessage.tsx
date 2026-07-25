@@ -36,35 +36,7 @@ import {
 } from "./hooks";
 import { MemoryMenuItems } from "./MemoryMenuItems";
 import { MarkdownProse } from "./MarkdownProse";
-import { AgentActivity } from "@/features/agent/AgentActivity";
-import {
-  approveAgentToolCall,
-  getAgentRunState,
-  rejectAgentToolCall,
-} from "@/features/agent/agentClient";
-import type { AgentApproval } from "@/features/agent/types";
 import { useSettingsStore } from "@/store/settingsStore";
-
-function agentResultText(agent: NonNullable<MessageProps["agent"]>, content: string): string | undefined {
-  const text = content.trim();
-  if (!text) return undefined;
-  if (agent.status === "failed") return text;
-  if (agent.editedFiles.length > 0) return text;
-  if (agent.approvals.length > 0) return text;
-  if (agent.request?.fileEditRequested) return text;
-  if (looksLikeClarification(text)) return text;
-  if (isFallbackAgentContent(text)) return text;
-  return undefined;
-}
-
-function isFallbackAgentContent(content: string): boolean {
-  const trimmed = content.trim();
-  return /^(I tried|I edited|I created|The Poly Agent)/i.test(trimmed);
-}
-
-function looksLikeClarification(text: string) {
-  return /\b(clarif|ambiguous|need (more|additional|details|information)|please specify|which file)\b/i.test(text);
-}
 
 export function AssistantMessage(props: MessageProps) {
   const {
@@ -81,7 +53,6 @@ export function AssistantMessage(props: MessageProps) {
     errorMessage,
     onRegenerate,
     webSearch,
-    agent,
     isLastMessage,
     memoryUpdates,
   } = props;
@@ -108,35 +79,15 @@ export function AssistantMessage(props: MessageProps) {
     !isStreaming &&
     status !== "error" &&
     status !== "aborted" &&
-    !agent &&
     !content.trim() &&
     Boolean(thinking?.trim());
-  const agentBodyText = agent ? agentResultText(agent, content) : undefined;
-
-  const handleAgentApproval = async (kind: "approve" | "reject", approval: AgentApproval) => {
-    if (!agent?.runId) return;
-    try {
-      const state = await getAgentRunState(agent.runId).catch(() => null);
-      const approvalId = state?.pending_approval?.approval_id ?? approval.approvalId;
-      if (kind === "approve") {
-        await approveAgentToolCall(agent.runId, approvalId);
-        return;
-      }
-      await rejectAgentToolCall(agent.runId, approvalId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.toLowerCase().includes("no pending approval")) return;
-      notify.error("Approval failed", message);
-      throw err;
-    }
-  };
 
   return (
     <Box
       className="group/message mr-auto flex w-full max-w-[min(100%,48rem)] flex-col gap-2"
     >
       <Box className="px-4 py-3 text-card-foreground">
-        {model && !agent && (
+        {model && (
           <Typography
             variant="caption"
             color="text.secondary"
@@ -146,7 +97,7 @@ export function AssistantMessage(props: MessageProps) {
           </Typography>
         )}
 
-         {status === "error" && !agent && (
+         {status === "error" && (
           <Box
             className="mb-3 flex gap-3 rounded-2xl border border-destructive/25 bg-destructive/10 p-3 text-destructive"
           >
@@ -215,17 +166,8 @@ export function AssistantMessage(props: MessageProps) {
           </Box>
         )}
 
-        {agent && (
-          <AgentActivity
-            agent={agent}
-            resultText={agentBodyText}
-            onResolveApproval={handleAgentApproval}
-            onRetry={canRegenerate && typeof messageIndex === "number" ? () => onRegenerate(messageIndex) : undefined}
-          />
-        )}
-
         {/* ── Markdown Core Message Body ── */}
-        {content && (!agent || !agentBodyText) ? (
+        {content ? (
           <Box
             id={`message-${messageIndex}`}
             className="min-w-0"

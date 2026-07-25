@@ -10,7 +10,6 @@ pub enum MemoryScope {
     User,
     Project,
     Chat,
-    Agent,
 }
 
 impl MemoryScope {
@@ -19,7 +18,6 @@ impl MemoryScope {
             MemoryScope::User => "user",
             MemoryScope::Project => "project",
             MemoryScope::Chat => "chat",
-            MemoryScope::Agent => "agent",
         }
     }
 }
@@ -38,7 +36,6 @@ impl FromStr for MemoryScope {
             "user" => Ok(MemoryScope::User),
             "project" => Ok(MemoryScope::Project),
             "chat" => Ok(MemoryScope::Chat),
-            "agent" => Ok(MemoryScope::Agent),
             other => Err(format!("unknown memory scope: {other}")),
         }
     }
@@ -217,7 +214,6 @@ pub struct MemorySettings {
     pub enable_user_memory: bool,
     pub enable_project_memory: bool,
     pub enable_chat_memory: bool,
-    pub enable_agent_memory: bool,
     pub allow_temporary_recall: bool,
     pub retrieval_limit: i64,
     pub token_budget: i64,
@@ -244,7 +240,6 @@ impl MemorySettings {
             enable_user_memory: true,
             enable_project_memory: true,
             enable_chat_memory: true,
-            enable_agent_memory: true,
             allow_temporary_recall: false,
             retrieval_limit: 8,
             token_budget: 600,
@@ -364,7 +359,6 @@ pub struct MemoryCompletedTurnRecordInput {
     pub user_scope_owner_id: Option<String>,
     pub project_scope_owner_id: Option<String>,
     pub chat_scope_owner_id: Option<String>,
-    pub agent_scope_owner_id: Option<String>,
     pub skip_reason: Option<String>,
     pub user_content: String,
     pub assistant_content: String,

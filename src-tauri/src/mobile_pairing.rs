@@ -689,7 +689,7 @@ async fn insert_message(db: &sqlx::SqlitePool, message: &BrowserMessageRequest) 
             .execute(db)
             .await;
     }
-    sqlx::query("INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, agent, status, errorMessage) VALUES (?1, ?2, ?3, ?4, datetime('now'), NULL, ?5, ?6, NULL, NULL, NULL, NULL, 'complete', NULL)")
+    sqlx::query("INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage) VALUES (?1, ?2, ?3, ?4, datetime('now'), NULL, ?5, ?6, NULL, NULL, NULL, 'complete', NULL)")
         .bind(&message.id)
         .bind(&message.conversation_id)
         .bind(&message.role)

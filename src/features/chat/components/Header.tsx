@@ -34,7 +34,7 @@ import {
   useMemoryPanelOpen,
 } from "@/features/memory/MemoryPanel";
 import { useConversationMemoryCount } from "@/features/memory/useConversationMemoryCount";
-import { openEmptyViewport, useViewportStore } from "@/features/agent/viewportStore";
+import { openEmptyViewport, useViewportStore } from "@/features/viewport/viewportStore";
 
 
 interface HeaderProps {

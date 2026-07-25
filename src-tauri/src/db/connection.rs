@@ -38,7 +38,7 @@ pub async fn init_db<R: Runtime>(app: &AppHandle<R>) -> Result<SqlitePool, Strin
     startup_log::log_phase("database migrations complete");
 
     // Remove stale rows from earlier provider types.
-    sqlx::query("DELETE FROM provider_configs WHERE provider_type NOT IN ('OllamaLocal', 'OpenAICompatible')")
+    sqlx::query("DELETE FROM provider_configs WHERE provider_type NOT IN ('OllamaLocal', 'OpenAICompatible', 'AnthropicNative', 'GeminiNative')")
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -78,6 +78,40 @@ pub async fn ensure_default_provider_configs(
             WHERE account_id = ?1
               AND provider_type = 'OpenAICompatible'
               AND api_base_url = 'https://api.openai.com/v1'
+        )
+        "#,
+    )
+    .bind(&account_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO provider_configs (account_id, provider_type, enabled, api_base_url, priority)
+        SELECT ?1, 'AnthropicNative', 0, 'https://api.anthropic.com/v1', 2
+        WHERE NOT EXISTS (
+            SELECT 1 FROM provider_configs
+            WHERE account_id = ?1
+              AND provider_type = 'AnthropicNative'
+              AND api_base_url = 'https://api.anthropic.com/v1'
+        )
+        "#,
+    )
+    .bind(&account_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO provider_configs (account_id, provider_type, enabled, api_base_url, priority)
+        SELECT ?1, 'GeminiNative', 0, 'https://generativelanguage.googleapis.com/v1beta', 3
+        WHERE NOT EXISTS (
+            SELECT 1 FROM provider_configs
+            WHERE account_id = ?1
+              AND provider_type = 'GeminiNative'
+              AND api_base_url = 'https://generativelanguage.googleapis.com/v1beta'
         )
         "#,
     )
@@ -155,7 +189,6 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
             thinking TEXT,
             thinkingDuration REAL,
             webSearch TEXT,
-            agent TEXT,
             status TEXT,
             errorMessage TEXT,
             memoryUpdates TEXT
@@ -190,21 +223,6 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
 
     if !has_provider {
         sqlx::query("ALTER TABLE messages ADD COLUMN provider TEXT")
-            .execute(pool)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    let has_agent =
-        sqlx::query("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'agent'")
-            .fetch_one(pool)
-            .await
-            .map_err(|e| e.to_string())?
-            .get::<i64, _>(0)
-            > 0;
-
-    if !has_agent {
-        sqlx::query("ALTER TABLE messages ADD COLUMN agent TEXT")
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
@@ -477,7 +495,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(account_count, 2);
+        assert_eq!(account_count, 4);
     }
 
     #[tokio::test]

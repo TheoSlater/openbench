@@ -9,7 +9,7 @@ import { startUpdateChecker } from "@/store/updateStore";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { backupCorruptStorageItem, startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
 import { IS_LINUX } from "@/lib/utils/platform";
-import { cefViewportIsEnabled } from "@/features/agent/native";
+import { cefViewportIsEnabled } from "@/features/viewport/native";
 
 const SYSTEM_PROMPTS_STORAGE_KEY = "polyui.systemPrompts";
 

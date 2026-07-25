@@ -55,12 +55,8 @@ whisper-rs = "0.16"
 cpal = "0.15"
 hound = "3.5"
 
-# Agent viewport on Linux: built directly with wry inside a GtkFixed because
-# Tauri's add_child cannot position child webviews on GTK. Versions must stay
-# in lockstep with the ones tauri-runtime-wry uses.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
 # CEF OSR spike (spike/cef-osr). Pinned: cef crate 150.0.0+150.0.10 -> CEF 150.0.10.
 # default features include `sandbox` + `build-util`; we need neither on Linux.
 cef = { version = "150.0.0", default-features = false }
-wry = { version = "0.55", default-features = false, features = ["protocol", "os-webview", "linux-body"] }

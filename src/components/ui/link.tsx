@@ -7,7 +7,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { openViewportForUser } from "@/features/agent/viewportStore";
+import { openViewportForUser } from "@/features/viewport/viewportStore";
 import { cn } from "@/lib/utils";
 
 type LinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {

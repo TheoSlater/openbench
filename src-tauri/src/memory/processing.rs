@@ -35,7 +35,6 @@ mod tests {
             user_scope_owner_id: Some("user-1".to_string()),
             project_scope_owner_id: None,
             chat_scope_owner_id: Some("chat-1".to_string()),
-            agent_scope_owner_id: None,
             skip_reason: None,
             user_content: user.to_string(),
             assistant_content: assistant.to_string(),

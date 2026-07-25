@@ -1,4 +1,3 @@
-mod agent_viewport;
 mod auth;
 #[cfg(target_os = "linux")]
 pub mod cef_osr;
@@ -18,10 +17,6 @@ mod web_search;
 mod whisper_state;
 mod window_state_recovery;
 
-use crate::agent_viewport::{
-    agent_viewport_close, agent_viewport_hide, agent_viewport_observe, agent_viewport_open,
-    agent_viewport_open_file, agent_viewport_reload, agent_viewport_set_bounds,
-};
 use crate::commands::chat_commands::{chat, chat_stream, generate_chat_title};
 use crate::commands::config_commands::cancel_chat;
 use crate::commands::db_commands::execute_sql;
@@ -32,12 +27,6 @@ use crate::commands::dictation_commands::{
     stop_native_dictation_recording, transcribe_audio, transcribe_native_dictation_partial,
 };
 use crate::commands::model_commands::{cancel_pull, delete_model, get_local_models, pull_model};
-use crate::commands::system_commands::{
-    agent_changed_files, agent_delete_chat_sandbox, agent_file_diff, agent_grep,
-    agent_list_directory, agent_list_workspaces, agent_prepare_chat_sandbox, agent_read_text_file,
-    agent_read_web_results, agent_run_command, agent_search_web, agent_web_search,
-    agent_write_text_file,
-};
 use crate::mobile_pairing::{
     mobile_pairing_start, mobile_pairing_status, mobile_pairing_stop, MobilePairingState,
 };
@@ -152,7 +141,6 @@ pub fn run() {
     startup_log::log_phase("plugins registered");
 
     let result = builder
-        .manage(agent_viewport::ViewportState::default())
         .manage(MobilePairingState::default())
         .setup(|app| {
             startup_log::log_phase("setup hook entered");
@@ -197,7 +185,6 @@ pub fn run() {
                 last_update_check: Mutex::new(None),
                 update_download_path: Mutex::new(None),
             });
-            startup_log::log_phase("agent runtime initialized");
             let app_data_dir = app.path().app_data_dir().map_err(|error| {
                 startup_log::log_error(format!("app data dir failed: {error}"));
                 std::io::Error::other(error)
@@ -277,26 +264,6 @@ pub fn run() {
             check_for_updates,
             download_update,
             install_update,
-            agent_list_workspaces,
-            agent_changed_files,
-            agent_file_diff,
-            agent_prepare_chat_sandbox,
-            agent_delete_chat_sandbox,
-            agent_read_text_file,
-            agent_write_text_file,
-            agent_list_directory,
-            agent_grep,
-            agent_web_search,
-            agent_search_web,
-            agent_read_web_results,
-            agent_run_command,
-            agent_viewport_open,
-            agent_viewport_open_file,
-            agent_viewport_close,
-            agent_viewport_hide,
-            agent_viewport_reload,
-            agent_viewport_set_bounds,
-            agent_viewport_observe,
             #[cfg(target_os = "linux")]
             cef_osr::cef_viewport_open,
             #[cfg(target_os = "linux")]

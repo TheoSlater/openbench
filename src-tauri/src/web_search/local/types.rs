@@ -24,12 +24,6 @@ pub struct SearchWebRequest {
     pub exclude_domains: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ReadWebResultsRequest {
-    pub result_ids: Vec<String>,
-    pub max_passages_per_result: Option<usize>,
-}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct SearchWebResponse {
     pub query: String,
@@ -37,12 +31,6 @@ pub struct SearchWebResponse {
     pub providers_used: Vec<String>,
     pub providers_failed: Vec<ProviderFailure>,
     pub cached: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ReadWebResultsResponse {
-    pub sources: Vec<WebSource>,
-    pub failed_results: Vec<ResultFailure>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -58,35 +46,8 @@ pub struct SearchResult {
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct WebSource {
-    pub source_id: String,
-    pub result_id: String,
-    pub title: String,
-    pub url: String,
-    pub canonical_url: String,
-    pub domain: String,
-    pub published_at: Option<String>,
-    pub retrieved_at: String,
-    pub passages: Vec<Passage>,
-    pub trust: &'static str,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct Passage {
-    pub text: String,
-    pub score: f64,
-    pub section: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
 pub struct ProviderFailure {
     pub provider: String,
-    pub error: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ResultFailure {
-    pub result_id: String,
     pub error: String,
 }
 

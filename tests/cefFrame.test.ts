@@ -1,4 +1,4 @@
-import { decodeCefFrame } from "../src/features/agent/cefFrame";
+import { decodeCefFrame } from "../src/features/viewport/cefFrame";
 
 describe("decodeCefFrame", () => {
   it("decodes dirty-rect BGRA pixels into RGBA", () => {

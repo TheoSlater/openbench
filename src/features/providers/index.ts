@@ -3,7 +3,11 @@ import { create } from "zustand";
 import { useAuthStore } from "@/store/authStore";
 import { getSessionToken } from "@/lib/utils/utils";
 
-export type ProviderType = "OllamaLocal" | "OpenAICompatible";
+export type ProviderType =
+  | "OllamaLocal"
+  | "OpenAICompatible"
+  | "AnthropicNative"
+  | "GeminiNative";
 export type ProviderStatus = "Online" | "Offline" | "Reconnecting" | "Unavailable";
 
 export interface ProviderConfig {

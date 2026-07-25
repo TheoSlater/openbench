@@ -133,7 +133,6 @@ const TurnItem = memo(function TurnItem({
                 messageIndex={turn.startIndex + 1 + idx}
                 onRegenerate={onRegenerate}
                 webSearch={msg.webSearch}
-                agent={msg.agent}
                 memoryUpdates={msg.memoryUpdates}
                 isLastMessage={isNewest && idx === allAssistantMessages.length - 1}
               />

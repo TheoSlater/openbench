@@ -16,9 +16,11 @@ import { Switch } from "@/components/ui/switch";
 import { TextField } from "@/components/ui/text-field";
 import { Typography } from "@/components/ui/Typography";
 import {
+  Brain,
   Cpu,
   Eye,
   EyeOff,
+  Gem,
   Globe,
   Plus,
   Route,
@@ -34,8 +36,18 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SectionHeader, SettingSurface } from "../SettingComponents";
 import { useNotify } from "@/hooks/useNotify";
 import { useOllama } from "@/features/ollama";
-import { useProviderStore, type ProviderStatus, type ProviderStatusResponse } from "@/features/providers";
-import { PROVIDER_PRESETS, lookupPreset, type ProviderPreset } from "@/features/providers/presets";
+import {
+  useProviderStore,
+  type ProviderStatus,
+  type ProviderStatusResponse,
+  type ProviderType,
+} from "@/features/providers";
+import {
+  PROVIDER_PRESETS,
+  lookupPreset,
+  type ProviderKind,
+  type ProviderPreset,
+} from "@/features/providers/presets";
 import { WebSearchSettings } from "@/features/web-search/WebSearchSettings";
 import { cn } from "@/lib/utils";
 
@@ -55,8 +67,17 @@ const presetIcons: Record<string, React.ReactNode> = {
   groq: <Zap size={22} />,
   together: <Globe size={22} />,
   deepseek: <Search size={22} />,
+  anthropic: <Brain size={22} />,
+  gemini: <Gem size={22} />,
   ollama: <Cpu size={22} />,
   custom: <Settings size={22} />,
+};
+
+const KIND_TO_PROVIDER_TYPE: Record<ProviderKind, ProviderType> = {
+  "ollama-local": "OllamaLocal",
+  "openai-compatible": "OpenAICompatible",
+  "anthropic-native": "AnthropicNative",
+  "gemini-native": "GeminiNative",
 };
 
 const isOllamaLocal = (p: ProviderStatusResponse) =>
@@ -70,7 +91,7 @@ function ProviderCard({
   provider: ProviderStatusResponse;
   updateProviderConfig: (config: {
     id: number;
-    provider_type: "OllamaLocal" | "OpenAICompatible";
+    provider_type: ProviderType;
     enabled?: boolean;
     ollama_host?: string;
     api_key?: string;
@@ -128,7 +149,7 @@ function ProviderCard({
       } else {
         await updateProviderConfig({
           id: provider.config.id,
-          provider_type: "OpenAICompatible",
+          provider_type: provider.config.provider_type,
           api_base_url: host.trim(),
           api_key: apiKey.trim() || undefined,
           enabled,
@@ -326,7 +347,7 @@ export function ConnectionsTab() {
         });
       } else {
         await actions.addProvider({
-          provider_type: "OpenAICompatible",
+          provider_type: KIND_TO_PROVIDER_TYPE[selectedPreset.kind],
           enabled: true,
           api_base_url: url,
           api_key: addApiKey.trim() || undefined,

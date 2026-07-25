@@ -7,9 +7,7 @@ import { setTtsSettings, setTtsLoadNotifier, useTtsStore, type TtsLoadProgress }
 import { useNotificationStore } from "./notificationStore";
 import { setUpdateInstallSimulation } from "./updateStore";
 import { getRepository } from "@/lib/repositories";
-import { deleteAgentChatSandbox } from "@/features/agent/agentClient";
-import { bindViewportOpenRequests, closeViewportForChat } from "@/features/agent/viewportStore";
-import { useAgentStore } from "@/features/agent/agentStore";
+import { bindViewportOpenRequests, closeViewportForChat } from "@/features/viewport/viewportStore";
 import { useProviderStore } from "@/features/providers";
 
 // Cross-store effects live here. Stores own local state only.
@@ -73,12 +71,8 @@ function makeTtsLoadToast() {
   };
 }
 
-async function cleanupDeletedConversation(id: string) {
+function cleanupDeletedConversation(id: string) {
   closeViewportForChat(id);
-  await deleteAgentChatSandbox(id).catch((error) => {
-    console.warn("Failed to delete agent sandbox:", error);
-  });
-  useAgentStore.getState().actions.clearWorkspaceSelection(id);
 }
 
 export function initStoreCoordinator() {
@@ -141,7 +135,7 @@ export function initStoreCoordinator() {
   unsubscribeFns.push(useChatStore.subscribe((state, prev) => {
     if (state.deletedConversationIds !== prev.deletedConversationIds) {
       state.deletedConversationIds.forEach((id) => {
-        void cleanupDeletedConversation(id);
+        cleanupDeletedConversation(id);
       });
     }
 

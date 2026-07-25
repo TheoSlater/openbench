@@ -9,6 +9,15 @@ use std::pin::Pin;
 pub enum ProviderType {
     OllamaLocal,
     OpenAICompatible,
+    // TODO: Add native Anthropic provider.
+    // Implements ChatProvider + ModelCatalog.
+    // Uses https://api.anthropic.com/v1/messages endpoint.
+    // SSE format: message_start → content_block_delta → message_delta → message_stop.
+    // System prompt goes as top-level "system" param (not in messages).
+    // Tools use top-level "tools[]" with "input_schema" (no function wrapper).
+    // Thinking mode via "thinking" content block type + extended thinking header.
+    AnthropicNative,
+    GeminiNative,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]

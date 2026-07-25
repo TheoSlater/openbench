@@ -135,7 +135,6 @@ export async function importConversations(notify: NotifyApi) {
           thinking: message.thinking,
           thinkingDuration: message.thinkingDuration,
           webSearch: message.webSearch,
-          agent: message.agent,
         });
       }
 
@@ -151,4 +150,3 @@ export async function importConversations(notify: NotifyApi) {
     notify.error("Failed to import chat", String(error));
   }
 }
-

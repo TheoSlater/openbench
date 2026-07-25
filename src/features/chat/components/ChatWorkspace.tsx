@@ -15,10 +15,6 @@ import { materializeAttachments, releaseImageAttachment } from "@/lib/image-uplo
 import { useFolderStore } from "@/store/folderStore";
 import { FolderHome } from "@/features/folders/FolderHome";
 import { useOllama } from "@/features/ollama";
-import { useAgentRun } from "@/features/agent/useAgentRun";
-import { DRAFT_WORKSPACE_SELECTION_CHAT_ID, useAgentStore } from "@/features/agent/agentStore";
-import { useSettingsStore } from "@/store/settingsStore";
-import { buildAgentResolvedContext } from "@/features/agent/context";
 import { useViewStore, getViewComponent } from "@/lib/view-registry";
 import { useNotify } from "@/hooks/useNotify";
 
@@ -56,22 +52,10 @@ export default function ChatWorkspace({
     : systemPromptContent;
   const { messages, isStreaming, sendMessage, regenerateMessage, stopStreaming, bottomRef, hasMessages } =
     useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
-  const experimentalFeatures = useSettingsStore((state) => state.general.experimentalFeatures);
-  const agentEnabled = useAgentStore((state) => state.enabled) && experimentalFeatures;
-  const workspaceSelections = useAgentStore((state) => state.workspaceSelections);
-  const setWorkspaceSelection = useAgentStore((state) => state.actions.setSelectedWorkspaceSelection);
-  const permissionPreset = useAgentStore((state) => state.permissionPreset);
-  const { startAgentRun, cancelAgentRun, agentStatus } = useAgentRun({
-    selectedModelChoices,
-  });
-  const isAgentStreaming = ["running", "waiting_for_approval", "cancelling"].includes(agentStatus);
-  const effectiveStreaming = isStreaming || isAgentStreaming;
-
-  const { activeConversationId, currentAttachments, storeMessages } = useChatStore(
+  const { activeConversationId, currentAttachments } = useChatStore(
     useShallow((state) => ({
       activeConversationId: state.activeConversationId,
       currentAttachments: state.currentAttachments,
-      storeMessages: state.messages,
     })),
   );
   const {
@@ -79,7 +63,6 @@ export default function ChatWorkspace({
     setActiveConversationId,
     deleteMessagesAfter,
     clearCurrentAttachments,
-    addMessage,
   } = useChatStore((state) => state.actions);
 
   const modelUpdateSelectedModel = useModelStore((s) => s.updateSelectedModel);
@@ -119,9 +102,9 @@ export default function ChatWorkspace({
   const toggleVoiceCompact = useCallback(() => setVoiceCompact((c) => !c), []);
 
   useEffect(() => {
-    onStopStreamingReady(agentEnabled ? cancelAgentRun : stopStreaming);
+    onStopStreamingReady(stopStreaming);
     return () => onStopStreamingReady(null);
-  }, [agentEnabled, cancelAgentRun, onStopStreamingReady, stopStreaming]);
+  }, [onStopStreamingReady, stopStreaming]);
 
   const ensureConversation = useCallback(async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
@@ -129,57 +112,11 @@ export default function ChatWorkspace({
     return created.id;
   }, [activeConversationId, activeFolder?.id, createConversation]);
 
-  type SubmitMode = "chat" | "agent";
-
   const handleSend = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed && currentAttachments.length === 0) return;
-      const conversationId = await ensureConversation();
-
-      const submitMode: SubmitMode = (() => {
-        if (!agentEnabled) return "chat";
-        return "agent";
-      })();
-
-      if (submitMode === "agent") {
-        if (!trimmed) return;
-        const draftSelection = workspaceSelections[DRAFT_WORKSPACE_SELECTION_CHAT_ID];
-        const ws = workspaceSelections[conversationId] ??
-          (draftSelection?.type === "project"
-            ? draftSelection
-            : { type: "sandbox" as const, chatId: conversationId });
-        if (!workspaceSelections[conversationId]) {
-          setWorkspaceSelection(
-            conversationId,
-            ws.type === "sandbox"
-              ? { type: "sandbox", chatId: conversationId }
-              : ws,
-          );
-        }
-        const runSelection =
-          ws.type === "sandbox"
-            ? { type: "sandbox" as const, chatId: conversationId }
-            : ws;
-        const workspacePath =
-          runSelection.type === "project" ? runSelection.path : undefined;
-        const resolvedContext = buildAgentResolvedContext({
-          messages: storeMessages,
-          prompt: trimmed,
-          workspacePath: workspacePath ?? `sandbox:${conversationId}`,
-        });
-        await addMessage({ conversationId, role: "user", content: trimmed });
-        await startAgentRun({
-          conversationId,
-          prompt: trimmed,
-          workspacePath,
-          workspaceSelection: runSelection,
-          permissionPreset,
-          resolvedContext,
-        });
-        return;
-      }
-
+      await ensureConversation();
       const attachments = await materializeAttachments([
         ...(activeFolder?.contextFiles ?? []),
         ...currentAttachments,
@@ -192,13 +129,6 @@ export default function ChatWorkspace({
       activeFolder?.contextFiles,
       currentAttachments,
       ensureConversation,
-      agentEnabled,
-      workspaceSelections,
-      setWorkspaceSelection,
-      permissionPreset,
-      storeMessages,
-      addMessage,
-      startAgentRun,
       sendMessage,
       clearCurrentAttachments,
     ],
@@ -206,52 +136,21 @@ export default function ChatWorkspace({
 
   const handleRegenerate = useCallback(
     async (messageIndex: number) => {
-      if (effectiveStreaming || !activeConversationId) return;
+      if (isStreaming || !activeConversationId) return;
 
       const targetMessage = messages[messageIndex];
       if (targetMessage?.role !== "assistant") return;
 
       await deleteMessagesAfter(activeConversationId, targetMessage.id);
 
-      if (targetMessage.agent) {
-        const userMessage = messages
-          .slice(0, messageIndex)
-          .reverse()
-          .find((m) => m.role === "user");
-        const prompt = userMessage?.content ?? targetMessage.agent.request?.prompt ?? "";
-        if (!prompt) return;
-        const ws = workspaceSelections[activeConversationId] ??
-          (targetMessage.agent.workspaceSelection
-            ? { ...targetMessage.agent.workspaceSelection }
-            : { type: "sandbox" as const, chatId: activeConversationId });
-        const workspacePath = targetMessage.agent.workspacePath;
-        const resolvedContext = targetMessage.agent.context ?? buildAgentResolvedContext({
-          messages: storeMessages,
-          prompt,
-          workspacePath: workspacePath ?? `sandbox:${activeConversationId}`,
-        });
-        await startAgentRun({
-          conversationId: activeConversationId,
-          prompt,
-          workspacePath,
-          workspaceSelection: ws,
-          permissionPreset: targetMessage.agent.permissionPreset ?? permissionPreset,
-          resolvedContext,
-        });
-      } else {
-        regenerateMessage(activeConversationId);
-      }
+      regenerateMessage(activeConversationId);
     },
     [
       activeConversationId,
       deleteMessagesAfter,
-      effectiveStreaming,
+      isStreaming,
       messages,
       regenerateMessage,
-      startAgentRun,
-      workspaceSelections,
-      storeMessages,
-      permissionPreset,
     ],
   );
 
@@ -293,8 +192,8 @@ export default function ChatWorkspace({
         <FolderHome
           folder={activeFolder}
           onSubmit={handleSend}
-          onStop={agentEnabled ? cancelAgentRun : stopStreaming}
-          isStreaming={effectiveStreaming}
+          onStop={stopStreaming}
+          isStreaming={isStreaming}
           providerOnline={ollama.online}
           onOpenConnections={onOpenConnections}
           onOpenVoiceMode={openVoiceMode}
@@ -318,8 +217,8 @@ export default function ChatWorkspace({
           {voiceModeOpen ? null : (
             <ChatInput
               onSubmit={handleSend}
-              onStop={agentEnabled ? cancelAgentRun : stopStreaming}
-              isStreaming={effectiveStreaming}
+              onStop={stopStreaming}
+              isStreaming={isStreaming}
               isTemporary={isTemporary}
               conversationId={activeConversationId}
               onOpenVoiceMode={openVoiceMode}
@@ -337,8 +236,8 @@ export default function ChatWorkspace({
             <Box className="mx-auto w-full max-w-3xl">
               <ChatInput
                 onSubmit={handleSend}
-                onStop={agentEnabled ? cancelAgentRun : stopStreaming}
-                isStreaming={effectiveStreaming}
+                onStop={stopStreaming}
+                isStreaming={isStreaming}
                 isTemporary={isTemporary}
                 conversationId={activeConversationId}
                 onOpenVoiceMode={openVoiceMode}
@@ -357,12 +256,12 @@ export default function ChatWorkspace({
             onToggleCompact={toggleVoiceCompact}
             onClose={closeVoiceMode}
             onSubmit={handleSend}
-            onInterrupt={agentEnabled ? cancelAgentRun : stopStreaming}
+            onInterrupt={stopStreaming}
             canSubmit={
               ollama.online &&
               selectedModelChoices.some((choice) => Boolean(choice.model && choice.provider))
             }
-            isResponding={effectiveStreaming}
+            isResponding={isStreaming}
             messages={messages}
           />
         </Suspense>

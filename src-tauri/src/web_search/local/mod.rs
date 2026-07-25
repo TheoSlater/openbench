@@ -1,13 +1,9 @@
 pub mod normalize;
-pub mod passages;
 pub mod providers;
 pub mod ranking;
-pub mod reader;
 pub mod search;
-pub mod security;
 pub mod types;
 
-pub use reader::read_web_results;
 pub use search::search_web;
 
 #[cfg(test)]
@@ -31,21 +27,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(url.as_str(), "https://docs.rs/tokio/latest/tokio/");
-    }
-
-    #[test]
-    fn blocks_ssrf_targets() {
-        for raw in [
-            "http://localhost/",
-            "http://127.0.0.1/",
-            "http://10.1.2.3/",
-            "http://169.254.169.254/latest/meta-data/",
-            "http://[::1]/",
-            "file:///etc/passwd",
-            "http://printer.local/",
-        ] {
-            assert!(security::validate_public_http_url(raw).is_err(), "{raw}");
-        }
     }
 
     #[test]
@@ -75,18 +56,6 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].providers, vec!["duckduckgo", "mojeek"]);
-    }
-
-    #[test]
-    fn splits_and_scores_passages() {
-        let passages = passages::select_passages(
-            "rust cancellation token",
-            "Intro\nTokio cancellation token stops async work safely.\nOther text.\nRust futures can be cancelled by dropping.",
-            2,
-        );
-
-        assert_eq!(passages.len(), 2);
-        assert!(passages[0].text.contains("cancellation token"));
     }
 
     #[test]

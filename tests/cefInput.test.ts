@@ -4,7 +4,7 @@ import {
   cefKeyEvents,
   cefModifiers,
   cefWheelDelta,
-} from "../src/features/agent/cefInput";
+} from "../src/features/viewport/cefInput";
 
 describe("CEF viewport input", () => {
   it("maps CSS coordinates to the canvas backing store", () => {

@@ -28,7 +28,6 @@ function defaultSettings(ownerId: string, current?: MemorySettings | null): Memo
     enableUserMemory: true,
     enableProjectMemory: true,
     enableChatMemory: true,
-    enableAgentMemory: true,
     allowTemporaryRecall: false,
     retrievalLimit: 8,
     tokenBudget: 600,

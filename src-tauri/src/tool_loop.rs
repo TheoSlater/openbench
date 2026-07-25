@@ -8,6 +8,16 @@ use crate::stream_emitter::StreamEmitter;
 use crate::web_search::{WebSearchClient, WebSearchConfig};
 use tokio_stream::StreamExt;
 
+fn validate_viewport_url(raw: &str) -> Result<url::Url, String> {
+    let url = url::Url::parse(raw).map_err(|error| format!("Invalid URL: {error}"))?;
+    match url.scheme() {
+        "http" | "https" => Ok(url),
+        scheme => Err(format!(
+            "Blocked URL scheme \"{scheme}\": only http and https are allowed."
+        )),
+    }
+}
+
 fn format_search_results(query: &str, results: &[SearchResultItem], error: Option<&str>) -> String {
     let mut output = String::new();
     if let Some(err) = error {
@@ -34,6 +44,17 @@ fn format_search_results(query: &str, results: &[SearchResultItem], error: Optio
         output.push('\n');
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_viewport_url;
+
+    #[test]
+    fn viewport_urls_only_allow_http() {
+        assert!(validate_viewport_url("https://example.com").is_ok());
+        assert!(validate_viewport_url("javascript:alert(1)").is_err());
+    }
 }
 
 const THINK_START_TAGS: [&str; 2] = ["<think>", "<|channel>thought"];
@@ -413,7 +434,7 @@ impl ToolLoop {
                                     .get("url")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
-                                match crate::agent_viewport::validate_url(url) {
+                                match validate_viewport_url(url) {
                                     Ok(valid) => {
                                         let valid = valid.to_string();
                                         emitter

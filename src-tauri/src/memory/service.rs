@@ -243,7 +243,6 @@ impl MemoryService {
             &record_input.owner_id,
             record_input.project_scope_owner_id.as_deref(),
             record_input.chat_scope_owner_id.as_deref(),
-            record_input.agent_scope_owner_id.as_deref(),
             &settings,
         );
 
@@ -352,7 +351,6 @@ impl MemoryService {
             owner_id,
             conversation.folder_id.as_deref(),
             Some(conversation.id.as_str()),
-            None,
             &settings,
         );
         if scopes.is_empty() {
@@ -406,7 +404,7 @@ impl MemoryService {
             if !settings.allow_temporary_recall {
                 return Ok(String::new());
             }
-            let scopes = self.enabled_scopes(owner_id, None, None, None, &settings);
+            let scopes = self.enabled_scopes(owner_id, None, None, &settings);
             let records = self
                 .repository
                 .recall(MemoryRecallQuery {
@@ -426,7 +424,6 @@ impl MemoryService {
             owner_id,
             conversation.folder_id.as_deref(),
             Some(conversation.id.as_str()),
-            None,
             &settings,
         );
         let records = self
@@ -605,7 +602,6 @@ impl MemoryService {
                 user_scope_owner_id: Some(input.owner_id),
                 project_scope_owner_id: None,
                 chat_scope_owner_id: None,
-                agent_scope_owner_id: None,
                 skip_reason: Some("conversation is not persisted".to_string()),
                 user_content: String::new(),
                 assistant_content: String::new(),
@@ -635,9 +631,6 @@ impl MemoryService {
             _ => None,
         };
 
-        let agent_scope_owner_id = assistant
-            .as_ref()
-            .and_then(|message| message.agent_id.clone());
         let assistant_content = assistant
             .as_ref()
             .map(|message| message.content.clone())
@@ -654,7 +647,6 @@ impl MemoryService {
             user_scope_owner_id: Some(input.owner_id),
             project_scope_owner_id: conversation.folder_id,
             chat_scope_owner_id: Some(conversation.id),
-            agent_scope_owner_id,
             skip_reason,
             user_content: user.map(|message| message.content).unwrap_or_default(),
             assistant_content,
@@ -682,20 +674,16 @@ impl MemoryService {
         message_id: &str,
     ) -> Result<Option<PersistedMessage>, MemoryError> {
         let row = sqlx::query(
-            "SELECT id, role, content, status, agent FROM messages WHERE id = ?1 AND conversationId = ?2",
+            "SELECT id, role, content, status FROM messages WHERE id = ?1 AND conversationId = ?2",
         )
         .bind(message_id)
         .bind(conversation_id)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|row| {
-            let agent_json: Option<String> = row.get("agent");
-            PersistedMessage {
-                role: row.get("role"),
-                content: row.get("content"),
-                status: row.get("status"),
-                agent_id: agent_json.and_then(|value| extract_agent_scope_id(&value)),
-            }
+        Ok(row.map(|row| PersistedMessage {
+            role: row.get("role"),
+            content: row.get("content"),
+            status: row.get("status"),
         }))
     }
 
@@ -704,7 +692,6 @@ impl MemoryService {
         owner_id: &str,
         project_id: Option<&str>,
         chat_id: Option<&str>,
-        agent_id: Option<&str>,
         settings: &MemorySettings,
     ) -> Vec<MemoryScopeOwner> {
         let mut scopes = Vec::new();
@@ -727,14 +714,6 @@ impl MemoryService {
                 scopes.push(MemoryScopeOwner {
                     scope: MemoryScope::Chat,
                     scope_owner_id: chat_id.to_string(),
-                });
-            }
-        }
-        if settings.enable_agent_memory {
-            if let Some(agent_id) = agent_id.filter(|value| !value.trim().is_empty()) {
-                scopes.push(MemoryScopeOwner {
-                    scope: MemoryScope::Agent,
-                    scope_owner_id: agent_id.to_string(),
                 });
             }
         }
@@ -795,20 +774,6 @@ struct PersistedMessage {
     role: String,
     content: String,
     status: Option<String>,
-    agent_id: Option<String>,
-}
-
-fn extract_agent_scope_id(agent_json: &str) -> Option<String> {
-    let value = serde_json::from_str::<Value>(agent_json).ok()?;
-    value
-        .get("workspaceSelection")
-        .and_then(|selection| {
-            selection
-                .get("projectId")
-                .or_else(|| selection.get("chatId"))
-                .and_then(Value::as_str)
-        })
-        .map(str::to_string)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

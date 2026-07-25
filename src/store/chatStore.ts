@@ -66,7 +66,6 @@ type ChatStore = {
       status?: Message["status"];
       errorMessage?: string;
       webSearch?: WebSearchEvent;
-      agent?: Message["agent"];
       memoryUpdates?: string[];
     }) => Promise<Message>;
     loadConversations: () => Promise<void>;
@@ -273,7 +272,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         status: message.status,
         errorMessage: message.errorMessage,
         webSearch: message.webSearch,
-        agent: message.agent,
         memoryUpdates: message.memoryUpdates,
       };
 

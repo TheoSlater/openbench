@@ -18,10 +18,18 @@ impl ProviderProfile {
             ProviderType::OpenAICompatible => config
                 .api_base_url
                 .unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            ProviderType::AnthropicNative => config
+                .api_base_url
+                .unwrap_or_else(|| "https://api.anthropic.com/v1".to_string()),
+            ProviderType::GeminiNative => config
+                .api_base_url
+                .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string()),
         };
         let api_key = match config.provider_type {
             ProviderType::OllamaLocal => config.ollama_api_key,
             ProviderType::OpenAICompatible => config.api_key,
+            // Both Anthropic and Gemini use the standard api_key field.
+            ProviderType::AnthropicNative | ProviderType::GeminiNative => config.api_key,
         };
 
         Self {
