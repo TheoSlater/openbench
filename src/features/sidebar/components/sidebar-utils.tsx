@@ -43,7 +43,6 @@ export function SidebarSectionHeader({
   label,
   action,
   disclosure,
-  quiet,
 }: {
   label: string;
   action?: React.ReactNode;
@@ -52,7 +51,6 @@ export function SidebarSectionHeader({
     onToggle: () => void;
     controlsId: string;
   };
-  quiet?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   return (
@@ -74,19 +72,12 @@ export function SidebarSectionHeader({
           >
             <ChevronRight />
           </span>
-          <span className="text-xs font-medium uppercase leading-[1.2]">
+          <span className="text-xs font-medium leading-[1.2]">
             {label}
           </span>
         </button>
       ) : (
-        <span
-          className={cn(
-            "text-xs leading-[1.2]",
-            quiet
-              ? "font-normal uppercase tracking-wider text-sidebar-foreground/40"
-              : "font-medium uppercase text-muted-foreground",
-          )}
-        >
+        <span className="text-xs font-medium leading-[1.2] text-muted-foreground">
           {label}
         </span>
       )}
