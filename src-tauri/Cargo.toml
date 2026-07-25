@@ -57,6 +57,10 @@ hound = "3.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
-# CEF OSR spike (spike/cef-osr). Pinned: cef crate 150.0.0+150.0.10 -> CEF 150.0.10.
-# default features include `sandbox` + `build-util`; we need neither on Linux.
+
+# CEF OSR viewport. Pinned: cef crate 150.0.0+150.0.10 -> CEF 150.0.10.
+# macOS is absent on purpose: it requires separate helper executables in the
+# app bundle instead of re-executing this binary. `sandbox` is off because the
+# viewport runs with `no_sandbox`; `build-util` is only for CEF's own tooling.
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 cef = { version = "150.0.0", default-features = false }

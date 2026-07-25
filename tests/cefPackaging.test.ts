@@ -7,12 +7,49 @@ const startup = readFileSync(new URL("../src/startup.ts", import.meta.url), "utf
 const linuxBundleConfig = JSON.parse(
   readFileSync(new URL("../src-tauri/tauri.linux.conf.json", import.meta.url), "utf8"),
 );
+const windowsBundleConfig = JSON.parse(
+  readFileSync(new URL("../src-tauri/tauri.windows.conf.json", import.meta.url), "utf8"),
+);
+const cargoManifest = readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
+const platform = readFileSync(new URL("../src/lib/utils/platform.ts", import.meta.url), "utf8");
 
 describe("CEF packaging", () => {
   it("strips CEF symbols only from Linux release builds", () => {
-    expect(buildScript).toContain('profile != "release" || !target.contains("linux")');
+    expect(buildScript).toContain('profile != "release"');
     expect(buildScript).toContain('Command::new("strip")');
     expect(buildScript).toContain('"--strip-unneeded"');
+  });
+
+  it("compiles CEF on Linux and Windows but never macOS", () => {
+    // macOS needs helper .app bundles inside Contents/Frameworks rather than
+    // re-executing this binary, which the Tauri bundler does not produce.
+    expect(cargoManifest).toContain(
+      `[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]`,
+    );
+    expect(buildScript).toContain('if target.contains("linux") || target.contains("windows")');
+    expect(buildScript).toContain("cargo::rustc-cfg=cef");
+    expect(platform).toContain("SUPPORTS_CHROMIUM_BROWSER = IS_LINUX || IS_WINDOWS");
+  });
+
+  it("ships the CEF runtime beside the exe on Windows", () => {
+    // Same rule as Linux: libcef.dll is a load-time dependency and resolves
+    // its data files from its own directory. On Windows, Tauri resources land
+    // next to the exe, so `resources` is the right mechanism here.
+    const resources = windowsBundleConfig.bundle.resources;
+    const required = [
+      "libcef.dll",
+      // libcef.dll will not load without it.
+      "chrome_elf.dll",
+      "icudtl.dat",
+      "resources.pak",
+      "chrome_100_percent.pak",
+      "chrome_200_percent.pak",
+      "v8_context_snapshot.bin",
+      "locales/en-US.pak",
+    ];
+    for (const file of required) {
+      expect(Object.values(resources), `Windows bundle is missing ${file}`).toContain(file);
+    }
   });
 
   it("keeps only runtime files needed by the configured locale", () => {
@@ -46,7 +83,8 @@ describe("CEF packaging", () => {
     expect(buildScript).toContain("$ORIGIN:$ORIGIN/../lib/PolyUI");
   });
 
-  it("initializes CEF only when its Linux boot preference is enabled", () => {
+  it("initializes CEF only when its boot preference is enabled", () => {
+    expect(appBackend).toContain("#[cfg(cef)]");
     expect(appBackend).toContain("cef_osr::enabled_on_next_start()");
     expect(appBackend).toContain("tauri::process::restart");
     expect(startup).toContain("cefViewportIsEnabled");

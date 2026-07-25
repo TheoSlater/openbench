@@ -230,7 +230,7 @@ fn emit_cef_link_args() {
 
 fn optimize_cef_release_runtime(target: &str) {
     let profile = std::env::var("PROFILE").expect("PROFILE missing");
-    if profile != "release" || !target.contains("linux") {
+    if profile != "release" {
         return;
     }
 
@@ -239,18 +239,23 @@ fn optimize_cef_release_runtime(target: &str) {
         .ancestors()
         .nth(3)
         .expect("Cargo profile directory missing");
-    let libcef = profile_dir.join("libcef.so");
-    if !libcef.exists() {
-        panic!("CEF runtime missing at {}", libcef.display());
-    }
 
-    let status = Command::new("strip")
-        .arg("--strip-unneeded")
-        .arg(&libcef)
-        .status()
-        .expect("failed to run strip on the CEF runtime");
-    if !status.success() {
-        panic!("strip failed for {}", libcef.display());
+    // Only ELF carries strippable debug symbols; the Windows libcef.dll ships
+    // its symbols in a separate .pdb that is never bundled.
+    if target.contains("linux") {
+        let libcef = profile_dir.join("libcef.so");
+        if !libcef.exists() {
+            panic!("CEF runtime missing at {}", libcef.display());
+        }
+
+        let status = Command::new("strip")
+            .arg("--strip-unneeded")
+            .arg(&libcef)
+            .status()
+            .expect("failed to run strip on the CEF runtime");
+        if !status.success() {
+            panic!("strip failed for {}", libcef.display());
+        }
     }
 
     let locales = profile_dir.join("locales");
@@ -281,8 +286,18 @@ fn main() {
 
     // Keyed off TARGET, not cfg!(target_os), because cfg in a build script
     // describes the host that is running it, not what is being built.
-    if target.contains("linux") {
-        emit_cef_link_args();
+    //
+    // `cef` gates every CEF-dependent item in the crate. macOS is excluded: it
+    // needs separate helper .app bundles inside the framework directory rather
+    // than re-executing this binary, which the bundler does not produce.
+    println!("cargo::rustc-check-cfg=cfg(cef)");
+    if target.contains("linux") || target.contains("windows") {
+        println!("cargo::rustc-cfg=cef");
+        // Only ELF needs the rpath and symbol-visibility fixes; on Windows the
+        // loader already searches the executable's own directory.
+        if target.contains("linux") {
+            emit_cef_link_args();
+        }
         optimize_cef_release_runtime(&target);
     }
 
