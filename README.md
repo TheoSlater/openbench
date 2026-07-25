@@ -9,7 +9,7 @@
 ![GitHub top language](https://img.shields.io/github/languages/top/monolabsdev/poly-ui)
 ![GitHub last commit](https://img.shields.io/github/last-commit/monolabsdev/poly-ui?color=red)
 ![GitHub stars](https://img.shields.io/github/stars/monolabsdev/poly-ui?style=social)
-<div align="center">
+<div>
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F8O123TMDU)
 
