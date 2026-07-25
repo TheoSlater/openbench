@@ -9,6 +9,11 @@
 ![GitHub top language](https://img.shields.io/github/languages/top/monolabsdev/poly-ui)
 ![GitHub last commit](https://img.shields.io/github/last-commit/monolabsdev/poly-ui?color=red)
 ![GitHub stars](https://img.shields.io/github/stars/monolabsdev/poly-ui?style=social)
+<div align="center">
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F8O123TMDU)
+
+</div>
 
 PolyUI is a desktop AI chat app that runs entirely offline. One calm window for your models - use Ollama, OpenAI-compatible APIs, and more. Built for private, everyday conversations with local LLMs.
 
