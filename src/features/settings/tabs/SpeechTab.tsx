@@ -667,12 +667,10 @@ export function SpeechTab() {
                 <Chip
                   label={currentModel.speedLabel}
                   size="small"
-                  variant="outlined"
                 />
                 <Chip
                   label={currentModel.qualityLabel}
                   size="small"
-                  variant="outlined"
                 />
               </Box>
             )}

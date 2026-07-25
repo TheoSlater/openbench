@@ -11,7 +11,6 @@ type ChipProps = React.HTMLAttributes<HTMLSpanElement> & {
   icon?: React.ReactNode;
   clickable?: boolean;
   disabled?: boolean;
-  variant?: string;
 };
 
 export function Chip({
@@ -23,7 +22,6 @@ export function Chip({
   icon,
   clickable,
   disabled,
-  variant: _variant,
   className,
   ...props
 }: ChipProps) {

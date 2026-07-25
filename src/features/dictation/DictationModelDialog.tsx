@@ -75,7 +75,6 @@ export function DictationModelDialog({
                           label="Recommended"
                           size="small"
                           color="primary"
-                          variant="outlined"
                         />
                       )}
                       {model.installed && (

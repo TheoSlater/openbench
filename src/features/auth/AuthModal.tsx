@@ -1,10 +1,9 @@
 import React, { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ModalRoot } from "@/components/ui/modal-root";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 
@@ -245,48 +244,56 @@ export const AuthModal: React.FC = () => {
     setSignupStep(1);
   }, []);
 
-  if (!isOpen) return null;
-
   return (
-    <ModalRoot open={isOpen} aria-labelledby="auth-dialog-title">
-      <div className="mt-[var(--titlebar-height)]">
-        <Card className="w-[min(420px,calc(100vw_-_32px))] gap-8 p-8">
-          <Tabs value={tab} onValueChange={(value) => handleTabChange(value as AuthTab)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="login" className="flex-1">
-                Sign in
-              </TabsTrigger>
-              <TabsTrigger value="signup" className="flex-1">
-                Sign up
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+    <Dialog open={isOpen}>
+      <DialogContent
+        // An auth gate, not a dismissible dialog: the only ways out are
+        // signing in or "Continue as guest". Escape and outside clicks were
+        // already inert under the old hand-rolled modal, which passed no
+        // onClose — this keeps that contract explicit.
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        showCloseButton={false}
+        // Offset by the title bar so the panel sits optically centred in the
+        // content area rather than the whole window.
+        className="top-[calc(50%+(var(--titlebar-height)/2))] gap-8 p-8 sm:max-w-[420px]"
+        aria-describedby={undefined}
+      >
+        <Tabs value={tab} onValueChange={(value) => handleTabChange(value as AuthTab)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="login" className="flex-1">
+              Sign in
+            </TabsTrigger>
+            <TabsTrigger value="signup" className="flex-1">
+              Sign up
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-          <h2 id="auth-dialog-title" className="font-heading text-center text-2xl font-semibold">
-            {tab === "login"
-              ? "Welcome back"
-              : signupStep === 1
-                ? "Create your account"
-                : "Secure your account"}
-          </h2>
+        <DialogTitle className="text-center text-2xl font-semibold">
+          {tab === "login"
+            ? "Welcome back"
+            : signupStep === 1
+              ? "Create your account"
+              : "Secure your account"}
+        </DialogTitle>
 
-          <AuthForm
-            tab={tab}
-            signupStep={signupStep}
-            onTabChange={handleTabChange}
-            onSignupStepChange={setSignupStep}
-          />
+        <AuthForm
+          tab={tab}
+          signupStep={signupStep}
+          onTabChange={handleTabChange}
+          onSignupStepChange={setSignupStep}
+        />
 
-          <Button
-            type="button"
-            variant="link"
-            className="mx-auto h-auto p-0 text-sm font-semibold"
-            onClick={skipAuth}
-          >
-            Continue as guest
-          </Button>
-        </Card>
-      </div>
-    </ModalRoot>
+        <Button
+          type="button"
+          variant="link"
+          className="mx-auto h-auto p-0 text-sm font-semibold"
+          onClick={skipAuth}
+        >
+          Continue as guest
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 };
