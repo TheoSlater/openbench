@@ -2,6 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const buildScript = readFileSync(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
+const optimizer = readFileSync(
+  new URL("../scripts/optimize-cef-runtime.mjs", import.meta.url),
+  "utf8",
+);
+const tauriConfig = JSON.parse(
+  readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+);
 const appBackend = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const startup = readFileSync(new URL("../src/startup.ts", import.meta.url), "utf8");
 const linuxBundleConfig = JSON.parse(
@@ -14,10 +21,16 @@ const cargoManifest = readFileSync(new URL("../src-tauri/Cargo.toml", import.met
 const platform = readFileSync(new URL("../src/lib/utils/platform.ts", import.meta.url), "utf8");
 
 describe("CEF packaging", () => {
+  it("optimizes CEF after Cargo finishes building it", () => {
+    expect(tauriConfig.build.beforeBundleCommand).toBe(
+      "node scripts/optimize-cef-runtime.mjs",
+    );
+  });
+
   it("strips CEF symbols only from Linux release builds", () => {
-    expect(buildScript).toContain('profile != "release"');
-    expect(buildScript).toContain('Command::new("strip")');
-    expect(buildScript).toContain('"--strip-unneeded"');
+    expect(optimizer).toContain('platform === "linux"');
+    expect(optimizer).toContain('spawnSync("strip"');
+    expect(optimizer).toContain('"--strip-unneeded"');
   });
 
   it("compiles CEF on Linux and Windows but never macOS", () => {
@@ -53,9 +66,9 @@ describe("CEF packaging", () => {
   });
 
   it("keeps only runtime files needed by the configured locale", () => {
-    expect(buildScript).toContain('RETAINED_CEF_LOCALE: &str = "en-US.pak"');
-    expect(buildScript).toContain('"CREDITS.html"');
-    expect(buildScript).toContain("remove_file");
+    expect(optimizer).toContain('"en-US.pak"');
+    expect(optimizer).toContain('"CREDITS.html"');
+    expect(optimizer).toContain("await rm");
   });
 
   it("ships the CEF runtime beside libcef.so in every Linux package", () => {
