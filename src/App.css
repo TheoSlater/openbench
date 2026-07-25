@@ -35,7 +35,8 @@
     --destructive-foreground: oklch(1 0 0);
     --border: oklch(0.925 0.005 214.3);
     --input: oklch(0.925 0.005 214.3);
-    --ring: oklch(0.723 0.014 214.4);
+    /* 3:1 against --background is the WCAG 2.4.11 floor; the old 0.723 was ~2:1. */
+    --ring: oklch(0.54 0.02 214.4);
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.148 0.004 228.8);
     --chat-panel: oklch(0.97 0.002 197.1);
@@ -127,7 +128,7 @@
     --destructive-foreground: oklch(0 0 0);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --ring: oklch(0.72 0 0);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.88 0.005 220);
     --chat-panel: oklch(0.17 0.004 228.8);
@@ -882,7 +883,7 @@ html.reduce-motion .poly-shimmer {
   [data-slot="dropdown-menu-trigger"]:focus-visible > [data-slot="badge"],
   [data-slot="popover-trigger"]:focus-visible > [data-slot="badge"] {
     border-color: transparent;
-    box-shadow: 0 0 0 1px var(--ring);
+    box-shadow: 0 0 0 2px var(--ring);
     outline: none;
     }
   [data-slot="dropdown-menu-trigger"][data-state="open"] > [data-slot="badge"],
@@ -897,7 +898,7 @@ html.reduce-motion .poly-shimmer {
   [role="button"]:focus-visible,
   a:focus-visible {
     border-color: var(--ring);
-    box-shadow: 0 0 0 1px var(--ring);
+    box-shadow: 0 0 0 2px var(--ring);
     outline: none;
     }
   html {

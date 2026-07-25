@@ -1,7 +1,7 @@
 import { useSidebar, SidebarTrigger } from "@/components/ui/sidebar";
 import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/utils/platform";
 import { PolyUiBrand } from "@/components/PolyUiBrand";
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 
 export function SidebarBrand() {

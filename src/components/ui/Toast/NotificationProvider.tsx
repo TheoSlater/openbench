@@ -16,11 +16,11 @@ const ToastItem = ({ toast, isRemoving }: { toast: ToastType; isRemoving: boolea
   const Icon = typeIcon[toast.type] || Info;
   const tone =
     toast.type === "success"
-      ? "border-[var(--success-soft)] text-success"
+      ? "border-success/25 text-success"
       : toast.type === "error"
         ? "border-destructive/25 text-destructive"
         : toast.type === "warning"
-          ? "border-[var(--warning-soft)] text-warning"
+          ? "border-warning/25 text-warning"
           : "border-border/60 text-muted-foreground";
 
   useEffect(() => {
@@ -31,6 +31,7 @@ const ToastItem = ({ toast, isRemoving }: { toast: ToastType; isRemoving: boolea
 
   return (
     <div
+      role={toast.type === "error" ? "alert" : "status"}
       className={cn(
         "pointer-events-auto relative mb-3 flex w-[calc(100vw-32px)] max-w-[380px] items-start gap-3.5 rounded-xl border bg-card px-4 py-3.5 shadow-xl sm:w-[380px]",
         isRemoving ? "animate-toast-out" : "animate-toast-in",
@@ -74,7 +75,11 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
   return (
     <>
       {children}
-      <div className="pointer-events-none fixed right-4 bottom-4 z-[var(--z-toast)] flex flex-col-reverse sm:right-6 sm:bottom-6">
+      <div
+        aria-live="polite"
+        aria-atomic="false"
+        className="pointer-events-none fixed right-4 bottom-4 z-[var(--z-toast)] flex flex-col-reverse sm:right-6 sm:bottom-6"
+      >
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} isRemoving={removing.has(toast.id)} />
         ))}

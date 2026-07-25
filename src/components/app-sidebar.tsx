@@ -10,7 +10,7 @@ import {
 } from "@/features/sidebar/hooks/useSidebarActions"
 import { useConversationGroups } from "@/features/sidebar/hooks/useConversationGroups"
 import { useFolderStore } from "@/store/folderStore"
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion"
+import { useReducedMotion } from "@/hooks/useReducedMotion"
 import { SidebarBrand } from "@/features/sidebar/components/SidebarBrand"
 import { FoldersSection } from "@/features/sidebar/components/FoldersSection"
 import { ConversationList } from "@/features/sidebar/components/ConversationList"
