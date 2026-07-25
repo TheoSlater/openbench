@@ -17,6 +17,7 @@ import { ConversationList } from "@/features/sidebar/components/ConversationList
 import { CreateFolderDialog } from "@/features/sidebar/components/CreateFolderDialog"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/utils/platform"
 import {
   Sidebar,
   SidebarContent,
@@ -63,15 +64,14 @@ function AppSidebarBody({
 
   return (
     <>
-      <SidebarHeader>
+      <SidebarHeader className={IS_MAC || USE_CUSTOM_WINDOW_CONTROLS ? "p-0" : undefined}>
         <SidebarBrand />
       </SidebarHeader>
 
       <SidebarContent>
         <NavMain onNewChat={onNewChat} onSearch={onOpenCommandPalette} />
 
-        {/* Stays mounted through collapse so it fades with the width animation instead of popping out */}
-        <div className={cn("flex min-h-0 flex-col gap-(--sidebar-section-gap) group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0", !reduceMotion && "transition-[opacity,visibility] duration-150 ease-out")}>
+        <div className={cn("flex min-h-0 flex-col gap-(--sidebar-section-gap) group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0", !reduceMotion && "transition-[opacity,visibility] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)")}>
           <FoldersSection
             folderConversations={folderConversations}
             streamingConversationId={streamingConversationId}

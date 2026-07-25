@@ -17,9 +17,24 @@ export const SIDEBAR_TOKENS = {
   itemRadius: "var(--radius-lg)",
   panelRadius: "var(--radius-4xl)",
   sectionGap: "0.5rem", // 8px between sidebar sections
+  /**
+   * One duration for every surface that moves when the sidebar collapses:
+   * panel width, row geometry, group labels, content fade, brand. These used to
+   * be 150/200/100ms independently, so rows were still resizing 50ms after the
+   * panel had settled — a visible snap at the end.
+   *
+   * Whether motion runs at all is the Settings > reduce motion toggle, applied
+   * by the components that gate their transition classes on `useReducedMotion`.
+   * Deliberately not sourced from the hardware motion policy: the sidebar
+   * animates on low-end machines too, and only the user's toggle turns it off.
+   */
+  transitionDuration: "160ms",
+  transitionEasing: "ease-out",
 } as const
 
 export const sidebarStyleVars = {
+  "--sidebar-transition-duration": SIDEBAR_TOKENS.transitionDuration,
+  "--sidebar-transition-easing": SIDEBAR_TOKENS.transitionEasing,
   "--sidebar-width": SIDEBAR_TOKENS.expandedWidth,
   "--sidebar-width-icon": SIDEBAR_TOKENS.collapsedWidth,
   "--sidebar-padding": SIDEBAR_TOKENS.sidebarPadding,

@@ -76,55 +76,51 @@ export function GuestFooter({ onOpenSettings }: { onOpenSettings: () => void }) 
     <>
       <div
         data-testid="guest-footer-flat"
-        className="flex flex-col gap-1.5 px-2 pb-0.5"
+        className="flex items-center gap-1 px-1.5 pb-0.5"
       >
-        <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label="Sign in"
+          onClick={() => openAuth()}
+          className="min-w-0 flex-1 justify-start gap-2 px-2"
+        >
           <Avatar className="size-6 shrink-0">
             <AvatarFallback className="bg-muted text-xs text-muted-foreground">
               ?
             </AvatarFallback>
           </Avatar>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[1.3] text-foreground">
-              Guest
-            </p>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="More options"
-                className={sidebarIconButtonClassName}
-              >
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              <DropdownMenuItem onClick={onOpenSettings} className="gap-2">
-                <Settings size={14} />
-                <span>Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setArchivedOpen(true)}
-                className="gap-2"
-              >
-                <Archive size={14} />
-                <span>Archived Chats</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <Button
-          type="button"
-          onClick={() => openAuth()}
-          className="min-h-[30px] w-full gap-1.5 text-xs font-medium"
-        >
-          <LogIn size={13} />
-          Sign in
+          <span className="truncate">Guest</span>
+          <span className="ml-auto text-xs font-normal text-muted-foreground">
+            Sign in
+          </span>
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="More options"
+              className={sidebarIconButtonClassName}
+            >
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[160px]">
+            <DropdownMenuItem onClick={onOpenSettings} className="gap-2">
+              <Settings size={14} />
+              <span>Settings</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setArchivedOpen(true)}
+              className="gap-2"
+            >
+              <Archive size={14} />
+              <span>Archived Chats</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <ArchivedChatsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />

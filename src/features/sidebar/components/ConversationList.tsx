@@ -1,13 +1,14 @@
 import { MessageSquare } from "lucide-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { ConversationItem } from "@/features/chat/components/ConversationItem";
 import {
   SidebarGroupLabel,
   SidebarMenuButton,
 } from "@/components/ui/sidebar";
-import { SidebarMenuRow, SidebarSectionHeader } from "@/features/sidebar/components/sidebar-utils";
+import { SidebarMenuRow } from "@/features/sidebar/components/sidebar-utils";
 import { ConversationSkeleton } from "@/features/sidebar/components/ConversationSkeleton";
+import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSidebarActions } from "@/features/sidebar/hooks/useSidebarActions";
 import { useChatStore } from "@/store/chatStore";
@@ -36,7 +37,7 @@ export function ConversationList({
   const { conv, onSelectConversation } = useSidebarActions();
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const notify = useNotify();
-  const parentRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
 
   const rows = useMemo<ConversationRow[]>(
     () =>
@@ -50,13 +51,6 @@ export function ConversationList({
       ]),
     [groupedConversations],
   );
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: (index) => (rows[index]?.type === "group" ? 30 : 42),
-    overscan: 8,
-  });
 
   const handleExport = async (c: Conversation) => {
     try {
@@ -109,65 +103,61 @@ export function ConversationList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-0.5 px-3">
-        <SidebarSectionHeader label="Recents" quiet />
-      </div>
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        <div
-          className="relative w-full"
-          style={{ height: rowVirtualizer.getTotalSize() }}
-        >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = rows[virtualRow.index];
-            if (!row) return null;
-            return (
-              <div
-                key={row.id}
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-                className="absolute top-0 left-0 w-full"
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
+      {/* Row counts here are small (tens), so the list renders in normal flow.
+          Virtualizing it cost more than it saved: a ResizeObserver per row plus
+          a measure/re-render pass on every commit. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [contain:layout_paint]">
+        {rows.map((row) =>
+          row.type === "group" ? (
+            <SidebarGroupLabel key={row.id} className="px-5 font-normal">
+              {row.label}
+            </SidebarGroupLabel>
+          ) : (
+            // Padding comes from the collapsible data attribute rather than
+            // React state: as state, it flipped 12px -> 4px on the first frame
+            // while the panel was still animating, jerking every row sideways
+            // before the width had moved.
+            <div
+              key={row.id}
+              className={cn(
+                "px-3 py-px group-data-[collapsible=icon]:px-1",
+                !reduceMotion &&
+                  "transition-[padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
+              )}
+            >
+              <SidebarMenuButton
+                asChild
+                isActive={activeConversationId === row.conversation.id}
+                tooltip={row.conversation.title || "Untitled"}
+                onClick={() => {
+                  onSelectConversation(row.conversation.id);
+                  if (isMobile) setOpenMobile(false);
+                }}
+                className="px-2 hover:[&_.conversation-actions]:opacity-100 focus-within:[&_.conversation-actions]:opacity-100"
               >
-                {row.type === "group" ? (
-                  <SidebarGroupLabel>{row.label}</SidebarGroupLabel>
-                ) : (
-                  <div className={`${isCollapsed ? "px-1" : "px-3"} py-px`}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={activeConversationId === row.conversation.id}
-                      tooltip={row.conversation.title || "Untitled"}
-                      onClick={() => {
-                        onSelectConversation(row.conversation.id);
-                        if (isMobile) setOpenMobile(false);
-                      }}
-                      className="px-2 hover:[&_.conversation-actions]:opacity-100 focus-within:[&_.conversation-actions]:opacity-100"
-                    >
-                      {/* Row embeds its own action buttons, so it can't be a
-                          real <button>. */}
-                      <SidebarMenuRow>
-                      <ConversationItem
-                        conv={row.conversation}
-                        activeConversationId={activeConversationId}
-                        isGenerating={streamingConversationId === row.conversation.id}
-                        isCollapsed={isCollapsed}
-                        editingId={conv.editingId}
-                        editValue={conv.editValue}
-                        setEditValue={conv.setEditValue}
-                        handleConfirmRename={conv.handleConfirmRename}
-                        handleCancelRename={conv.handleCancelRename}
-                        handleStartRename={conv.handleStartRename}
-                        handleArchive={conv.handleArchive}
-                        handleStartDelete={conv.handleStartDelete}
-                        onExport={handleExport}
-                      />
-                      </SidebarMenuRow>
-                    </SidebarMenuButton>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                {/* Row embeds its own action buttons, so it can't be a
+                    real <button>. */}
+                <SidebarMenuRow>
+                  <ConversationItem
+                    conv={row.conversation}
+                    activeConversationId={activeConversationId}
+                    isGenerating={streamingConversationId === row.conversation.id}
+                    isCollapsed={isCollapsed}
+                    editingId={conv.editingId}
+                    editValue={conv.editValue}
+                    setEditValue={conv.setEditValue}
+                    handleConfirmRename={conv.handleConfirmRename}
+                    handleCancelRename={conv.handleCancelRename}
+                    handleStartRename={conv.handleStartRename}
+                    handleArchive={conv.handleArchive}
+                    handleStartDelete={conv.handleStartDelete}
+                    onExport={handleExport}
+                  />
+                </SidebarMenuRow>
+              </SidebarMenuButton>
+            </div>
+          ),
+        )}
       </div>
     </div>
   );

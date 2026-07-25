@@ -31,6 +31,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH_MOBILE = SIDEBAR_TOKENS.mobileWidth
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+export const SIDEBAR_TOGGLE_EVENT = "polyui:toggle-sidebar"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -92,6 +93,12 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
+
+  React.useEffect(() => {
+    const handleToggle = () => toggleSidebar()
+    window.addEventListener(SIDEBAR_TOGGLE_EVENT, handleToggle)
+    return () => window.removeEventListener(SIDEBAR_TOGGLE_EVENT, handleToggle)
+  }, [toggleSidebar])
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -209,7 +216,8 @@ function Sidebar({
     <div
       className={cn(
         "group peer relative flex w-(--sidebar-width) shrink-0 text-sidebar-foreground max-md:hidden data-[collapsible=offcanvas]:w-0",
-        !reduceMotion && "transition-[width] duration-200 ease-out will-change-[width]",
+        !reduceMotion &&
+          "transition-[width] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         variant === "floating" || variant === "inset"
           ? "data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
           : "data-[collapsible=icon]:w-(--sidebar-width-icon)",
@@ -275,7 +283,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 transition-all duration-200 ease-out group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
+        "absolute inset-y-0 z-20 hidden w-4 transition-all duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing) group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
@@ -396,7 +404,8 @@ function SidebarGroupLabel({
       data-sidebar="group-label"
       className={cn(
         "flex h-7 shrink-0 items-center rounded-xl px-3 text-xs font-medium text-sidebar-foreground/60 ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-3 [&>svg]:size-4 [&>svg]:shrink-0",
-        !reduceMotion && "transition-[margin,opacity] duration-200 ease-out",
+        !reduceMotion &&
+          "transition-[margin,opacity] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         className
       )}
       {...props}
@@ -507,14 +516,18 @@ function SidebarMenuButton({
       data-active={isActive}
       className={cn(
         sidebarMenuButtonVariants({ variant, size }),
-        !reduceMotion && "transition-[width,height,padding] duration-200 ease-out",
+        !reduceMotion &&
+          "transition-[width,height,padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
         className,
       )}
       {...props}
     />
   )
 
-  if (!tooltip) {
+  // The tooltip only ever shows in the collapsed rail. Mounting it the rest of
+  // the time isn't free: `hidden` only hides it visually, so Radix still runs
+  // its open-state machine and Floating UI positioning on every row hover.
+  if (!tooltip || state !== "collapsed" || isMobile) {
     return button
   }
 
@@ -527,12 +540,7 @@ function SidebarMenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed" || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   )
 }
