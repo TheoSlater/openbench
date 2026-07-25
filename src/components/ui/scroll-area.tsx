@@ -36,15 +36,19 @@ function ScrollBar({
       data-slot="scroll-area-scrollbar"
       data-orientation={orientation}
       orientation={orientation}
+      // Matches the native scrollbar in App.css: 6px, no track border, same
+      // thumb tokens. Radix draws its own bar, so without this the settings
+      // panels get a wider, differently coloured scrollbar than the rest of
+      // the app.
       className={cn(
-        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+        "flex touch-none border-0 p-0 transition-colors select-none data-horizontal:h-1.5 data-horizontal:flex-col data-vertical:h-full data-vertical:w-1.5",
         className
       )}
       {...props}
     >
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-border"
+        className="relative flex-1 rounded-full bg-(--app-scrollbar-thumb) transition-colors hover:bg-(--app-scrollbar-thumb-hover)"
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )

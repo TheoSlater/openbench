@@ -374,7 +374,10 @@ export const ChatArea = memo(function ChatArea({
         // auto-scroll from a ResizeObserver on that child, which therefore
         // never fired: sending a message or streaming a reply scrolled nothing.
         // `mx-auto max-w-3xl` still centres the content in normal flow.
-        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6"
+        // scrollbar-gutter keeps the space reserved, so the centred column
+        // does not jump sideways the moment a conversation becomes long
+        // enough to scroll.
+        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6 [scrollbar-gutter:stable]"
       >
         <Box className="sr-only" role="status" aria-live="polite">
           {announcement}
