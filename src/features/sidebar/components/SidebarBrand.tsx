@@ -1,57 +1,45 @@
-import * as React from "react";
-import { useNotify } from "@/hooks/useNotify";
-import { useDevStore } from "@/store/devStore";
 import { useSidebar, SidebarTrigger } from "@/components/ui/sidebar";
+import { IS_MAC, USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/utils/platform";
+import { PolyUiBrand } from "@/components/PolyUiBrand";
 import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
+import { cn } from "@/lib/utils";
 
 export function SidebarBrand() {
-  const { state } = useSidebar();
+  const { state, isMobile } = useSidebar();
   const isCollapsed = state === "collapsed";
-  const reducedMotion = useReducedMotion();
-  const notify = useNotify();
-  const setDevMode = useDevStore((s) => s.actions.setDevMode);
-  const devTapCount = React.useRef(0);
+  const inTitlebar = (IS_MAC || USE_CUSTOM_WINDOW_CONTROLS) && !isMobile;
+  const reduceMotion = useReducedMotion();
 
-  const handleDevTap = () => {
-    devTapCount.current += 1;
-    if (devTapCount.current >= 10) {
-      devTapCount.current = 0;
-      setDevMode(true);
-      notify.success(
-        "Dev mode activated",
-        "Tap the PolyUI logo 10 more times to deactivate.",
-      );
-    } else if (devTapCount.current === 1 && useDevStore.getState().devMode) {
-      devTapCount.current = 0;
-      setDevMode(false);
-      notify.info("Dev mode deactivated");
-    }
-  };
+  if (inTitlebar) return null;
 
+  // The brand stays in the layout at every width and is clipped, rather than
+  // being pulled out with `hidden`, which reflowed this row instantly on the
+  // first frame while the panel was still animating. `inert` keeps the same
+  // guarantee `hidden` gave: collapsed, the button is out of the keyboard flow
+  // and the accessibility tree.
+  //
+  // The brand is flex-1 but capped by max-width, which is what actually eases:
+  // 100% -> 0 as the panel collapses. A plain flex-1 would swallow all the free
+  // space at every width, leaving the trigger pinned right instead of centred
+  // in the rail. As the cap closes, free space opens up and the trigger's auto
+  // margins carry it to the centre of the rail. One driver: the panel width.
   return (
-    <div
-      className={`relative flex w-full items-center ${isCollapsed ? "justify-center" : "justify-between"}`}
-    >
+    <div className="relative flex w-full items-center">
       <div
-        className={`flex items-center gap-2 overflow-hidden ${
-          isCollapsed ? "pointer-events-none w-0 opacity-0" : "w-auto opacity-100"
-        } ${reducedMotion ? "" : "transition-opacity duration-200 ease-out"}`}
+        className={cn(
+          "min-w-0 flex-1 overflow-hidden",
+          isCollapsed ? "max-w-0 opacity-0" : "max-w-full",
+          !reduceMotion &&
+            "transition-[max-width,opacity] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing)",
+        )}
+        aria-hidden={isCollapsed}
+        inert={isCollapsed}
       >
-        <button
-          type="button"
-          onClick={handleDevTap}
-          className="cursor-pointer select-none whitespace-nowrap bg-transparent text-base font-bold text-foreground"
-        >
-          PolyUI
-        </button>
+        <div className="w-max whitespace-nowrap">
+          <PolyUiBrand />
+        </div>
       </div>
-      <SidebarTrigger />
-      {isCollapsed && (
-        <div
-          data-testid="collapsed-sidebar-trigger-divider"
-          className="absolute top-[calc(var(--sidebar-icon-button)+var(--sidebar-padding)*0.5)] h-px w-(--sidebar-icon-button) bg-sidebar-border"
-        />
-      )}
+      <SidebarTrigger className="mx-auto shrink-0" />
     </div>
   );
 }

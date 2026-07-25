@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { usePauseableHandler } from "@/lib/idle/hooks";
+import { getMotionPolicy } from "@/lib/performance/policy";
 import {
   ArrowLeft,
   ArrowRight,
@@ -562,11 +563,20 @@ function CefViewport({
         });
       }
     };
-    const observer = new ResizeObserver(resize);
+    // Coalesce to the trailing edge: a sidebar collapse resizes this canvas on
+    // every frame, and each one would otherwise fire a getBoundingClientRect
+    // plus a cef_viewport_resize invoke into the native renderer.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const scheduleResize = () => {
+      clearTimeout(settle);
+      settle = setTimeout(resize, getMotionPolicy().transitionDurationMs);
+    };
+    const observer = new ResizeObserver(scheduleResize);
     observer.observe(canvas);
 
     return () => {
       disposed = true;
+      clearTimeout(settle);
       observer.disconnect();
       if (paintAnimationFrame) cancelAnimationFrame(paintAnimationFrame);
       if (pointerAnimationRef.current) cancelAnimationFrame(pointerAnimationRef.current);

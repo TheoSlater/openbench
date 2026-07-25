@@ -5,6 +5,10 @@ on:
     - cron: "0 21 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: nightly-build
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -333,16 +337,24 @@ jobs:
           rm -f "$STARTUP_LOG"
           "$APP_EXE" >"$STDOUT" 2>"$STDERR" &
           PID=$!
-          sleep 8
-          if ! kill -0 "$PID" 2>/dev/null; then
-            cat "$STDOUT" || true
-            cat "$STDERR" || true
-            cat "$STARTUP_LOG" || true
-            wait "$PID"
-            echo "PolyUI exited during macOS smoke test"
-            exit 1
-          fi
-          if ! grep -q "frontend loaded" "$STARTUP_LOG"; then
+          DEADLINE=$((SECONDS + 45))
+          FOUND=false
+          while [[ $SECONDS -lt $DEADLINE ]]; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              cat "$STDOUT" || true
+              cat "$STDERR" || true
+              cat "$STARTUP_LOG" || true
+              wait "$PID"
+              echo "PolyUI exited during macOS smoke test"
+              exit 1
+            fi
+            if grep -q "frontend loaded" "$STARTUP_LOG" 2>/dev/null; then
+              FOUND=true
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ "$FOUND" != "true" ]]; then
             cat "$STDOUT" || true
             cat "$STDERR" || true
             cat "$STARTUP_LOG" || true

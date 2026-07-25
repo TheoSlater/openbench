@@ -22,7 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
 import { activateRowOnKeyDown } from "@/features/sidebar/components/sidebar-utils";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import type { Conversation } from "@/store/chatStore";
@@ -69,7 +68,6 @@ export const ConversationItem = React.memo(function ConversationItem({
 }: ConversationItemProps) {
   const isFolder = variant === "folder";
   const isActive = activeConversationId === conv.id;
-  useReducedMotion();
 
   const content = editingId === conv.id ? (
     <Box className="flex min-w-0 flex-1 items-center gap-1.5">

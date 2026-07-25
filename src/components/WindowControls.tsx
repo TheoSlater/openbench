@@ -1,7 +1,19 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, PanelLeft, Square, X } from "lucide-react";
 import { USE_CUSTOM_WINDOW_CONTROLS, IS_LINUX } from "@/lib/utils/platform";
+import { SIDEBAR_TOGGLE_EVENT } from "@/components/ui/sidebar";
+
+export function TitlebarSidebarButton() {
+  return (
+    <WinButton
+      onClick={() => window.dispatchEvent(new Event(SIDEBAR_TOGGLE_EVENT))}
+      title="Toggle sidebar"
+    >
+      <PanelLeft size={15} strokeWidth={1.5} />
+    </WinButton>
+  );
+}
 
 export function WindowControls({ closeOnly = false }: { closeOnly?: boolean }) {
   const [maximized, setMaximized] = useState(false);
@@ -37,6 +49,11 @@ export function WindowControls({ closeOnly = false }: { closeOnly?: boolean }) {
     >
       {!closeOnly && (
         <>
+          <TitlebarSidebarButton />
+          <div
+            aria-hidden="true"
+            className="mx-0.5 h-4 w-px bg-sidebar-border/70"
+          />
           <WinButton onClick={() => void w.minimize()} title="Minimize">
             <Minus size={15} strokeWidth={1.5} />
           </WinButton>

@@ -5,7 +5,6 @@ import { useFolderStore } from "@/store/folderStore";
 import { Conversation } from "@/types/chat";
 import { FolderTree } from "@/features/sidebar/components/FolderTree";
 import { useSidebarActions } from "@/features/sidebar/hooks/useSidebarActions";
-import { useReducedMotion } from "@/features/sidebar/hooks/useReducedMotion";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -54,12 +53,10 @@ export function FoldersSection({
   const folders = useFolderStore((s) => s.folders);
   const { folder } = useSidebarActions();
   const rootFolders = folders.filter((f) => !f.parentId);
-  const empty = rootFolders.length === 0;
-  const reducedMotion = useReducedMotion();
   const [isCollapsed, setIsCollapsed] = useFoldersSectionCollapsed();
 
   return (
-    <SidebarGroup className="mb-2">
+    <SidebarGroup className="mb-1">
       <div className="mb-0.5 px-3">
         <SidebarSectionHeader
           label="Folders"
@@ -84,28 +81,19 @@ export function FoldersSection({
       </div>
       <div
         id={FOLDERS_SECTION_CONTENT_ID}
-        className={`overflow-hidden ${isCollapsed ? "max-h-0 opacity-0" : "max-h-[800px] opacity-100"} ${
-          reducedMotion ? "" : "transition-[max-height,opacity] duration-200 ease-out"
-        }`}
+        hidden={isCollapsed}
+        className="overflow-hidden"
       >
         <SidebarGroupContent>
           <SidebarMenu>
-            {empty ? (
-              <div className="px-2 py-2 text-muted-foreground/70">
-                <p className="text-xs leading-[1.4]">
-                  No folders
-                </p>
-              </div>
-            ) : (
-              rootFolders.map((f) => (
-                <FolderTree
-                  key={f.id}
-                  folder={f}
-                  folderConversations={folderConversations}
-                  streamingConversationId={streamingConversationId}
-                />
-              ))
-            )}
+            {rootFolders.map((f) => (
+              <FolderTree
+                key={f.id}
+                folder={f}
+                folderConversations={folderConversations}
+                streamingConversationId={streamingConversationId}
+              />
+            ))}
           </SidebarMenu>
         </SidebarGroupContent>
       </div>

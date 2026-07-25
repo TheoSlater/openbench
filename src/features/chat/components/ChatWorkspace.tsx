@@ -158,8 +158,15 @@ export default function ChatWorkspace({
   const ViewComponent = activeView ? getViewComponent(activeView) : undefined;
 
   return (
+    // No `h-full` here. As a flex child of the workspace row this already fills
+    // the cross axis via `align-items: stretch`, and `height: 100%` is actively
+    // harmful: WebKitGTK intermittently resolves it against an indefinite
+    // containing block, which yields `auto` — and because an explicit height is
+    // then set, stretch no longer applies either. The panel collapsed to its
+    // content height, leaving a gap under the composer that only a window
+    // resize cleared. Stretch has no such dependency.
     <Box
-      className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
       {/* Full voice mode is opaque over the workspace — skip rendering the
           chat UI behind it so streaming markdown re-renders don't starve the
