@@ -42,7 +42,7 @@ export function registerMemoryPurge(): void {
         messages: [],
         conversations: [],
         streamingMessages: {},
-        currentAttachments: [],
+        attachmentsByChat: {},
         messageQueue: [],
       })
       useModelStore.setState({ availableModels: {}, systemPrompts: [], activeSystemPromptId: null })

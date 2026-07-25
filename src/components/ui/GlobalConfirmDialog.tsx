@@ -12,6 +12,7 @@ export function GlobalConfirmDialog() {
       title={pending?.title ?? ""}
       description={pending?.description}
       confirmLabel={pending?.confirmLabel}
+      destructive={pending?.destructive}
       onConfirm={() => pending?.onConfirm()}
     />
   );

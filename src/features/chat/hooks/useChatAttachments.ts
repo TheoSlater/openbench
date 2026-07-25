@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { Attachment } from "@/types/chat";
 import { isImageAttachment } from "@/lib/utils/utils";
@@ -9,23 +9,31 @@ import { imageUploadConfig } from "@/lib/image-upload/config";
 import { useNotify } from "@/hooks/useNotify";
 import { optimizeImage } from "@/lib/image-upload/worker";
 
-export function useChatAttachments() {
+const EMPTY: Attachment[] = [];
+
+export function useChatAttachments(chatKey: string) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState<string>("*");
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
   const notify = useNotify();
 
-  const currentAttachments = useChatStore((state) => state.currentAttachments);
-  const addCurrentAttachment = useChatStore((state) => state.actions.addCurrentAttachment);
-  const removeCurrentAttachment = useChatStore((state) => state.actions.removeCurrentAttachment);
-  const clearCurrentAttachments = useChatStore((state) => state.actions.clearCurrentAttachments);
-  const attachmentsRef = useRef(currentAttachments);
-  useEffect(() => { attachmentsRef.current = currentAttachments; }, [currentAttachments]);
-  useEffect(() => () => {
-    attachmentsRef.current.forEach(releaseImageAttachment);
-    clearCurrentAttachments();
-  }, [clearCurrentAttachments]);
+  const currentAttachments = useChatStore(
+    (state) => state.attachmentsByChat[chatKey] ?? EMPTY,
+  );
+  const storeAddAttachment = useChatStore((state) => state.actions.addAttachment);
+  const storeRemoveAttachment = useChatStore((state) => state.actions.removeAttachment);
+  const addCurrentAttachment = useCallback(
+    (attachment: Attachment) => storeAddAttachment(chatKey, attachment),
+    [chatKey, storeAddAttachment],
+  );
+  const removeCurrentAttachment = useCallback(
+    (id: string) => storeRemoveAttachment(chatKey, id),
+    [chatKey, storeRemoveAttachment],
+  );
+  // ponytail: no release-on-unmount. Attachments now outlive the composer on
+  // purpose, so their object URLs live until send, removal, or teardown — the
+  // same lifetime a draft has. Revisit if blob retention shows up in a profile.
 
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
