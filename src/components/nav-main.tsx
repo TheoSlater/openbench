@@ -1,4 +1,7 @@
 import { SquarePen, Search } from "lucide-react"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { shortcutKeys } from "@/features/shortcuts/registry"
+import { KEY_SEP } from "@/lib/utils/platform"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -22,7 +25,7 @@ export function NavMain({ onNewChat, onSearch }: NavMainProps) {
             <SidebarMenuButton
               tooltip="New Chat"
               onClick={onNewChat}
-              className="bg-sidebar-accent/70 font-medium hover:bg-sidebar-accent"
+              className="font-medium"
             >
               <SquarePen />
               <span>New Chat</span>
@@ -30,15 +33,20 @@ export function NavMain({ onNewChat, onSearch }: NavMainProps) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="Search (⌘K)"
+              tooltip={`Search (${shortcutKeys("search")?.join(KEY_SEP)})`}
               aria-keyshortcuts="Meta+K Control+K"
               onClick={onSearch}
+              className="font-medium"
             >
               <Search />
               <span>Search</span>
-              <kbd className="ml-auto rounded-md bg-foreground/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-                ⌘K
-              </kbd>
+              {/* Hint stays out of the way until the row is hovered or
+                  keyboard-focused — matching the conversation row actions. */}
+              <KbdGroup className="ml-auto opacity-0 transition-opacity duration-[var(--dur-fast)] ease-[var(--ease-soft)] group-hover/menu-item:opacity-100 group-focus-within/menu-item:opacity-100 [@media(hover:none)]:opacity-100 group-data-[collapsible=icon]:hidden">
+                {shortcutKeys("search")?.map((key) => (
+                  <Kbd key={key}>{key}</Kbd>
+                ))}
+              </KbdGroup>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

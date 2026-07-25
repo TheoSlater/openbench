@@ -4,12 +4,13 @@ import {
   ArchiveX,
   Download,
   FileInput,
+  Keyboard,
   MessageSquare,
   Settings,
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { fmtShortcut, MOD_KEY } from "@/lib/platform";
+import { shortcutKeys } from "@/features/shortcuts/registry";
 import type { FeatureDef } from "@/lib/featureRegistry";
 import type { CommandPaletteItem } from "@/features/command-palette/types";
 import type { Conversation } from "@/types/chat";
@@ -35,6 +36,7 @@ export function useCommandPaletteItems({
   onSetTheme,
   onSelectConversation,
   onOpenArchived,
+  onOpenShortcuts,
   notify,
   registeredActions,
   settingsCommands,
@@ -56,6 +58,7 @@ export function useCommandPaletteItems({
   onSetTheme: (args: { theme: string }) => void;
   onSelectConversation: (id: string) => void;
   onOpenArchived: () => void;
+  onOpenShortcuts: () => void;
   notify: NotifyApi;
   registeredActions: CommandPaletteItem[];
   settingsCommands: CommandPaletteItem[];
@@ -98,7 +101,7 @@ export function useCommandPaletteItems({
         category: "action",
         keywords: ["new", "chat", "compose"],
         icon: <SquarePen size={16} />,
-        shortcut: fmtShortcut(MOD_KEY, "N"),
+        shortcut: shortcutKeys("new-chat"),
         execute: onNewChat,
         smartCommand: { command: "new-chat" },
       },
@@ -109,9 +112,19 @@ export function useCommandPaletteItems({
         category: "action",
         keywords: ["settings", "preferences", "sett"],
         icon: <Settings size={16} />,
-        shortcut: fmtShortcut(MOD_KEY, ","),
+        shortcut: shortcutKeys("settings"),
         execute: () => onOpenSettings("general"),
         smartCommand: { command: "open-settings" },
+      },
+      {
+        id: "action:keyboard-shortcuts",
+        title: "Keyboard Shortcuts",
+        description: "Show every shortcut",
+        category: "action",
+        keywords: ["keyboard", "shortcut", "keys", "hotkey", "bindings"],
+        icon: <Keyboard size={16} />,
+        shortcut: shortcutKeys("shortcuts"),
+        execute: onOpenShortcuts,
       },
       {
         id: "action:delete-all-chats",
@@ -279,6 +292,7 @@ export function useCommandPaletteItems({
     onSetTheme,
     onSelectConversation,
     onOpenArchived,
+    onOpenShortcuts,
     notify,
     registeredActions,
     settingsCommands,

@@ -9,3 +9,23 @@ export const IS_LINUX = PLATFORM === "linux";
 export const IS_WINDOWS = PLATFORM === "windows";
 
 export const USE_CUSTOM_WINDOW_CONTROLS = IS_WINDOWS || IS_LINUX;
+
+/**
+ * Whether the CEF viewport is compiled into this build. Must stay in sync with
+ * the `cef` cfg in `src-tauri/build.rs`; macOS ships without it, so the
+ * viewport falls back to the iframe there.
+ */
+export const SUPPORTS_CHROMIUM_BROWSER = IS_LINUX || IS_WINDOWS;
+
+/**
+ * Shortcut rendering. Keep every user-visible key hint going through these —
+ * a hardcoded "⌘" is simply wrong on the Windows and Linux builds.
+ */
+export const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
+export const ALT_KEY = IS_MAC ? "⌥" : "Alt";
+export const SHIFT_KEY = IS_MAC ? "⇧" : "Shift";
+export const KEY_SEP = IS_MAC ? "" : "+";
+
+export function fmtShortcut(...parts: string[]): string {
+  return parts.join(KEY_SEP);
+}

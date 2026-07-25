@@ -16,8 +16,8 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandShortcut,
 } from "@/components/ui/command";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import type { CommandPaletteCategory, CommandPaletteItem } from "./types";
 import { getIntentSummary, parseCommandIntent, type ParsedIntent } from "./intentParser";
@@ -225,10 +225,12 @@ function CmdRow({ item, onSelect }: {
         {item.icon ?? catIcon(item.category)}
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-foreground">{title}</span>
-      {item.shortcut ? (
-        <CommandShortcut className="tracking-normal text-muted-foreground/70">
-          {item.shortcut}
-        </CommandShortcut>
+      {item.shortcut?.length ? (
+        <KbdGroup className="ml-auto">
+          {item.shortcut.map((key) => (
+            <Kbd key={key}>{key}</Kbd>
+          ))}
+        </KbdGroup>
       ) : null}
       {isFeature ? (
         <span className={isOn ? "text-success" : "text-muted-foreground/40"}>

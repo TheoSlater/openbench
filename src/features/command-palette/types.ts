@@ -30,7 +30,8 @@ export interface CommandPaletteItem {
   category: CommandPaletteCategory;
   keywords?: string[];
   icon?: ReactNode;
-  shortcut?: string;
+  /** Key caps, e.g. ["Ctrl", "K"]. */
+  shortcut?: string[];
   execute: () => void;
   smartCommand?: {
     command: CommandPaletteIntentCommand;
