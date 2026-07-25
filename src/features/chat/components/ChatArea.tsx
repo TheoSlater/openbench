@@ -187,6 +187,35 @@ export const ChatArea = memo(function ChatArea({
     wasRespondingRef.current = isResponding;
   }, [isResponding, messages]);
 
+  // Sending is an explicit action, so it always returns you to the bottom even
+  // if you had scrolled away — unlike a streaming reply, which must not yank
+  // you down while you are reading back. Keyed on the newest *user* message so
+  // assistant tokens never trigger it. scrollToBottom re-arms the stick lock
+  // itself, and ignoreEscapes keeps the trip from being cancelled midway.
+  const lastUserMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === "user") return messages[index].id;
+    }
+    return null;
+  }, [messages]);
+  const seenUserMessageRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (seenUserMessageRef.current === undefined) {
+      // First commit for this conversation: `initial` already scrolls.
+      seenUserMessageRef.current = lastUserMessageId;
+      return;
+    }
+    if (!lastUserMessageId || lastUserMessageId === seenUserMessageRef.current) {
+      return;
+    }
+    seenUserMessageRef.current = lastUserMessageId;
+    void stickToBottom.scrollToBottom({
+      animation: "smooth",
+      ignoreEscapes: true,
+    });
+  }, [lastUserMessageId, stickToBottom]);
+
   const setScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
       scrollRef.current = node;

@@ -29,6 +29,13 @@ describe("chat auto-scroll", () => {
     expect(scrollContainerClasses()).toContain("overflow-y-auto");
   });
 
+  it("scrolls down when a new user message arrives, wherever you were", () => {
+    // Sending is explicit, so it overrides an escaped stick lock. Keyed on the
+    // newest user message so streaming assistant tokens never trigger it.
+    expect(source).toContain("lastUserMessageId");
+    expect(source).toMatch(/ignoreEscapes:\s*true/);
+  });
+
   it("renders the scroll button outside the scroll container", () => {
     // An absolutely positioned descendant of a scrolling element scrolls away
     // with the content, which is where the previous button lived.
