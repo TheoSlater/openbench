@@ -394,32 +394,35 @@ svg {
     vertical-align: middle;
 }
 
-/* Thin, quiet scrollbars. The --app-scrollbar-* tokens were defined for both
-   themes from the start, but a blanket `scrollbar-width: none` on `html *`
-   meant nothing ever rendered them: long chats and settings panels gave no
-   position feedback, and horizontal overflow in code blocks and tables was
-   undiscoverable. The thumb is inset via a transparent border so it reads as
-   ~4px without the track taking visual weight. */
-html {
-    scrollbar-width: thin;
-    scrollbar-color: var(--app-scrollbar-thumb) transparent;
-}
-
+/* A bare thumb, nothing else: no track, no border, no stepper buttons.
+   Deliberately webkit-only — setting `scrollbar-width`/`scrollbar-color` makes
+   Chromium ignore these rules and fall back to the native widget, which is
+   what dragged in the heavy outline. Every engine this app ships on
+   (WebKitGTK, WKWebView, WebView2) understands ::-webkit-scrollbar. */
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
     background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+/* GTK's WebKit draws stepper arrows at each end unless they are removed. */
+::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 ::-webkit-scrollbar-thumb {
     background-color: var(--app-scrollbar-thumb);
-    background-clip: content-box;
-    border: 3px solid transparent;
+    border: 0;
     border-radius: 9999px;
+    box-shadow: none;
 }
 
 ::-webkit-scrollbar-thumb:hover {
