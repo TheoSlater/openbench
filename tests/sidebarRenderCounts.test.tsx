@@ -137,7 +137,7 @@ vi.mock("@/components/ui/sidebar", async (orig) => {
 });
 
 import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider, SIDEBAR_TOGGLE_EVENT } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chatStore";
 import type { Conversation } from "@/types/chat";
@@ -297,6 +297,34 @@ describe("sidebar render counts", () => {
     // Radix open-state machine + Floating UI positioning on every hover, which
     // is what made hovering the list feel sluggish.
     expect(h.counts.RadixTooltip ?? 0).toBe(0);
+    view.unmount();
+  });
+
+  it("drives collapsed row geometry from CSS, not React state", async () => {
+    const view = render(<Harness />);
+    await settle();
+
+    const rowClasses = () =>
+      [...view.container.querySelectorAll('[data-sidebar="menu-button"]')].map(
+        (el) => el.parentElement?.className ?? "",
+      );
+
+    const before = rowClasses();
+    expect(before.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      window.dispatchEvent(new Event(SIDEBAR_TOGGLE_EVENT));
+    });
+    await settle();
+
+    // The panel really did collapse...
+    expect(
+      view.container.querySelector('[data-slot="sidebar"]')?.getAttribute("data-collapsible"),
+    ).toBe("icon");
+    // ...but no row rewrote its own padding on the first frame. Collapsed
+    // geometry now hangs off the ancestor's data attribute, so it eases with
+    // the panel width instead of snapping ahead of it.
+    expect(rowClasses()).toEqual(before);
     view.unmount();
   });
 

@@ -110,7 +110,14 @@ export function ConversationList({
               {row.label}
             </SidebarGroupLabel>
           ) : (
-            <div key={row.id} className={`${isCollapsed ? "px-1" : "px-3"} py-px`}>
+            // Padding comes from the collapsible data attribute rather than
+            // React state: as state, it flipped 12px -> 4px on the first frame
+            // while the panel was still animating, jerking every row sideways
+            // before the width had moved.
+            <div
+              key={row.id}
+              className="px-3 py-px transition-[padding] duration-(--sidebar-transition-duration) ease-(--sidebar-transition-easing) group-data-[collapsible=icon]:px-1"
+            >
               <SidebarMenuButton
                 asChild
                 isActive={activeConversationId === row.conversation.id}
