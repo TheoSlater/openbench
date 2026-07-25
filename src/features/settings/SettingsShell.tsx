@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -34,7 +33,7 @@ export function SettingsDialog({ open, onOpenChange, children }: SettingsDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="grid h-[min(88dvh,760px)] w-[min(1180px,calc(100vw-2rem))] max-w-none sm:max-w-none grid-cols-1 gap-0 overflow-hidden rounded-[min(var(--radius-4xl),24px)] border-border/60 bg-card p-0 shadow-2xl md:grid-cols-[244px_minmax(0,1fr)]"
+        className="grid h-[calc(100dvh-4rem)] w-[calc(100vw-4rem)] max-w-none sm:max-w-none grid-cols-1 gap-0 overflow-hidden rounded-[min(var(--radius-4xl),24px)] border-border/60 bg-card p-0 shadow-2xl md:grid-cols-[260px_minmax(0,1fr)]"
       >
         {children}
       </DialogContent>
@@ -57,7 +56,7 @@ export const SettingsSearch = memo(function SettingsSearch({ value, onChange }: 
         aria-label="Search settings"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Search settings"
+        placeholder="Search"
       />
       {value ? (
         <InputGroupAddon align="inline-end">
@@ -118,9 +117,6 @@ export function SettingsSidebar({
       <div className="flex flex-col gap-3">
         <div className="px-1">
           <DialogTitle className="text-lg font-semibold">Settings</DialogTitle>
-          <DialogDescription className="mt-1 text-xs">
-            Configure Poly UI for this device.
-          </DialogDescription>
         </div>
         <SettingsSearch value={query} onChange={onQueryChange} />
       </div>
@@ -143,27 +139,26 @@ export function SettingsSidebar({
 }
 
 type SettingsPanelProps = {
-  title: string;
-  description?: string;
   onClose: () => void;
   footer?: ReactNode;
   children: ReactNode;
 };
 
-export function SettingsPanel({ title, description, onClose, footer, children }: SettingsPanelProps) {
+export function SettingsPanel({ onClose, footer, children }: SettingsPanelProps) {
   return (
-    <section className="flex min-h-0 flex-col bg-card">
-      <header className="flex min-h-16 shrink-0 items-start justify-between gap-4 border-b border-border/60 px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold leading-none">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-        </div>
-        <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close settings">
-          <X />
-        </Button>
-      </header>
+    <section className="relative flex min-h-0 flex-col bg-card">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={onClose}
+        aria-label="Close settings"
+        className="absolute right-5 top-4 z-10"
+      >
+        <X />
+      </Button>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-5">{children}</div>
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-7 pb-7 pt-20">{children}</div>
       </ScrollArea>
       {footer ? <footer className="border-t border-border/60 px-5 py-3">{footer}</footer> : null}
     </section>

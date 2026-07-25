@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ADVANCED_SETTINGS_ITEM,
-  SETTINGS_TABS,
   filterSettingsTabs,
   resolveSettingsTab,
   type SettingsTab,
@@ -68,7 +67,6 @@ export function SettingsModal({
   const [query, setQuery] = useState("");
 
   const tabs = useMemo(() => filterSettingsTabs(query), [query]);
-  const activeItem = SETTINGS_TABS.find((tab) => tab.id === activeTab) ?? SETTINGS_TABS[0];
 
   const selectTab = useCallback((tab: SettingsTabId) => {
     setActiveTab(tab);
@@ -102,11 +100,7 @@ export function SettingsModal({
         onSelectTab={selectTab}
         onOpenAdvanced={openAdvanced}
       />
-      <SettingsPanel
-        title={activeItem.label}
-        description={activeItem.description}
-        onClose={onClose}
-      >
+      <SettingsPanel onClose={onClose}>
         {[...visitedTabs].map((tab) => (
           <div key={tab} className={`animate-fade-in ${tab === activeTab ? "block" : "hidden"}`}>
             {renderTab(tab)}
