@@ -590,7 +590,7 @@ code {
 }
 
 .animate-spin {
-    animation: spin var(--dur-slow) linear infinite;
+    animation: spin 1s linear infinite;
 }
 
 /* Conversation actions in sidebar */
@@ -699,7 +699,7 @@ code {
 
 /* Thinking pulse — subtle opacity oscillation */
 .animate-thinking {
-    animation: thinking-pulse var(--dur-slow) var(--ease-soft) infinite;
+    animation: thinking-pulse 2s var(--ease-soft) infinite;
 }
 
 @keyframes thinking-pulse {
@@ -828,7 +828,7 @@ html[data-chrome="borderless"] .poly-bg-surface {
 
 /* Pulse for skeletons */
 .animate-pulse {
-    animation: pulse var(--dur-slow) var(--ease-soft) infinite;
+    animation: pulse 2s var(--ease-soft) infinite;
 }
 
 @keyframes pulse {
