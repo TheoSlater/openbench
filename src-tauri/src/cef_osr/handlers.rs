@@ -107,10 +107,46 @@ cef::wrap_display_handler! {
     }
 }
 
+/// Toolbar state that only Chromium can answer.
+///
+/// Back/forward availability is a property of Chromium's session history, not
+/// of any list the app could keep: an in-page `pushState`, a redirect, or a
+/// same-document anchor all move that history without the app being told.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavState {
+    pub is_loading: bool,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
+}
+
+cef::wrap_load_handler! {
+    pub struct OsrLoadHandler {
+        on_nav_state: Channel<NavState>,
+    }
+
+    impl LoadHandler {
+        fn on_loading_state_change(
+            &self,
+            _browser: Option<&mut Browser>,
+            is_loading: ::std::os::raw::c_int,
+            can_go_back: ::std::os::raw::c_int,
+            can_go_forward: ::std::os::raw::c_int,
+        ) {
+            let _ = self.on_nav_state.send(NavState {
+                is_loading: is_loading != 0,
+                can_go_back: can_go_back != 0,
+                can_go_forward: can_go_forward != 0,
+            });
+        }
+    }
+}
+
 cef::wrap_client! {
     pub struct OsrClient {
         render_handler: RenderHandler,
         display_handler: DisplayHandler,
+        load_handler: LoadHandler,
     }
 
     impl Client {
@@ -120,6 +156,10 @@ cef::wrap_client! {
 
         fn display_handler(&self) -> Option<DisplayHandler> {
             Some(self.display_handler.clone())
+        }
+
+        fn load_handler(&self) -> Option<LoadHandler> {
+            Some(self.load_handler.clone())
         }
     }
 }

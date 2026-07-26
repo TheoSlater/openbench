@@ -1,16 +1,18 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getMotionPolicy } from "@/lib/performance/policy";
 import * as native from "../native";
 import { decodeCefFrame, type CefFrame } from "../cefFrame";
+import type { CefNavState } from "../native";
 
 const FIRST_FRAME_TIMEOUT_MS = 15000;
 
 type CefSurfaceOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
-  url: string;
+  initialUrl: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
+  onNavState: (state: CefNavState) => void;
   onError: (message: string) => void;
   takeScrollLatencyMs: () => number | null;
 };
@@ -19,15 +21,40 @@ type CefSurfaceOptions = {
  * Owns the native browser for as long as the canvas is mounted: opens it at
  * the first known size, keeps it sized to the canvas, paints incoming frames,
  * and closes it on unmount.
+ *
+ * Navigation is deliberately *not* handled here — call `cefViewportNavigate`.
+ * Reopening the browser resets Chromium's session history, so a mount must
+ * correspond to a browser, not to a URL.
  */
 export function useCefSurface({
   canvasRef,
-  url,
+  initialUrl,
   onFirstFrame,
   onAddressChange,
+  onNavState,
   onError,
   takeScrollLatencyMs,
 }: CefSurfaceOptions) {
+  // The browser must outlive the parent's render identities. Callers pass
+  // inline arrows, and depending on those directly meant every keystroke in
+  // the address bar tore the browser down and built a new one.
+  const latest = useRef({
+    initialUrl,
+    onFirstFrame,
+    onAddressChange,
+    onNavState,
+    onError,
+    takeScrollLatencyMs,
+  });
+  latest.current = {
+    initialUrl,
+    onFirstFrame,
+    onAddressChange,
+    onNavState,
+    onError,
+    takeScrollLatencyMs,
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
@@ -44,11 +71,15 @@ export function useCefSurface({
     const frames = new Channel<ArrayBuffer>();
     const cursors = new Channel<string>();
     const addresses = new Channel<string>();
+    const navStates = new Channel<CefNavState>();
     cursors.onmessage = (cursor) => {
       canvas.style.cursor = cursor;
     };
     addresses.onmessage = (address) => {
-      if (!disposed) onAddressChange(address);
+      if (!disposed) latest.current.onAddressChange(address);
+    };
+    navStates.onmessage = (state) => {
+      if (!disposed) latest.current.onNavState(state);
     };
 
     // Paint at most once per animation frame, dropping any frame superseded
@@ -66,12 +97,12 @@ export function useCefSurface({
         context.putImageData(new ImageData(rect.pixels, rect.width, rect.height), rect.x, rect.y);
       });
       canvas.dataset.frameLatencyMs = (Date.now() - frame.paintedAtMs).toFixed(1);
-      const scrollLatencyMs = takeScrollLatencyMs();
+      const scrollLatencyMs = latest.current.takeScrollLatencyMs();
       if (scrollLatencyMs !== null) {
         canvas.dataset.scrollInputLatencyMs = scrollLatencyMs.toFixed(1);
       }
       clearTimeout(firstFrameTimeout);
-      onFirstFrame();
+      latest.current.onFirstFrame();
       if (pendingFrame) paintAnimationFrame = requestAnimationFrame(present);
     };
     frames.onmessage = (packet) => {
@@ -95,23 +126,26 @@ export function useCefSurface({
       if (!opened) {
         opened = true;
         firstFrameTimeout = setTimeout(() => {
-          if (!disposed) onError("The browser opened but never painted a frame.");
+          if (!disposed) {
+            latest.current.onError("The browser opened but never painted a frame.");
+          }
         }, FIRST_FRAME_TIMEOUT_MS);
         void native
           .cefViewportOpen({
-            url,
+            url: latest.current.initialUrl,
             width,
             height,
             scaleFactor,
             onFrame: frames,
             onCursor: cursors,
             onAddress: addresses,
+            onNavState: navStates,
           })
           .catch((error) => {
             opened = false;
             clearTimeout(firstFrameTimeout);
             console.error("Failed to open CEF viewport:", error);
-            if (!disposed) onError(String(error));
+            if (!disposed) latest.current.onError(String(error));
           });
       } else {
         void native.cefViewportResize(width, height, scaleFactor).catch((error) => {
@@ -137,5 +171,7 @@ export function useCefSurface({
       if (paintAnimationFrame) cancelAnimationFrame(paintAnimationFrame);
       if (opened) void native.cefViewportClose().catch(() => undefined);
     };
-  }, [canvasRef, url, onFirstFrame, onAddressChange, onError, takeScrollLatencyMs]);
+    // One browser per canvas mount. Everything variable is read through
+    // `latest`, so nothing here may depend on a caller's render identity.
+  }, [canvasRef]);
 }
