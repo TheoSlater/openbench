@@ -23,6 +23,10 @@ const windowsBundleConfig = JSON.parse(
 );
 const cargoManifest = readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
 const platform = readFileSync(new URL("../src/lib/utils/platform.ts", import.meta.url), "utf8");
+const buildWorkflow = readFileSync(
+  new URL("../.github/workflows/build.yml", import.meta.url),
+  "utf8",
+);
 
 describe("CEF packaging", () => {
   it("optimizes CEF after Cargo finishes building it", () => {
@@ -50,6 +54,10 @@ describe("CEF packaging", () => {
 
   it("uses CEF's platform-native cursor handle", () => {
     expect(cefHandlers).toContain("_cursor: CursorHandle");
+  });
+
+  it("builds Windows native dependencies with CEF's static CRT", () => {
+    expect(buildWorkflow).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
   });
 
   it("stages CEF before Tauri validates bundle resources", () => {
