@@ -273,6 +273,12 @@ pub fn run() {
             #[cfg(cef)]
             cef_osr::commands::cef_viewport_reload,
             #[cfg(cef)]
+            cef_osr::commands::cef_viewport_navigate,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_back,
+            #[cfg(cef)]
+            cef_osr::commands::cef_viewport_forward,
+            #[cfg(cef)]
             cef_osr::commands::cef_viewport_input,
             #[cfg(cef)]
             cef_osr::commands::cef_viewport_set_enabled,

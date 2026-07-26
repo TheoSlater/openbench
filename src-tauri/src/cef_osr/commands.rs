@@ -5,11 +5,26 @@
 
 use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::browser::{close_browser, on_cef_ui, open_browser, reload_browser, resize_browser};
+use super::browser::{
+    close_browser, go_back_browser, go_forward_browser, navigate_browser, on_cef_ui, open_browser,
+    reload_browser, resize_browser,
+};
+use super::handlers::NavState;
 use super::input::{dispatch_input, CefInputEvent};
 use super::lifecycle::{enabled_on_next_start, set_enabled};
 
 const MAX_DEVICE_SCALE_FACTOR: f64 = 8.0;
+
+/// Rejects anything the viewport must never load. `javascript:` and `file:` in
+/// particular would run with the page's privileges, so scheme checking happens
+/// here rather than being trusted to the caller.
+fn browsable_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|error| error.to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("CEF viewport only accepts http/https URLs.".to_string());
+    }
+    Ok(())
+}
 
 /// Validated viewport geometry in CSS pixels plus its device scale factor.
 struct Geometry {
@@ -44,11 +59,9 @@ pub fn cef_viewport_open(
     on_frame: Channel<InvokeResponseBody>,
     on_cursor: Channel<String>,
     on_address: Channel<String>,
+    on_nav_state: Channel<NavState>,
 ) -> Result<(), String> {
-    let parsed = url::Url::parse(&url).map_err(|error| error.to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("CEF viewport only accepts http/https URLs.".to_string());
-    }
+    browsable_url(&url)?;
     let geometry = geometry(width, height, scale_factor)?;
 
     // Logged: an open that never returns a frame is the one CEF failure the
@@ -63,6 +76,7 @@ pub fn cef_viewport_open(
             on_frame,
             on_cursor,
             on_address,
+            on_nav_state,
         )
     })
     .and_then(|result| result);
@@ -71,6 +85,27 @@ pub fn cef_viewport_open(
         Err(error) => crate::startup_log::log_error(format!("CEF viewport open failed: {error}")),
     }
     opened
+}
+
+/// Navigates the open browser in place.
+///
+/// Distinct from `cef_viewport_open`, which tears the browser down and builds a
+/// new one: that loses Chromium's session history, so back/forward would have
+/// nothing to walk.
+#[tauri::command]
+pub fn cef_viewport_navigate(url: String) -> Result<(), String> {
+    browsable_url(&url)?;
+    on_cef_ui(move || navigate_browser(url))
+}
+
+#[tauri::command]
+pub fn cef_viewport_back() -> Result<(), String> {
+    on_cef_ui(go_back_browser)
+}
+
+#[tauri::command]
+pub fn cef_viewport_forward() -> Result<(), String> {
+    on_cef_ui(go_forward_browser)
 }
 
 #[tauri::command]
@@ -107,6 +142,15 @@ pub fn cef_viewport_is_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_http_urls_reach_the_browser() {
+        assert!(browsable_url("https://example.com").is_ok());
+        assert!(browsable_url("http://localhost:1420").is_ok());
+        assert!(browsable_url("javascript:alert(1)").is_err());
+        assert!(browsable_url("file:///etc/passwd").is_err());
+        assert!(browsable_url("not a url").is_err());
+    }
 
     #[test]
     fn geometry_rejects_unusable_viewport_sizes() {

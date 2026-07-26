@@ -1,27 +1,41 @@
 import { useRef } from "react";
 import { useCefCanvasInput } from "../hooks/useCefCanvasInput";
 import { useCefSurface } from "../hooks/useCefSurface";
+import type { CefNavState } from "../native";
 
 /**
  * A Chromium page rendered offscreen and drawn into a normal DOM canvas, so
- * app overlays can still composite above it. Remount (via `key`) to navigate;
- * the surface hook opens one native browser per mount.
+ * app overlays can still composite above it.
+ *
+ * One native browser per mount, and `initialUrl` is only the page it starts
+ * on: navigate with `cefViewportNavigate` rather than remounting, or Chromium
+ * loses the session history that back/forward walk.
  */
 export function CefViewport({
-  url,
+  initialUrl,
   onFirstFrame,
   onAddressChange,
+  onNavState,
   onError,
 }: {
-  url: string;
+  initialUrl: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
+  onNavState: (state: CefNavState) => void;
   onError: (message: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { handlers, takeScrollLatencyMs } = useCefCanvasInput(canvasRef);
 
-  useCefSurface({ canvasRef, url, onFirstFrame, onAddressChange, onError, takeScrollLatencyMs });
+  useCefSurface({
+    canvasRef,
+    initialUrl,
+    onFirstFrame,
+    onAddressChange,
+    onNavState,
+    onError,
+    takeScrollLatencyMs,
+  });
 
   return (
     <canvas

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::handlers::{OsrClient, OsrDisplayHandler, OsrRenderHandler};
+use super::handlers::{NavState, OsrClient, OsrDisplayHandler, OsrLoadHandler, OsrRenderHandler};
 use super::lifecycle::is_initialized;
 
 const TARGET_FRAME_RATE: i32 = 60;
@@ -152,6 +152,7 @@ pub(super) fn open_browser(
     on_frame: Channel<InvokeResponseBody>,
     on_cursor: Channel<String>,
     on_address: Channel<String>,
+    on_nav_state: Channel<NavState>,
 ) -> Result<(), String> {
     if !is_initialized() {
         return Err("CEF is not initialized.".to_string());
@@ -162,6 +163,7 @@ pub(super) fn open_browser(
     let mut client = OsrClient::new(
         OsrRenderHandler::new(view.clone(), on_frame),
         OsrDisplayHandler::new(on_cursor, on_address),
+        OsrLoadHandler::new(on_nav_state),
     );
     let window_info = WindowInfo::default().set_as_windowless(Default::default());
     let browser_settings = BrowserSettings {
@@ -195,13 +197,43 @@ pub(super) fn resize_browser(width: i32, height: i32, scale_factor: f32) {
     });
 }
 
-/// UI thread only.
-pub(super) fn reload_browser() {
+/// Runs `f` against the open browser, doing nothing if none is open. UI thread
+/// only. Mirrors [`with_host`], for the calls that live on `Browser` itself.
+fn with_browser(f: impl FnOnce(&Browser)) {
     BROWSER.with(|cell| {
         if let Some(state) = cell.borrow().as_ref() {
-            state.browser.reload();
+            f(&state.browser);
         }
     });
+}
+
+/// UI thread only.
+pub(super) fn reload_browser() {
+    with_browser(|browser| browser.reload());
+}
+
+/// Navigates the open browser, pushing a real Chromium history entry.
+///
+/// This is what makes [`go_back_browser`] work: the app deliberately does not
+/// keep its own history list, because Chromium's is the only one that sees
+/// in-page navigations. UI thread only.
+pub(super) fn navigate_browser(url: String) {
+    with_browser(|browser| {
+        if let Some(frame) = browser.main_frame() {
+            let url: CefString = url.as_str().into();
+            frame.load_url(Some(&url));
+        }
+    });
+}
+
+/// UI thread only.
+pub(super) fn go_back_browser() {
+    with_browser(|browser| browser.go_back());
+}
+
+/// UI thread only.
+pub(super) fn go_forward_browser() {
+    with_browser(|browser| browser.go_forward());
 }
 
 /// UI thread only.

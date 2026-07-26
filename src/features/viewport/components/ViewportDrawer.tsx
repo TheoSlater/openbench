@@ -7,6 +7,7 @@ import { SUPPORTS_CHROMIUM_BROWSER } from "@/lib/utils/platform";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import * as native from "../native";
+import type { CefNavState } from "../native";
 import {
   moveBrowserHistory,
   pushBrowserHistory,
@@ -45,10 +46,20 @@ export function ViewportDrawer() {
   const [frameNonce, setFrameNonce] = useState(0);
   const [frameLoading, setFrameLoading] = useState(false);
   const [browserError, setBrowserError] = useState("");
+  // Chromium owns history on the CEF path. The iframe path cannot read a
+  // cross-origin frame's history, so it keeps its own list and re-mounts.
+  const [navState, setNavState] = useState<CefNavState>({
+    isLoading: false,
+    canGoBack: false,
+    canGoForward: false,
+  });
   const [history, setHistory] = useState<BrowserHistoryState>({ entries: [], index: -1 });
   // Set while replaying history, so the resulting session URL is not pushed
   // back onto the stack as a new entry.
   const historyMoveRef = useRef(false);
+  // The page Chromium reports it is showing, so the navigate effect below does
+  // not echo an address change back as a fresh navigation.
+  const cefUrlRef = useRef("");
 
   const { dragging, startResize } = useDrawerResize(width, setDrawerWidth);
   const visible = Boolean(open && (browserOpen || session));
@@ -75,7 +86,14 @@ export function ViewportDrawer() {
   const handleBrowserError = useCallback((message: string) => setBrowserError(message), []);
   const handleAddressChange = useCallback((address: string) => {
     setUrl(address);
+    // Record where Chromium moved to, so the navigate effect does not read it
+    // back as a new destination.
+    cefUrlRef.current = address;
     setHistory((state) => pushBrowserHistory(state, address));
+  }, []);
+  const handleNavState = useCallback((state: CefNavState) => {
+    setNavState(state);
+    if (state.isLoading) setFrameLoading(true);
   }, []);
 
   useEffect(() => {
@@ -86,6 +104,15 @@ export function ViewportDrawer() {
     setUrl(session.url);
     setBrowserError("");
     setFrameLoading(true);
+    if (useChromiumBrowser) {
+      // Navigate in place. Remounting would build a fresh browser and throw
+      // away the session history that back/forward walk.
+      if (session.url !== cefUrlRef.current) {
+        cefUrlRef.current = session.url;
+        void native.cefViewportNavigate(session.url).catch(remountBrowser);
+      }
+      return;
+    }
     setHistory((state) => {
       if (historyMoveRef.current) {
         historyMoveRef.current = false;
@@ -93,7 +120,7 @@ export function ViewportDrawer() {
       }
       return pushBrowserHistory(state, session.url);
     });
-  }, [session?.url]);
+  }, [session?.url, useChromiumBrowser, remountBrowser]);
 
   const openTypedUrl = () => {
     const href = resolveBrowserInput(url);
@@ -101,6 +128,11 @@ export function ViewportDrawer() {
   };
 
   const moveHistory = (delta: -1 | 1) => {
+    if (useChromiumBrowser) {
+      const go = delta === -1 ? native.cefViewportBack : native.cefViewportForward;
+      void go().catch(() => undefined);
+      return;
+    }
     const moved = moveBrowserHistory(history, delta);
     if (!moved.url) return;
     historyMoveRef.current = true;
@@ -170,8 +202,12 @@ export function ViewportDrawer() {
           url={url}
           onUrlChange={setUrl}
           onNavigate={openTypedUrl}
-          canGoBack={history.index > 0}
-          canGoForward={history.index < history.entries.length - 1}
+          canGoBack={useChromiumBrowser ? navState.canGoBack : history.index > 0}
+          canGoForward={
+            useChromiumBrowser
+              ? navState.canGoForward
+              : history.index < history.entries.length - 1
+          }
           onGoBack={() => moveHistory(-1)}
           onGoForward={() => moveHistory(1)}
           onReload={reloadBrowser}
@@ -184,10 +220,14 @@ export function ViewportDrawer() {
             <>
               {useChromiumBrowser ? (
                 <CefViewport
-                  key={`${session.url}#${frameNonce}`}
-                  url={session.url}
+                  // Not keyed on the URL: one browser for the surface's whole
+                  // life, so navigating never rebuilds Chromium. The nonce is
+                  // still the escape hatch for a forced remount.
+                  key={frameNonce}
+                  initialUrl={session.url}
                   onFirstFrame={handleFirstFrame}
                   onAddressChange={handleAddressChange}
+                  onNavState={handleNavState}
                   onError={handleBrowserError}
                 />
               ) : (
