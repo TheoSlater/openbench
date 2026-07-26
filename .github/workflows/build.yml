@@ -123,7 +123,14 @@ jobs:
       - name: Configure Windows native build flags
         if: matrix.platform == 'windows'
         shell: bash
-        run: echo "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" >> "$GITHUB_ENV"
+        run: |
+          # whisper.cpp sets cmake_minimum_required(3.5), so CMP0091 defaults to OLD
+          # and CMAKE_MSVC_RUNTIME_LIBRARY is ignored. Force the policy NEW or whisper
+          # builds /MD while CEF's wrapper is /MT (LNK2038/LNK2005 at link time).
+          {
+            echo "CMAKE_POLICY_DEFAULT_CMP0091=NEW"
+            echo "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          } >> "$GITHUB_ENV"
 
       - name: Build PolyUI app
         shell: bash

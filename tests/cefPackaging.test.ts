@@ -58,6 +58,8 @@ describe("CEF packaging", () => {
 
   it("builds Windows native dependencies with CEF's static CRT", () => {
     expect(buildWorkflow).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
+    // Without CMP0091=NEW the runtime library variable is ignored entirely.
+    expect(buildWorkflow).toContain("CMAKE_POLICY_DEFAULT_CMP0091=NEW");
   });
 
   it("stages CEF before Tauri validates bundle resources", () => {
