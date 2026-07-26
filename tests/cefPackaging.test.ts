@@ -57,9 +57,13 @@ describe("CEF packaging", () => {
   });
 
   it("builds Windows native dependencies with CEF's static CRT", () => {
-    expect(buildWorkflow).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
+    expect(buildWorkflow).toContain("CMAKE_MSVC_RUNTIME_LIBRARY: ${{ matrix.platform == 'windows'");
     // Without CMP0091=NEW the runtime library variable is ignored entirely.
-    expect(buildWorkflow).toContain("CMAKE_POLICY_DEFAULT_CMP0091=NEW");
+    expect(buildWorkflow).toContain("CMAKE_POLICY_DEFAULT_CMP0091: ${{ matrix.platform == 'windows'");
+    // Must be job-level env so it lands in the Rust cache key, not a later step.
+    expect(buildWorkflow.indexOf("CMAKE_MSVC_RUNTIME_LIBRARY")).toBeLessThan(
+      buildWorkflow.indexOf("uses: swatinem/rust-cache"),
+    );
   });
 
   it("stages CEF before Tauri validates bundle resources", () => {

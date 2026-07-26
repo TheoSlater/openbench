@@ -43,6 +43,15 @@ jobs:
             arch: arm64
             artifact: linux-arm64
 
+    # Windows only: CEF's wrapper is built /MT, so every other native dep must be
+    # too. whisper.cpp declares cmake_minimum_required(3.5), leaving CMP0091 OLD
+    # and CMAKE_MSVC_RUNTIME_LIBRARY ignored, so force the policy as well. Set at
+    # job level, not via GITHUB_ENV, so it is part of the Rust cache key and
+    # reaches the build script on a cold compile.
+    env:
+      CMAKE_MSVC_RUNTIME_LIBRARY: ${{ matrix.platform == 'windows' && 'MultiThreaded' || '' }}
+      CMAKE_POLICY_DEFAULT_CMP0091: ${{ matrix.platform == 'windows' && 'NEW' || '' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,6 +78,9 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          # Bumped when native CRT/link flags change: stale objects are built
+          # with the old runtime library and cargo will not rebuild them.
+          key: crt-mt-1
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
@@ -118,18 +130,6 @@ jobs:
             echo "CMAKE_OSX_DEPLOYMENT_TARGET=11.0"
             echo "CMAKE_C_FLAGS=-mmacosx-version-min=11.0"
             echo "CMAKE_CXX_FLAGS=-D_LIBCPP_DISABLE_AVAILABILITY -mmacosx-version-min=11.0"
-          } >> "$GITHUB_ENV"
-
-      - name: Configure Windows native build flags
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: |
-          # whisper.cpp sets cmake_minimum_required(3.5), so CMP0091 defaults to OLD
-          # and CMAKE_MSVC_RUNTIME_LIBRARY is ignored. Force the policy NEW or whisper
-          # builds /MD while CEF's wrapper is /MT (LNK2038/LNK2005 at link time).
-          {
-            echo "CMAKE_POLICY_DEFAULT_CMP0091=NEW"
-            echo "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
           } >> "$GITHUB_ENV"
 
       - name: Build PolyUI app
