@@ -8,13 +8,13 @@
 
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { deflateSync } from "node:zlib";
+import { crc32, deflateSync } from "node:zlib";
+import { decodeFrame, readMessages } from "./viewport-wire.mjs";
 
 const url = process.argv[2] ?? "https://example.com";
 const outFile = process.argv[3] ?? "viewport-smoke.png";
 const WIDTH = 800;
 const HEIGHT = 600;
-const TAGS = ["frame", "cursor", "address", "navState", "error"];
 
 const helper = spawn("src-tauri/target/debug/polyui-viewport", [], {
   stdio: ["pipe", "pipe", "inherit"],
@@ -23,22 +23,9 @@ const helper = spawn("src-tauri/target/debug/polyui-viewport", [], {
 const send = (obj) => helper.stdin.write(`${JSON.stringify(obj)}\n`);
 send({ cmd: "open", id: 1, url, width: WIDTH, height: HEIGHT, scaleFactor: 1 });
 
-let buffer = Buffer.alloc(0);
 let done = false;
 
-helper.stdout.on("data", (chunk) => {
-  buffer = Buffer.concat([buffer, chunk]);
-  // u32 length | u8 tag | u32 id | payload
-  while (buffer.length >= 4) {
-    const length = buffer.readUInt32LE(0);
-    if (buffer.length < 4 + length) break;
-    const tag = buffer[4];
-    const id = buffer.readUInt32LE(5);
-    const payload = buffer.subarray(9, 4 + length);
-    buffer = buffer.subarray(4 + length);
-    handle(TAGS[tag] ?? `unknown(${tag})`, id, payload);
-  }
-});
+readMessages(helper.stdout, handle);
 
 // Persistent BGRA surface, exactly as the canvas keeps one: every frame only
 // carries dirty rects, so compositing here is what proves the rect protocol.
@@ -94,24 +81,6 @@ function finish() {
   setTimeout(() => helper.kill(), 1500);
 }
 
-function decodeFrame(packet) {
-  const width = packet.readUInt32LE(4);
-  const height = packet.readUInt32LE(8);
-  const rectCount = packet.readUInt32LE(12);
-  const rects = [];
-  let offset = 24;
-  for (let i = 0; i < rectCount; i += 1) {
-    rects.push({
-      x: packet.readInt32LE(offset),
-      y: packet.readInt32LE(offset + 4),
-      width: packet.readInt32LE(offset + 8),
-      height: packet.readInt32LE(offset + 12),
-    });
-    offset += 16;
-  }
-  return { width, height, rectCount, rects, pixels: packet.subarray(offset) };
-}
-
 // Minimal PNG writer: the frame is a single full-surface BGRA rect.
 function encodePng({ width, height, pixels }) {
   const raw = Buffer.alloc((width * 4 + 1) * height);
@@ -131,7 +100,7 @@ function encodePng({ width, height, pixels }) {
     out.writeUInt32BE(data.length, 0);
     out.write(type, 4);
     data.copy(out, 8);
-    out.writeInt32BE(crc32(Buffer.concat([Buffer.from(type), data])), 8 + data.length);
+    out.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])), 8 + data.length);
     return out;
   };
   const ihdr = Buffer.alloc(13);
@@ -147,20 +116,6 @@ function encodePng({ width, height, pixels }) {
   ]);
 }
 
-let crcTable = null;
-function crc32(buf) {
-  if (!crcTable) {
-    crcTable = [];
-    for (let n = 0; n < 256; n += 1) {
-      let c = n;
-      for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      crcTable[n] = c >>> 0;
-    }
-  }
-  let crc = 0xffffffff;
-  for (const byte of buf) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) | 0;
-}
 
 setTimeout(() => {
   if (!done) {

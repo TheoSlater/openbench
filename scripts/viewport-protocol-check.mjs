@@ -5,8 +5,8 @@
 // app keeps. Prints PASS/FAIL per assertion and exits non-zero on any failure.
 
 import { spawn } from "node:child_process";
+import { readMessages } from "./viewport-wire.mjs";
 
-const TAGS = ["frame", "cursor", "address", "navState", "error"];
 const helper = spawn("src-tauri/target/debug/polyui-viewport", [], {
   stdio: ["pipe", "pipe", "inherit"],
 });
@@ -14,24 +14,13 @@ const send = (obj) => helper.stdin.write(`${JSON.stringify(obj)}\n`);
 
 const state = new Map(); // id -> { frames, addresses[], nav }
 const errors = [];
-let buffer = Buffer.alloc(0);
-
-helper.stdout.on("data", (chunk) => {
-  buffer = Buffer.concat([buffer, chunk]);
-  while (buffer.length >= 4) {
-    const length = buffer.readUInt32LE(0);
-    if (buffer.length < 4 + length) break;
-    const tag = TAGS[buffer[4]];
-    const id = buffer.readUInt32LE(5);
-    const payload = buffer.subarray(9, 4 + length);
-    buffer = buffer.subarray(4 + length);
-    if (!state.has(id)) state.set(id, { frames: 0, addresses: [], nav: null });
-    const entry = state.get(id);
-    if (tag === "frame") entry.frames += 1;
-    else if (tag === "address") entry.addresses.push(payload.toString("utf8"));
-    else if (tag === "navState") entry.nav = JSON.parse(payload.toString("utf8"));
-    else if (tag === "error") errors.push(`id=${id} ${payload.toString("utf8")}`);
-  }
+readMessages(helper.stdout, (tag, id, payload) => {
+  if (!state.has(id)) state.set(id, { frames: 0, addresses: [], nav: null });
+  const entry = state.get(id);
+  if (tag === "frame") entry.frames += 1;
+  else if (tag === "address") entry.addresses.push(payload.toString("utf8"));
+  else if (tag === "navState") entry.nav = JSON.parse(payload.toString("utf8"));
+  else if (tag === "error") errors.push(`id=${id} ${payload.toString("utf8")}`);
 });
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -60,19 +60,6 @@ export function cefViewportInput(id: number, events: CefInputEvent[]): Promise<v
   return invoke("cef_viewport_input", { id, events });
 }
 
-export function cefViewportSetEnabled(enabled: boolean): Promise<void> {
-  return invoke("cef_viewport_set_enabled", { enabled });
-}
-
-export function cefViewportIsEnabled(): Promise<boolean> {
-  return invoke<boolean>("cef_viewport_is_enabled");
-}
-
-/** Whether the downloaded browser runtime is present and runnable. */
-export function cefViewportIsInstalled(): Promise<boolean> {
-  return invoke<boolean>("cef_viewport_is_installed");
-}
-
 export type ViewportPackStatus = {
   installed: boolean;
   supported: boolean;

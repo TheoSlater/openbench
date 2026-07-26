@@ -102,13 +102,18 @@ impl Sink {
             Ok(out) => out,
             Err(poisoned) => poisoned.into_inner(),
         };
-        // A broken pipe means the main process is gone; there is nothing useful
-        // to do about it here, and the helper exits when stdin closes.
-        let _ = out.write_all(&length.to_le_bytes());
-        let _ = out.write_all(&[tag as u8]);
-        let _ = out.write_all(&id.to_le_bytes());
+        let mut header = [0u8; 9];
+        header[0..4].copy_from_slice(&length.to_le_bytes());
+        header[4] = tag as u8;
+        header[5..9].copy_from_slice(&id.to_le_bytes());
+        // One header write, not three: every separate write makes the pipe
+        // readable and wakes the reader on the other side. No flush -- the
+        // writer is an unbuffered File, so it is a no-op.
+        //
+        // A broken pipe means the main process is gone; there is nothing
+        // useful to do about it here, and the helper exits when stdin closes.
+        let _ = out.write_all(&header);
         let _ = out.write_all(payload);
-        let _ = out.flush();
     }
 
     pub fn error(&self, id: BrowserId, message: &str) {

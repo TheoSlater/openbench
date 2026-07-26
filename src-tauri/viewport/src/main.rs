@@ -104,8 +104,16 @@ fn run_command_loop(sink: &Sink) {
     }
 }
 
+/// Runs one browser job on CEF's UI thread, flattening the nested Result the
+/// hop produces. Every command is the same shape; only the closure differs.
+fn ui(
+    id: protocol::BrowserId,
+    job: impl FnOnce() -> Result<(), String> + Send + 'static,
+) -> (protocol::BrowserId, Result<(), String>) {
+    (id, browser::on_cef_ui(job).and_then(|inner| inner))
+}
+
 fn dispatch(sink: &Sink, command: Command) {
-    let sink_for_error = sink.clone();
     let (id, result) = match command {
         Command::Open {
             id,
@@ -115,50 +123,28 @@ fn dispatch(sink: &Sink, command: Command) {
             scale_factor,
         } => {
             let sink = sink.clone();
-            (
-                id,
-                browser::on_cef_ui(move || {
-                    browser::open_browser(id, url, width, height, scale_factor, sink)
-                })
-                .and_then(|inner| inner),
-            )
+            ui(id, move || {
+                browser::open_browser(id, url, width, height, scale_factor, sink)
+            })
         }
         Command::Resize {
             id,
             width,
             height,
             scale_factor,
-        } => (
-            id,
-            browser::on_cef_ui(move || browser::resize_browser(id, width, height, scale_factor)).and_then(|inner| inner),
-        ),
-        Command::Navigate { id, url } => (
-            id,
-            browser::on_cef_ui(move || browser::navigate_browser(id, url)).and_then(|inner| inner),
-        ),
-        Command::Back { id } => (
-            id,
-            browser::on_cef_ui(move || browser::go_back(id)).and_then(|inner| inner),
-        ),
-        Command::Forward { id } => (
-            id,
-            browser::on_cef_ui(move || browser::go_forward(id)).and_then(|inner| inner),
-        ),
-        Command::Reload { id } => (
-            id,
-            browser::on_cef_ui(move || browser::reload_browser(id)).and_then(|inner| inner),
-        ),
-        // Closing an already-closed browser is not an error: the app can race a
-        // tab close against an in-flight command.
-        Command::Close { id } => (id, browser::on_cef_ui(move || browser::close_browser(id))),
-        Command::Input { id, events } => (
-            id,
-            browser::on_cef_ui(move || input::dispatch_input(id, events)).and_then(|inner| inner),
-        ),
+        } => ui(id, move || {
+            browser::resize_browser(id, width, height, scale_factor)
+        }),
+        Command::Navigate { id, url } => ui(id, move || browser::navigate_browser(id, url)),
+        Command::Back { id } => ui(id, move || browser::go_back(id)),
+        Command::Forward { id } => ui(id, move || browser::go_forward(id)),
+        Command::Reload { id } => ui(id, move || browser::reload_browser(id)),
+        Command::Close { id } => ui(id, move || browser::close_browser(id)),
+        Command::Input { id, events } => ui(id, move || input::dispatch_input(id, events)),
         // Handled by the loop so it can stop reading.
         Command::Shutdown => return,
     };
     if let Err(error) = result {
-        sink_for_error.error(id, &error);
+        sink.error(id, &error);
     }
 }

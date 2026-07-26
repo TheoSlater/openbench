@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex};
 
 use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -37,29 +37,19 @@ struct Helper {
     stdin: ChildStdin,
 }
 
-static HELPER: OnceLock<Mutex<Option<Helper>>> = OnceLock::new();
-static CHANNELS: OnceLock<Mutex<HashMap<BrowserId, BrowserChannels>>> = OnceLock::new();
-
-fn helper_slot() -> &'static Mutex<Option<Helper>> {
-    HELPER.get_or_init(|| Mutex::new(None))
-}
-
-fn channels() -> &'static Mutex<HashMap<BrowserId, BrowserChannels>> {
-    CHANNELS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+static HELPER: Mutex<Option<Helper>> = Mutex::new(None);
+static CHANNELS: LazyLock<Mutex<HashMap<BrowserId, BrowserChannels>>> =
+    LazyLock::new(Default::default);
 
 /// Locates the helper binary.
 ///
-/// Stage 4 replaces the data-dir branch with a verified, downloaded pack; until
-/// then the dev-tree fallback is what makes the feature usable at all. libcef
-/// must sit next to whichever copy is chosen — the helper's rpath is `$ORIGIN`.
+/// The installed pack first, then the dev tree. libcef must sit next to
+/// whichever copy is chosen — the helper's rpath is `$ORIGIN`.
 pub fn helper_path() -> Option<PathBuf> {
-    let name = if cfg!(windows) {
-        "polyui-viewport.exe"
-    } else {
-        "polyui-viewport"
-    };
+    let name = super::helper_name();
 
+    // Set by the integration test in this module, which runs from target/deps
+    // and so cannot rely on either branch below.
     if let Some(path) = std::env::var_os("POLYUI_VIEWPORT_BIN") {
         let path = PathBuf::from(path);
         if path.is_file() {
@@ -67,11 +57,7 @@ pub fn helper_path() -> Option<PathBuf> {
         }
     }
 
-    if let Some(data) = dirs::data_dir() {
-        let path = data
-            .join("com.tslater.polyui/viewport")
-            .join(super::CEF_VERSION)
-            .join(name);
+    if let Some(path) = super::install_dir().ok().map(|dir| dir.join(name)) {
         if path.is_file() {
             return Some(path);
         }
@@ -108,8 +94,7 @@ fn ensure_started(slot: &mut Option<Helper>) -> Result<(), String> {
     }
 
     let path = helper_path().ok_or_else(|| {
-        "The browser runtime is not installed. Enable the Chromium browser in Settings → Advanced."
-            .to_string()
+        "The browser runtime is not installed. Download it from Settings → Advanced.".to_string()
     })?;
 
     let mut command = Command::new(&path);
@@ -165,54 +150,57 @@ fn kill_child_with_parent(_command: &mut Command) {}
 /// Separate from the dispatch below so the framing — the half that must agree
 /// exactly with `protocol.rs` in the helper, and the half that desynchronises
 /// permanently if it is wrong — can be tested without a process or a Channel.
-fn read_frames(read: impl Read, mut on_message: impl FnMut(u8, BrowserId, &[u8])) {
+fn read_frames(read: impl Read, mut on_message: impl FnMut(u8, BrowserId, Vec<u8>)) {
     let mut reader = BufReader::new(read);
-    let mut header = [0u8; 4];
+    let mut header = [0u8; 9];
     loop {
+        // Header first, so the payload can be read straight into the buffer
+        // that is handed on. Reading the whole message and then slicing cost a
+        // second full-size allocation and copy of every frame -- ~11MB each at
+        // 900x800@2x, 60 times a second.
         if reader.read_exact(&mut header).is_err() {
             break;
         }
-        let length = u32::from_le_bytes(header) as usize;
+        let length = u32::from_le_bytes([header[0], header[1], header[2], header[3]]) as usize;
         if length < 5 {
             break;
         }
-        let mut body = vec![0u8; length];
-        if reader.read_exact(&mut body).is_err() {
+        let tag = header[4];
+        let id = u32::from_le_bytes([header[5], header[6], header[7], header[8]]);
+        let mut payload = vec![0u8; length - 5];
+        if reader.read_exact(&mut payload).is_err() {
             break;
         }
-        let id = u32::from_le_bytes([body[1], body[2], body[3], body[4]]);
-        on_message(body[0], id, &body[5..]);
+        on_message(tag, id, payload);
     }
 }
 
 /// Reads framed messages until the helper exits. EOF is the crash signal.
 fn read_messages(stdout: std::process::ChildStdout) {
     read_frames(stdout, |tag, id, payload| {
-        let channel = channels().lock().ok().and_then(|map| map.get(&id).cloned());
+        let channel = CHANNELS.lock().ok().and_then(|map| map.get(&id).cloned());
         let Some(channel) = channel else { return };
 
         match tag {
-            // Forwarded verbatim: this side never parses a frame.
+            // Moved, not copied: this side never parses a frame.
             TAG_FRAME => {
-                let _ = channel
-                    .on_frame
-                    .send(InvokeResponseBody::Raw(payload.to_vec()));
+                let _ = channel.on_frame.send(InvokeResponseBody::Raw(payload));
             }
             TAG_CURSOR => {
-                let _ = channel.on_cursor.send(String::from_utf8_lossy(payload).into());
+                let _ = channel.on_cursor.send(String::from_utf8_lossy(&payload).into());
             }
             TAG_ADDRESS => {
                 let _ = channel
                     .on_address
-                    .send(String::from_utf8_lossy(payload).into());
+                    .send(String::from_utf8_lossy(&payload).into());
             }
             TAG_NAV_STATE => {
-                if let Ok(value) = serde_json::from_slice(payload) {
+                if let Ok(value) = serde_json::from_slice(&payload) {
                     let _ = channel.on_nav_state.send(value);
                 }
             }
             TAG_ERROR => {
-                let _ = channel.on_error.send(String::from_utf8_lossy(payload).into());
+                let _ = channel.on_error.send(String::from_utf8_lossy(&payload).into());
             }
             _ => {}
         }
@@ -224,10 +212,10 @@ fn read_messages(stdout: std::process::ChildStdout) {
 /// next open respawns. Without this the frontend would sit on its loading
 /// spinner with no idea the process died.
 fn on_helper_exit() {
-    if let Ok(mut slot) = helper_slot().lock() {
+    if let Ok(mut slot) = HELPER.lock() {
         *slot = None;
     }
-    let open = channels()
+    let open = CHANNELS
         .lock()
         .map(|mut map| map.drain().collect::<Vec<_>>())
         .unwrap_or_default();
@@ -246,7 +234,7 @@ fn on_helper_exit() {
 /// buffer absorbs them; if that ever stops being true, move the writes onto a
 /// queue with a dedicated writer thread.
 pub fn send(command: serde_json::Value) -> Result<(), String> {
-    let mut slot = helper_slot()
+    let mut slot = HELPER
         .lock()
         .map_err(|_| "Viewport runtime lock poisoned.".to_string())?;
     ensure_started(&mut slot)?;
@@ -268,20 +256,20 @@ pub fn send(command: serde_json::Value) -> Result<(), String> {
 }
 
 pub fn register(id: BrowserId, channel: BrowserChannels) {
-    if let Ok(mut map) = channels().lock() {
+    if let Ok(mut map) = CHANNELS.lock() {
         map.insert(id, channel);
     }
 }
 
 pub fn unregister(id: BrowserId) {
-    if let Ok(mut map) = channels().lock() {
+    if let Ok(mut map) = CHANNELS.lock() {
         map.remove(&id);
     }
 }
 
 /// Stops the helper. Called from the app's exit path, before `process::exit`.
 pub fn shutdown() {
-    let Ok(mut slot) = helper_slot().lock() else {
+    let Ok(mut slot) = HELPER.lock() else {
         return;
     };
     let Some(mut helper) = slot.take() else {
@@ -292,10 +280,16 @@ pub fn shutdown() {
     let _ = helper.stdin.write_all(b"{\"cmd\":\"shutdown\"}\n");
     let _ = helper.stdin.flush();
     drop(helper.stdin);
-    for _ in 0..20 {
+    let mut wait_ms = 2;
+    let mut waited_ms = 0;
+    while waited_ms < 2_000 {
         match helper.child.try_wait() {
             Ok(Some(_)) => return,
-            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Ok(None) => {
+                std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+                waited_ms += wait_ms;
+                wait_ms = (wait_ms * 2).min(100);
+            }
             Err(_) => break,
         }
     }
@@ -318,9 +312,7 @@ mod tests {
 
     fn collect(bytes: &[u8]) -> Vec<(u8, BrowserId, Vec<u8>)> {
         let mut seen = Vec::new();
-        read_frames(bytes, |tag, id, payload| {
-            seen.push((tag, id, payload.to_vec()))
-        });
+        read_frames(bytes, |tag, id, payload| seen.push((tag, id, payload)));
         seen
     }
 

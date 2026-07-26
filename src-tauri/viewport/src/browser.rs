@@ -132,35 +132,29 @@ pub fn on_cef_ui<T: Send + 'static>(
         })
 }
 
-/// Runs `f` against one browser's host. UI thread only.
-pub fn with_host<T>(id: BrowserId, f: impl FnOnce(&BrowserHost) -> T) -> Result<T, String> {
+/// Runs `f` against one open browser. UI thread only.
+///
+/// Reports an unknown id rather than doing nothing: a silent no-op means a
+/// mis-addressed navigate looks exactly like a page that refused to load.
+fn with_state<T>(id: BrowserId, f: impl FnOnce(&BrowserState) -> T) -> Result<T, String> {
     BROWSERS.with(|cell| {
         let browsers = cell.borrow();
         let state = browsers
             .get(&id)
             .ok_or_else(|| format!("CEF viewport {id} is not open."))?;
+        Ok(f(state))
+    })
+}
+
+/// Runs `f` against one browser's host. UI thread only.
+pub fn with_host<T>(id: BrowserId, f: impl FnOnce(&BrowserHost) -> T) -> Result<T, String> {
+    with_state(id, |state| {
         let host = state
             .browser
             .host()
             .ok_or_else(|| "CEF browser host is unavailable.".to_string())?;
         Ok(f(&host))
-    })
-}
-
-/// Runs `f` against one browser. UI thread only. Mirrors [`with_host`], for the
-/// calls that live on `Browser` itself.
-///
-/// Reports an unknown id rather than doing nothing: a silent no-op here means a
-/// mis-addressed navigate looks exactly like a page that refused to load.
-fn with_browser(id: BrowserId, f: impl FnOnce(&Browser)) -> Result<(), String> {
-    BROWSERS.with(|cell| {
-        let browsers = cell.borrow();
-        let state = browsers
-            .get(&id)
-            .ok_or_else(|| format!("CEF viewport {id} is not open."))?;
-        f(&state.browser);
-        Ok(())
-    })
+    })?
 }
 
 /// Creates a browser under `id`, replacing any existing one with that id.
@@ -177,7 +171,7 @@ pub fn open_browser(
     if !is_initialized() {
         return Err("CEF is not initialized.".to_string());
     }
-    close_browser(id);
+    let _ = close_browser(id);
 
     let view = ViewState::new(width, height, scale_factor);
     let mut client = OsrClient::new(
@@ -213,23 +207,18 @@ pub fn resize_browser(
     height: i32,
     scale_factor: f32,
 ) -> Result<(), String> {
-    BROWSERS.with(|cell| {
-        let browsers = cell.borrow();
-        let state = browsers
-            .get(&id)
-            .ok_or_else(|| format!("CEF viewport {id} is not open."))?;
+    with_state(id, |state| {
         state.view.resize(width, height, scale_factor);
         if let Some(host) = state.browser.host() {
             host.notify_screen_info_changed();
             host.was_resized();
         }
-        Ok(())
     })
 }
 
 /// UI thread only.
 pub fn reload_browser(id: BrowserId) -> Result<(), String> {
-    with_browser(id, |browser| browser.reload())
+    with_state(id, |state| state.browser.reload())
 }
 
 /// Navigates in place, pushing a real Chromium history entry.
@@ -238,8 +227,8 @@ pub fn reload_browser(id: BrowserId) -> Result<(), String> {
 /// list of its own, because Chromium's is the only one that sees in-page
 /// navigations. UI thread only.
 pub fn navigate_browser(id: BrowserId, url: String) -> Result<(), String> {
-    with_browser(id, |browser| {
-        if let Some(frame) = browser.main_frame() {
+    with_state(id, |state| {
+        if let Some(frame) = state.browser.main_frame() {
             let url: CefString = url.as_str().into();
             frame.load_url(Some(&url));
         }
@@ -248,22 +237,25 @@ pub fn navigate_browser(id: BrowserId, url: String) -> Result<(), String> {
 
 /// UI thread only.
 pub fn go_back(id: BrowserId) -> Result<(), String> {
-    with_browser(id, |browser| browser.go_back())
+    with_state(id, |state| state.browser.go_back())
 }
 
 /// UI thread only.
 pub fn go_forward(id: BrowserId) -> Result<(), String> {
-    with_browser(id, |browser| browser.go_forward())
+    with_state(id, |state| state.browser.go_forward())
 }
 
 /// UI thread only.
-pub fn close_browser(id: BrowserId) {
+/// Idempotent: the app can race a tab close against an in-flight command, so
+/// closing an already-closed browser is not an error.
+pub fn close_browser(id: BrowserId) -> Result<(), String> {
     let state = BROWSERS.with(|cell| cell.borrow_mut().remove(&id));
     if let Some(state) = state {
         if let Some(host) = state.browser.host() {
             host.close_browser(1);
         }
     }
+    Ok(())
 }
 
 /// Closes every browser. UI thread only; used on shutdown.

@@ -211,9 +211,7 @@ function BrowserViewport({
   const cefUrlRef = useRef(session?.url ?? "");
   // One browser per tab, named for the helper process that hosts them all.
   // Stable across a frameNonce remount: the same tab keeps the same browser.
-  const browserIdRef = useRef(0);
-  if (!browserIdRef.current) browserIdRef.current = allocateBrowserId();
-  const browserId = browserIdRef.current;
+  const [browserId] = useState(allocateBrowserId);
 
   const remountBrowser = useCallback(() => {
     setBrowserError("");

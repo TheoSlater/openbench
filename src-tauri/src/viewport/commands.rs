@@ -141,23 +141,6 @@ pub fn cef_viewport_input(id: BrowserId, events: serde_json::Value) -> Result<()
     process::send(json!({ "cmd": "input", "id": id, "events": events }))
 }
 
-#[tauri::command]
-pub fn cef_viewport_set_enabled(enabled: bool) -> Result<(), String> {
-    super::set_enabled(enabled)
-}
-
-#[tauri::command]
-pub fn cef_viewport_is_enabled() -> bool {
-    super::enabled()
-}
-
-/// Whether the helper binary is present. False means the browser cannot run,
-/// however the preference is set.
-#[tauri::command]
-pub fn cef_viewport_is_installed() -> bool {
-    process::is_installed()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

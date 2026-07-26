@@ -96,7 +96,9 @@ export function AdvancedSettingsContent() {
 
   // The Chromium runtime is a ~140MB download rather than part of the app, so
   // enabling it is an install, not just a preference. Nothing is decided at
-  // boot any more, so this no longer restarts the app.
+  // boot any more, so this no longer restarts the app. The preference itself
+  // is just the persisted store field — the backend only knows whether a pack
+  // is installed.
   const [packStatus, setPackStatus] = useState<native.ViewportPackStatus | null>(null);
   const [installProgress, setInstallProgress] = useState<number | null>(null);
 
@@ -105,40 +107,10 @@ export function AdvancedSettingsContent() {
     void native.viewportPackStatus().then(setPackStatus).catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (installProgress === null) return undefined;
-    const unlisten = listen<{ downloadedBytes: number; totalBytes: number | null }>(
-      "viewport-pack-progress",
-      (event) => {
-        const { downloadedBytes, totalBytes } = event.payload;
-        setInstallProgress(totalBytes ? downloadedBytes / totalBytes : 0);
-      },
-    );
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, [installProgress !== null]);
-
   const handleChromiumToggle = useCallback(
     (checked: boolean) => {
-      if (!checked) {
-        void native
-          .cefViewportSetEnabled(false)
-          .then(() => {
-            actions.updateGeneral({ experimentalChromiumBrowser: false });
-          })
-          .catch((error) => notify.error("Browser setting failed", String(error)));
-        return;
-      }
-
-      const needsDownload = packStatus ? !packStatus.installed : true;
-      if (!needsDownload) {
-        void native
-          .cefViewportSetEnabled(true)
-          .then(() => {
-            actions.updateGeneral({ experimentalChromiumBrowser: true });
-          })
-          .catch((error) => notify.error("Browser setting failed", String(error)));
+      if (!checked || packStatus?.installed) {
+        actions.updateGeneral({ experimentalChromiumBrowser: checked });
         return;
       }
 
@@ -149,9 +121,17 @@ export function AdvancedSettingsContent() {
         confirmLabel: "Download",
         onConfirm: () => {
           setInstallProgress(0);
+          // Subscribed for exactly the life of the install, rather than via an
+          // effect keyed on the progress state the listener itself writes.
+          const unlisten = listen<{ downloadedBytes: number; totalBytes: number | null }>(
+            "viewport-pack-progress",
+            (event) => {
+              const { downloadedBytes, totalBytes } = event.payload;
+              setInstallProgress(totalBytes ? downloadedBytes / totalBytes : 0);
+            },
+          );
           void native
             .viewportPackInstall()
-            .then(() => native.cefViewportSetEnabled(true))
             .then(() => native.viewportPackStatus())
             .then((status) => {
               setPackStatus(status);
@@ -164,7 +144,10 @@ export function AdvancedSettingsContent() {
               actions.updateGeneral({ experimentalChromiumBrowser: false });
               notify.error("Browser runtime download failed", String(error));
             })
-            .finally(() => setInstallProgress(null));
+            .finally(() => {
+              void unlisten.then((off) => off());
+              setInstallProgress(null);
+            });
         },
       });
     },

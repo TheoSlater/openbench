@@ -20,61 +20,27 @@ pub mod commands;
 pub mod pack;
 pub mod process;
 
-use std::path::{Path, PathBuf};
 
 /// The CEF build the helper is compiled against. Also the directory name the
 /// downloaded pack installs under, so a version bump is a clean fresh install
 /// rather than a half-replaced runtime.
 pub const CEF_VERSION: &str = "150.0.10";
 
-const ENABLED_FILE: &str = "com.tslater.polyui/cef-enabled";
-
-fn enabled_path() -> Result<PathBuf, String> {
-    dirs::config_dir()
-        .map(|path| path.join(ENABLED_FILE))
-        .ok_or_else(|| "OS config directory is unavailable.".to_string())
-}
-
-/// The user's browser preference. Unlike the in-process version this is no
-/// longer read at startup — nothing is decided at boot now that the helper
-/// spawns lazily on first use.
-pub fn enabled() -> bool {
-    enabled_path().is_ok_and(|path| path.is_file())
-}
-
-pub fn set_enabled(enabled: bool) -> Result<(), String> {
-    set_enabled_at(&enabled_path()?, enabled)
-}
-
-fn set_enabled_at(path: &Path, enabled: bool) -> Result<(), String> {
-    if enabled {
-        let parent = path
-            .parent()
-            .ok_or_else(|| "Viewport preference path has no parent directory.".to_string())?;
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        return std::fs::write(path, b"enabled").map_err(|error| error.to_string());
-    }
-
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
+/// The helper executable's name. Shared so the installer verifies the same file
+/// the launcher looks for.
+pub fn helper_name() -> &'static str {
+    if cfg!(windows) {
+        "polyui-viewport.exe"
+    } else {
+        "polyui-viewport"
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn viewport_preference_can_be_enabled_and_disabled() {
-        let path = std::env::temp_dir().join(format!("polyui-cef-enabled-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-
-        set_enabled_at(&path, true).expect("enable viewport preference");
-        assert!(path.is_file());
-
-        set_enabled_at(&path, false).expect("disable viewport preference");
-        assert!(!path.exists());
-    }
+/// Where an installed pack lives. Versioned, so bumping CEF is a clean fresh
+/// install rather than a half-replaced runtime.
+pub fn install_dir() -> Result<std::path::PathBuf, String> {
+    Ok(dirs::data_dir()
+        .ok_or_else(|| "OS data directory is unavailable.".to_string())?
+        .join("com.tslater.polyui/viewport")
+        .join(CEF_VERSION))
 }

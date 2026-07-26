@@ -12,15 +12,17 @@
 
 use futures::StreamExt;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 
-use super::CEF_VERSION;
+use super::{helper_name, install_dir, CEF_VERSION};
 
 /// Release that carries the packs. Tagged separately from app releases.
 const PACK_TAG: &str = "cef-pack-150.0.10";
 const PACK_REPO: &str = "monolabsdev/poly-ui";
+/// How much must arrive before another progress event is worth sending.
+const PROGRESS_INTERVAL_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,13 +55,18 @@ pub struct PackStatus {
 /// pack workflow prints each SHA to its job summary. An empty hash is treated
 /// as "not published yet" and refuses to install, so there is no window in
 /// which unverified code is unpacked and executed.
+const PACKS: &[(&str, &str, &str, &str)] = &[
+    // (os, arch, asset, sha256)
+    ("linux", "x86_64", "polyui-viewport-linux-x64.tar.gz", ""),
+    ("linux", "aarch64", "polyui-viewport-linux-arm64.tar.gz", ""),
+    ("windows", "x86_64", "polyui-viewport-windows-x64.tar.gz", ""),
+];
+
 fn asset() -> Option<(&'static str, &'static str)> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Some(("polyui-viewport-linux-x64.tar.gz", "")),
-        ("linux", "aarch64") => Some(("polyui-viewport-linux-arm64.tar.gz", "")),
-        ("windows", "x86_64") => Some(("polyui-viewport-windows-x64.tar.gz", "")),
-        _ => None,
-    }
+    PACKS
+        .iter()
+        .find(|(os, arch, _, _)| *os == std::env::consts::OS && *arch == std::env::consts::ARCH)
+        .map(|(_, _, name, sha)| (*name, *sha))
 }
 
 fn asset_name() -> Option<&'static str> {
@@ -85,15 +92,6 @@ async fn sha256_of(path: &Path) -> Result<String, String> {
         hasher.update(&buffer[..read]);
     }
     Ok(format!("{:x}", hasher.finalize()))
-}
-
-/// Where an installed pack lives. Versioned, so bumping CEF is a clean fresh
-/// install rather than a half-replaced runtime.
-pub fn install_dir() -> Result<PathBuf, String> {
-    Ok(dirs::data_dir()
-        .ok_or_else(|| "OS data directory is unavailable.".to_string())?
-        .join("com.tslater.polyui/viewport")
-        .join(CEF_VERSION))
 }
 
 pub fn status() -> PackStatus {
@@ -153,6 +151,7 @@ pub async fn viewport_pack_install(app_handle: AppHandle) -> Result<(), String> 
         .await
         .map_err(|error| error.to_string())?;
     let mut downloaded_bytes = 0_u64;
+    let mut emitted_at = 0_u64;
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
@@ -161,13 +160,19 @@ pub async fn viewport_pack_install(app_handle: AppHandle) -> Result<(), String> 
             .await
             .map_err(|error| error.to_string())?;
         downloaded_bytes += chunk.len() as u64;
-        let _ = app_handle.emit(
-            "viewport-pack-progress",
-            PackProgress {
-                downloaded_bytes,
-                total_bytes,
-            },
-        );
+        // Emit per megabyte, not per chunk. reqwest hands back 8-16KB chunks,
+        // so a 140MB download would otherwise fire ~15,000 IPC messages at a
+        // progress bar that can repaint 60 times a second.
+        if downloaded_bytes - emitted_at >= PROGRESS_INTERVAL_BYTES {
+            emitted_at = downloaded_bytes;
+            let _ = app_handle.emit(
+                "viewport-pack-progress",
+                PackProgress {
+                    downloaded_bytes,
+                    total_bytes,
+                },
+            );
+        }
     }
     file.flush().await.map_err(|error| error.to_string())?;
     drop(file);
@@ -197,7 +202,7 @@ pub async fn viewport_pack_install(app_handle: AppHandle) -> Result<(), String> 
     extract(&archive, &staging).await?;
     let _ = tokio::fs::remove_file(&archive).await;
 
-    if !helper_in(&staging) {
+    if !staging.join(helper_name()).is_file() {
         let _ = tokio::fs::remove_dir_all(&staging).await;
         return Err("Browser runtime archive did not contain the viewport helper.".to_string());
     }
@@ -219,15 +224,6 @@ pub async fn viewport_pack_remove() -> Result<(), String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.to_string()),
     }
-}
-
-fn helper_in(dir: &Path) -> bool {
-    let name = if cfg!(windows) {
-        "polyui-viewport.exe"
-    } else {
-        "polyui-viewport"
-    };
-    dir.join(name).is_file()
 }
 
 /// `tar` is present on every supported Linux and on Windows 10+ (bsdtar), and
@@ -297,11 +293,7 @@ mod tests {
         // unpacked and executed, so TLS alone is not enough to trust it.
         // Publishing a CEF version means filling these in from the pack
         // workflow's job summary.
-        for (name, sha) in [
-            ("polyui-viewport-linux-x64.tar.gz", ""),
-            ("polyui-viewport-linux-arm64.tar.gz", ""),
-            ("polyui-viewport-windows-x64.tar.gz", ""),
-        ] {
+        for (_, _, name, sha) in PACKS {
             assert!(
                 sha.is_empty() || sha.len() == 64,
                 "{name}: a pinned SHA-256 must be 64 hex characters"

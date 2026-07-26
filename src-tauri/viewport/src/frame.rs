@@ -74,7 +74,17 @@ pub fn encode_frame(
     let source_stride = width_usize * BYTES_PER_PIXEL;
     for rect in dirty_rects {
         let row_bytes = rect.width as usize * BYTES_PER_PIXEL;
-        for row in rect.y as usize..(rect.y + rect.height) as usize {
+        let first_row = rect.y as usize;
+        let last_row = (rect.y + rect.height) as usize;
+        // A full-width rect is already contiguous, which is the common case:
+        // every resize forces one, and CEF reports one on most repaints. One
+        // memcpy instead of 1,600 row copies at 2x.
+        if row_bytes == source_stride {
+            let start = first_row * source_stride;
+            packet.extend_from_slice(&pixels[start..last_row * source_stride]);
+            continue;
+        }
+        for row in first_row..last_row {
             let start = row * source_stride + rect.x as usize * BYTES_PER_PIXEL;
             packet.extend_from_slice(&pixels[start..start + row_bytes]);
         }
