@@ -1,0 +1,26 @@
+[package]
+name = "polyui-viewport"
+version = "0.21.1"
+description = "Out-of-process CEF viewport helper for PolyUI"
+edition = "2021"
+
+[[bin]]
+name = "polyui-viewport"
+path = "src/main.rs"
+
+[dependencies]
+# Deliberately tiny. Every dependency here is also linked into the CEF
+# render/GPU/zygote children, because CEF re-executes this binary for them.
+cef = { version = "150.0.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation"] }
+
+[build-dependencies]
+cef-dll-sys = "150.0.0"

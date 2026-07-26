@@ -4011,6 +4011,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyui-viewport"
+version = "0.21.1"
+dependencies = [
+ "cef",
+ "cef-dll-sys",
+ "dirs 6.0.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
