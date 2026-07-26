@@ -12,12 +12,14 @@ import type { CefNavState } from "../native";
  * loses the session history that back/forward walk.
  */
 export function CefViewport({
+  browserId,
   initialUrl,
   onFirstFrame,
   onAddressChange,
   onNavState,
   onError,
 }: {
+  browserId: number;
   initialUrl: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
@@ -25,10 +27,11 @@ export function CefViewport({
   onError: (message: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { handlers, takeScrollLatencyMs } = useCefCanvasInput(canvasRef);
+  const { handlers, takeScrollLatencyMs } = useCefCanvasInput(canvasRef, browserId);
 
   useCefSurface({
     canvasRef,
+    browserId,
     initialUrl,
     onFirstFrame,
     onAddressChange,

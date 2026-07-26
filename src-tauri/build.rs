@@ -194,58 +194,9 @@ fn list_dir_recursive(dir: &Path, depth: usize) -> String {
     result
 }
 
-/// Linker flags the CEF OSR spike needs on the final binary only.
-///
-/// These use `rustc-link-arg-bins` rather than `rustflags` in
-/// `.cargo/config.toml` on purpose: rustflags apply to every crate in the
-/// graph, including build scripts and proc macros, which are linked from a
-/// different working directory and have no reason to carry either flag.
-fn emit_cef_link_args() {
-    let manifest_dir = PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"),
-    );
-
-    // cef-dll-sys copies libcef.so next to the binary but never tells the
-    // linker to look there, so the binary dies at startup with
-    // "libcef.so: cannot open shared object file". $ORIGIN resolves to the
-    // binary's own directory at load time (dev builds); the ../lib entry
-    // resolves the installed layout, where the binary sits in usr/bin and the
-    // bundled CEF runtime in usr/lib/PolyUI (deb, rpm, and AppImage AppDir all
-    // share that shape).
-    println!("cargo::rustc-link-arg-bins=-Wl,-rpath,$ORIGIN:$ORIGIN/../lib/PolyUI");
-
-    // Keep the executable's bundled SQLite (sqlx -> libsqlite3-sys) out of the
-    // dynamic symbol table, so it stops interposing over the system
-    // libsqlite3.so that WebKitGTK and CEF's NSS both use. Without this, CEF's
-    // NSS init dies on a null function pointer. See hide-bundled-sqlite.map.
-    let version_script = manifest_dir.join("hide-bundled-sqlite.map");
-    println!("cargo::rerun-if-changed={}", version_script.display());
-    println!(
-        "cargo::rustc-link-arg-bins=-Wl,--version-script={}",
-        version_script.display()
-    );
-}
-
 fn main() {
-    println!("cargo::rerun-if-env-changed=CEF_PATH");
     let target = std::env::var("TARGET").expect("TARGET missing");
     let lib_name = library_name(&target);
-
-    // Keyed off TARGET, not cfg!(target_os), because cfg in a build script
-    // describes the host that is running it, not what is being built.
-    //
-    // `cef` gates every CEF-dependent item in the crate. macOS is excluded: it
-    // needs separate helper .app bundles inside the framework directory rather
-    // than re-executing this binary, which the bundler does not produce.
-    println!("cargo::rustc-check-cfg=cfg(cef)");
-    if target.contains("linux") || target.contains("windows") {
-        println!("cargo::rustc-cfg=cef");
-        // Only ELF needs the rpath and symbol-visibility fixes; on Windows the
-        // loader already searches the executable's own directory.
-        if target.contains("linux") {
-            emit_cef_link_args();
-        }
-    }
 
     let staged_dir = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"),

@@ -11,9 +11,12 @@ export const IS_WINDOWS = PLATFORM === "windows";
 export const USE_CUSTOM_WINDOW_CONTROLS = IS_WINDOWS || IS_LINUX;
 
 /**
- * Whether the CEF viewport is compiled into this build. Must stay in sync with
- * the `cef` cfg in `src-tauri/build.rs`; macOS ships without it, so the
- * viewport falls back to the iframe there.
+ * Whether a Chromium viewport runtime is published for this platform.
+ *
+ * No longer a compile-time property of the app: CEF lives in a downloadable
+ * pack, so this only says a pack exists to fetch. Whether one is actually
+ * installed is `viewportPackStatus().installed`. macOS is absent until its
+ * helper `.app` bundles and signing are done, and falls back to the iframe.
  */
 export const SUPPORTS_CHROMIUM_BROWSER = IS_LINUX || IS_WINDOWS;
 

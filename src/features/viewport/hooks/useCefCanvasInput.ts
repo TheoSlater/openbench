@@ -38,7 +38,10 @@ export type CefCanvasInputHandlers = {
  * far more of them than the browser can consume, and each one is an IPC hop.
  * Clicks and keys flush immediately so ordering against a pending move holds.
  */
-export function useCefCanvasInput(canvasRef: RefObject<HTMLCanvasElement | null>): {
+export function useCefCanvasInput(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  browserId: number,
+): {
   handlers: CefCanvasInputHandlers;
   /** Time since the wheel event that triggered the frame being painted, once. */
   takeScrollLatencyMs: () => number | null;
@@ -50,7 +53,7 @@ export function useCefCanvasInput(canvasRef: RefObject<HTMLCanvasElement | null>
 
   const handlers = useMemo<CefCanvasInputHandlers>(() => {
     function sendInput(...events: CefInputEvent[]) {
-      if (events.length) void native.cefViewportInput(events).catch(() => undefined);
+      if (events.length) void native.cefViewportInput(browserId, events).catch(() => undefined);
     }
 
     /** Canvas-space coordinates and modifier flags, or null if unmounted. */
@@ -174,7 +177,7 @@ export function useCefCanvasInput(canvasRef: RefObject<HTMLCanvasElement | null>
       onKeyUp: (event) => sendKey(event, "up"),
       onContextMenu: (event) => event.preventDefault(),
     };
-  }, [canvasRef]);
+  }, [canvasRef, browserId]);
 
   const takeScrollLatencyMs = useCallback(() => {
     const startedAt = wheelStartedAtRef.current;

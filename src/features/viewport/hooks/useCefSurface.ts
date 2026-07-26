@@ -7,8 +7,19 @@ import type { CefNavState } from "../native";
 
 const FIRST_FRAME_TIMEOUT_MS = 15000;
 
+/**
+ * One helper process hosts every viewport, so each surface needs a name of its
+ * own. Monotonic per app run; ids are never reused, so a late frame from a
+ * closed browser can never land on a new one.
+ */
+let nextBrowserId = 1;
+export function allocateBrowserId(): number {
+  return nextBrowserId++;
+}
+
 type CefSurfaceOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  browserId: number;
   initialUrl: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
@@ -28,6 +39,7 @@ type CefSurfaceOptions = {
  */
 export function useCefSurface({
   canvasRef,
+  browserId,
   initialUrl,
   onFirstFrame,
   onAddressChange,
@@ -72,6 +84,7 @@ export function useCefSurface({
     const cursors = new Channel<string>();
     const addresses = new Channel<string>();
     const navStates = new Channel<CefNavState>();
+    const errors = new Channel<string>();
     cursors.onmessage = (cursor) => {
       canvas.style.cursor = cursor;
     };
@@ -80,6 +93,12 @@ export function useCefSurface({
     };
     navStates.onmessage = (state) => {
       if (!disposed) latest.current.onNavState(state);
+    };
+    // The helper is a separate process: it can die at any point, and this is
+    // the only way the surface hears about it.
+    errors.onmessage = (message) => {
+      clearTimeout(firstFrameTimeout);
+      if (!disposed) latest.current.onError(message);
     };
 
     // Paint at most once per animation frame, dropping any frame superseded
@@ -132,6 +151,7 @@ export function useCefSurface({
         }, FIRST_FRAME_TIMEOUT_MS);
         void native
           .cefViewportOpen({
+            id: browserId,
             url: latest.current.initialUrl,
             width,
             height,
@@ -140,6 +160,7 @@ export function useCefSurface({
             onCursor: cursors,
             onAddress: addresses,
             onNavState: navStates,
+            onError: errors,
           })
           .catch((error) => {
             opened = false;
@@ -148,7 +169,7 @@ export function useCefSurface({
             if (!disposed) latest.current.onError(String(error));
           });
       } else {
-        void native.cefViewportResize(width, height, scaleFactor).catch((error) => {
+        void native.cefViewportResize(browserId, width, height, scaleFactor).catch((error) => {
           console.warn("Failed to resize CEF viewport:", error);
         });
       }
@@ -169,9 +190,9 @@ export function useCefSurface({
       clearTimeout(firstFrameTimeout);
       observer.disconnect();
       if (paintAnimationFrame) cancelAnimationFrame(paintAnimationFrame);
-      if (opened) void native.cefViewportClose().catch(() => undefined);
+      if (opened) void native.cefViewportClose(browserId).catch(() => undefined);
     };
     // One browser per canvas mount. Everything variable is read through
     // `latest`, so nothing here may depend on a caller's render identity.
-  }, [canvasRef]);
+  }, [canvasRef, browserId]);
 }

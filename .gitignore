@@ -34,3 +34,6 @@ AGENTS.md
 .claude/settings.local.json
 .codex/
 .codex/config.toml
+
+# Viewport pack build output (hundreds of MB of Chromium)
+dist-pack/

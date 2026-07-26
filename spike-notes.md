@@ -9,6 +9,21 @@ scheduled as one-shot GLib timeouts; see `cef_osr.rs`), input forwarding landed 
 browser toggle (Linux only, off by default). The sections below are the historical
 record of the spike and no longer describe the current code.
 
+**Superseded again:** CEF now runs in a separate `polyui-viewport` process
+(`src-tauri/viewport/`), downloaded on demand rather than linked into the app.
+That resolved several problems this document treats as constraints:
+
+- The CP1 idle-spin and the whole `do_message_loop_work` / `external_message_pump`
+  question were artifacts of sharing a process with Tauri's GTK loop. The helper
+  uses `multi_threaded_message_loop` with no GTK of its own.
+- "Every CEF child process is a full copy of the polyui binary" (CP1, *Integration
+  points that fought back*) is fixed: the helper is 0.7MB and links no ONNX,
+  whisper or sqlx.
+- macOS is no longer excluded by construction — a helper binary is exactly the
+  shape CEF wants there. Bundling and signing remain.
+- The CP2 PNG artifact this document admits was never produced now exists:
+  `node scripts/viewport-smoke.mjs`.
+
 ## Pinned versions
 
 | Thing | Version |
