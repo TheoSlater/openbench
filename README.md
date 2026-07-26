@@ -49,7 +49,7 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/monolabsdev/poly-ui/main/scripts/install.ps1 | iex
 ```
 
-- **macOS**: download `PolyUI-*-macos-universal.dmg`.
+- **macOS** (Apple Silicon): download `PolyUI-*-macos-arm64.dmg`.
 - **Windows**: download `PolyUI-*-windows-x64-setup.exe` or `PolyUI-*-windows-x64.msi`.
 - **Windows with Ollama setup**: download `PolyUI-*-windows-x64-ollama-setup.exe`.
 - **Linux Debian/Ubuntu**: download `PolyUI-*-linux-x64.deb` or `PolyUI-*-linux-arm64.deb`, then install with:
