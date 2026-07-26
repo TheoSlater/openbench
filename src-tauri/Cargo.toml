@@ -13,6 +13,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 st-tts = "0.3"
 
+[profile.release]
+# Cargo keeps symbols in release by default: 43MB binary -> 34MB stripped.
+strip = true
+
 [features]
 default = []
 dev-sql-console = []

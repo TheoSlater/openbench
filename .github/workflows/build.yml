@@ -74,6 +74,22 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # cef-dll-sys defaults to downloading the ~600MB CEF archive into OUT_DIR,
+      # which drags 1.4GB of unstripped libcef into the Rust cache. Park it
+      # outside target/ so it is cached once, on its own, and the Rust cache
+      # stays small enough that four platforms fit in the 10GB repo budget.
+      - name: Cache CEF distribution
+        if: matrix.platform != 'macos'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cef
+          key: ${{ runner.os }}-${{ matrix.arch }}-cef-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Point cef-dll-sys at the cached distribution
+        if: matrix.platform != 'macos'
+        shell: bash
+        run: echo "CEF_PATH=${{ github.workspace }}/.cef" >> "$GITHUB_ENV"
+
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
@@ -81,6 +97,10 @@ jobs:
           # Bumped when native CRT/link flags change: stale objects are built
           # with the old runtime library and cargo will not rebuild them.
           key: crt-mt-1
+          # Only main writes. Tag and nightly-tag runs get a ref-scoped cache
+          # that no later run can read, so saving from them is pure waste that
+          # evicts the one cache releases can actually restore (main's).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
@@ -188,7 +208,9 @@ jobs:
           DMG="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -type f | head -n 1)"
           test -n "$DMG"
           mkdir -p release-artifacts/macos
-          cp "$DMG" "release-artifacts/macos/PolyUI-$VERSION-macos-universal.dmg"
+          # macos-latest is arm64 and there is no universal target, so the DMG
+          # is Apple Silicon only. Name it for what it is.
+          cp "$DMG" "release-artifacts/macos/PolyUI-$VERSION-macos-arm64.dmg"
 
       - name: Validate Linux bundles
         if: matrix.platform == 'linux'
