@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export type ViewportStatus = "loading" | "ready" | "closed";
+export type ViewportTabType = "browser" | "terminal";
 
 export type ViewportSession = {
   chatId: string | null;
@@ -10,16 +11,24 @@ export type ViewportSession = {
   status: ViewportStatus;
 };
 
-type ViewportStore = {
+export type ViewportTab = {
+  id: string;
+  type: ViewportTabType;
   session: ViewportSession | null;
-  browserOpen: boolean;
+};
+
+type ViewportStore = {
+  tabs: ViewportTab[];
+  activeTabId: string | null;
   drawerOpen: boolean;
   drawerWidth: number;
   actions: {
-    opened: (session: Omit<ViewportSession, "status">) => void;
-    browserOpened: () => void;
-    browserClosed: () => void;
-    statusChanged: (phase: ViewportStatus, url: string) => void;
+    addTab: (type: ViewportTabType, session?: ViewportSession | null) => string;
+    closeTab: (id: string) => void;
+    closeTabs: (predicate: (tab: ViewportTab) => boolean) => void;
+    selectTab: (id: string) => void;
+    setTabOrder: (ids: string[]) => void;
+    updateBrowserUrl: (id: string, url: string) => void;
     setDrawerOpen: (open: boolean) => void;
     setDrawerWidth: (width: number) => void;
     clear: () => void;
@@ -29,6 +38,7 @@ type ViewportStore = {
 const WIDTH_STORAGE_KEY = "poly_viewport_width";
 export const VIEWPORT_MIN_WIDTH = 320;
 export const VIEWPORT_MAX_WIDTH = 900;
+let nextTabId = 1;
 
 function loadWidth(): number {
   const raw =
@@ -42,52 +52,87 @@ function loadWidth(): number {
     : 440;
 }
 
+function withoutTabs(
+  state: Pick<ViewportStore, "tabs" | "activeTabId">,
+  predicate: (tab: ViewportTab) => boolean,
+) {
+  const removed = state.tabs.filter(predicate);
+  if (!removed.length) return null;
+  const tabs = state.tabs.filter((tab) => !predicate(tab));
+  const activeRemoved = removed.some((tab) => tab.id === state.activeTabId);
+  const removedIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+  const neighborIndex = Math.min(
+    tabs.length - 1,
+    Math.max(0, removedIndex - 1),
+  );
+  const activeTabId = activeRemoved
+    ? tabs[neighborIndex]?.id ?? null
+    : state.activeTabId;
+  return { tabs, activeTabId, drawerOpen: tabs.length > 0 };
+}
+
 export const useViewportStore = create<ViewportStore>((set) => ({
-  session: null,
-  browserOpen: false,
+  tabs: [],
+  activeTabId: null,
   drawerOpen: false,
   drawerWidth: loadWidth(),
   actions: {
-    opened: (session) =>
-      set({
-        session: { ...session, status: "loading" },
-        browserOpen: true,
+    addTab: (type, session = null) => {
+      const id = `viewport-${nextTabId++}`;
+      set((state) => ({
+        tabs: [...state.tabs, { id, type, session }],
+        activeTabId: id,
         drawerOpen: true,
-      }),
-    browserOpened: () => set({ browserOpen: true, drawerOpen: true }),
-    browserClosed: () =>
-      set({ session: null, browserOpen: false, drawerOpen: false }),
-    statusChanged: (phase, url) =>
+      }));
+      return id;
+    },
+    closeTab: (id) =>
+      set((state) => withoutTabs(state, (tab) => tab.id === id) ?? state),
+    closeTabs: (predicate) =>
+      set((state) => withoutTabs(state, predicate) ?? state),
+    selectTab: (activeTabId) => set({ activeTabId, drawerOpen: true }),
+    setTabOrder: (ids) =>
       set((state) => {
-        if (!state.session) return state;
-        if (phase === "closed") {
-          return { session: null, browserOpen: false, drawerOpen: false };
+        if (
+          ids.length !== state.tabs.length ||
+          new Set(ids).size !== state.tabs.length
+        ) {
+          return state;
         }
-        return {
-          session: {
-            ...state.session,
-            status: phase,
-            url: url || state.session.url,
-            label: url || state.session.label,
-          },
-        };
+        const tabs = ids
+          .map((id) => state.tabs.find((tab) => tab.id === id))
+          .filter((tab): tab is ViewportTab => Boolean(tab));
+        return tabs.length === state.tabs.length ? { tabs } : state;
       }),
+    updateBrowserUrl: (id, url) =>
+      set((state) => ({
+        tabs: state.tabs.map((tab) =>
+          tab.id === id && tab.type === "browser"
+            ? {
+                ...tab,
+                session: {
+                  chatId: null,
+                  openedBy: "user",
+                  status: "ready",
+                  ...tab.session,
+                  url,
+                  label: url,
+                },
+              }
+            : tab,
+        ),
+      })),
     setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
     setDrawerWidth: (drawerWidth) => {
       localStorage.setItem(WIDTH_STORAGE_KEY, String(drawerWidth));
       set({ drawerWidth });
     },
-    clear: () =>
-      set({ session: null, browserOpen: false, drawerOpen: false }),
+    clear: () => set({ tabs: [], activeTabId: null, drawerOpen: false }),
   },
 }));
 
 export function openViewportForUser(url: string): Promise<void> {
-  openViewportPreviewUrl({
-    chatId: null,
-    url,
-    openedBy: "user",
-  });
+  openViewportPreviewUrl({ chatId: null, url, openedBy: "user" });
   return Promise.resolve();
 }
 
@@ -108,12 +153,33 @@ export function closeViewport(): void {
   useViewportStore.getState().actions.clear();
 }
 
-export function openEmptyViewport(): void {
-  useViewportStore.getState().actions.browserOpened();
+export function openEmptyViewport(): string {
+  return useViewportStore.getState().actions.addTab("browser");
 }
 
-export function closeViewportBrowser(): void {
-  useViewportStore.getState().actions.browserClosed();
+export function openViewportTerminal(): string {
+  return useViewportStore.getState().actions.addTab("terminal");
+}
+
+export function closeViewportTab(id: string): void {
+  useViewportStore.getState().actions.closeTab(id);
+}
+
+export function closeViewportTabs(type: ViewportTabType): void {
+  useViewportStore.getState().actions.closeTabs((tab) => tab.type === type);
+}
+
+export function selectViewportTab(id: string): void {
+  useViewportStore.getState().actions.selectTab(id);
+}
+
+export function setViewportTabOrder(ids: string[]): void {
+  useViewportStore.getState().actions.setTabOrder(ids);
+}
+
+export function updateViewportBrowserUrl(id: string, input: string): void {
+  const url = safeHttpUrl(input);
+  if (url) useViewportStore.getState().actions.updateBrowserUrl(id, url);
 }
 
 export function hideViewportDrawer(): void {
@@ -127,14 +193,13 @@ export function openViewportPreviewUrl(input: {
 }): void {
   const url = safeHttpUrl(input.url);
   if (!url) return;
-  const actions = useViewportStore.getState().actions;
-  actions.opened({
+  useViewportStore.getState().actions.addTab("browser", {
     chatId: input.chatId,
     openedBy: input.openedBy,
     label: url,
     url,
+    status: "ready",
   });
-  actions.statusChanged("ready", url);
 }
 
 function safeHttpUrl(input: string): string | null {
@@ -149,7 +214,7 @@ function safeHttpUrl(input: string): string | null {
 }
 
 export function closeViewportForChat(chatId: string): void {
-  if (useViewportStore.getState().session?.chatId === chatId) {
-    closeViewport();
-  }
+  useViewportStore
+    .getState()
+    .actions.closeTabs((tab) => tab.session?.chatId === chatId);
 }

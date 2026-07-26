@@ -12,12 +12,17 @@ export type GeneralSettings = {
   webSearch: WebSearchSettings;
   webSearchEnabled: boolean;
   experimentalFeatures: boolean;
+  betaFeatures: boolean;
+  previewFeatures: boolean;
+  terminalEmulator: TerminalEmulator;
   experimentalChromiumBrowser: boolean;
   mobileWebAccess: boolean;
   showModelInEmptyState: boolean;
   voiceModeExperimental: boolean;
   memoryBeta: boolean;
 };
+
+export type TerminalEmulator = "browser" | "native";
 
 export type BrowserTtsSettings = {
   voiceURI: string;
@@ -87,7 +92,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 25;
+const SETTINGS_VERSION = 26;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -124,6 +129,9 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
       webSearch: createDefaultWebSearchSettings(),
       webSearchEnabled: false,
       experimentalFeatures: false,
+      betaFeatures: false,
+      previewFeatures: false,
+      terminalEmulator: "browser",
       experimentalChromiumBrowser: false,
       mobileWebAccess: false,
       showModelInEmptyState: false,
@@ -294,6 +302,11 @@ export const useSettingsStore = create<SettingsState>()(
             ...state.performance,
             reduceMotion: true,
           };
+        }
+        if (version < 26 && state?.general) {
+          state.general.betaFeatures = Boolean(state.general.memoryBeta);
+          state.general.previewFeatures = false;
+          state.general.terminalEmulator = "browser";
         }
         startupPhase("settings migration complete");
         return state as SettingsState;

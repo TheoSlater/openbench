@@ -31,6 +31,10 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "node:zlib": path.resolve(
+        __dirname,
+        "./src/features/viewport/justBashZlibShim.ts",
+      ),
     },
   },
   build: {

@@ -8,6 +8,7 @@ mod memory;
 mod mobile_pairing;
 mod models;
 mod providers;
+pub mod pty;
 mod startup_log;
 mod stream_emitter;
 mod title_generator;
@@ -142,6 +143,7 @@ pub fn run() {
 
     let result = builder
         .manage(MobilePairingState::default())
+        .manage(pty::PtyState::default())
         .setup(|app| {
             startup_log::log_phase("setup hook entered");
             startup_log::log_phase("ONNX Runtime initialization");
@@ -304,6 +306,10 @@ pub fn run() {
             mobile_pairing_start,
             mobile_pairing_stop,
             mobile_pairing_status,
+            pty::pty_spawn,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_close,
         ])
         .build(context);
     startup_log::log_phase("tauri app built");
