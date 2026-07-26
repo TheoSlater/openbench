@@ -33,6 +33,18 @@ const until = async (predicate, ms = 20000) => {
   return false;
 };
 const idle = (id) => state.get(id)?.nav?.isLoading === false;
+/**
+ * Exact host match. Substring matching would accept
+ * `https://example.com.evil.test/`, which is both a weaker assertion and the
+ * habit that turns into a real vulnerability when copied into checking code.
+ */
+const isHost = (url, host) => {
+  try {
+    return new URL(url).hostname === host;
+  } catch {
+    return false;
+  }
+};
 
 const results = [];
 const check = (name, ok, detail = "") => {
@@ -51,18 +63,18 @@ await until(() => idle(1) && idle(2));
 check("two browsers coexist", state.get(1)?.frames > 0 && state.get(2)?.frames > 0,
   `id1=${state.get(1)?.frames ?? 0} frames, id2=${state.get(2)?.frames ?? 0} frames`);
 check("each browser reports its own address",
-  state.get(1)?.addresses[0]?.includes("example.com") &&
-    state.get(2)?.addresses[0]?.includes("example.org"),
+  isHost(state.get(1)?.addresses[0], "example.com") &&
+    isHost(state.get(2)?.addresses[0], "example.org"),
   `${state.get(1)?.addresses[0]} | ${state.get(2)?.addresses[0]}`);
 check("no back history on a fresh browser", state.get(1)?.nav?.canGoBack === false);
 
 // Navigate browser 1 in place; Chromium should now offer a back entry.
 send({ cmd: "navigate", id: 1, url: "https://example.org" });
-await until(() => state.get(1)?.addresses.some((a) => a.includes("example.org")));
+await until(() => state.get(1)?.addresses.some((a) => isHost(a, "example.org")));
 await until(() => idle(1) && state.get(1)?.nav?.canGoBack === true);
 check("navigating in place builds real history", state.get(1)?.nav?.canGoBack === true);
 check("browser 2 unaffected by browser 1 navigating",
-  state.get(2)?.addresses.every((a) => a.includes("example.org")) &&
+  state.get(2)?.addresses.every((a) => isHost(a, "example.org")) &&
     state.get(2)?.nav?.canGoBack === false);
 
 // Back must return to the first page and offer a forward entry.
@@ -71,7 +83,7 @@ send({ cmd: "back", id: 1 });
 await until(() => state.get(1).addresses.length > beforeBack);
 await until(() => idle(1));
 check("back returns to the previous page",
-  state.get(1).addresses.at(-1)?.includes("example.com"),
+  isHost(state.get(1).addresses.at(-1), "example.com"),
   state.get(1).addresses.at(-1));
 check("forward becomes available after going back",
   state.get(1)?.nav?.canGoForward === true);
