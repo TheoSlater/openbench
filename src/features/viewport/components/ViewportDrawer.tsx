@@ -265,7 +265,11 @@ function BrowserViewport({
 
   const handleNavState = useCallback((state: CefNavState) => {
     setNavState(state);
-    if (state.isLoading) setFrameLoading(true);
+    // Chromium's loading flag is authoritative in both directions. Setting only
+    // the true edge and waiting for a paint to clear it left the spinner stuck
+    // over a finished page: Chromium does not repaint a surface that has not
+    // changed, so a load that ends after the last paint never cleared it.
+    setFrameLoading(state.isLoading);
   }, []);
 
   const handleFirstFrame = useCallback(() => {
