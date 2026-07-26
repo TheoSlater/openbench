@@ -58,6 +58,7 @@ dirs = "6"
 whisper-rs = "0.16"
 cpal = "0.15"
 hound = "3.5"
+portable-pty = "0.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }

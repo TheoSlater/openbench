@@ -75,7 +75,7 @@ function App() {
   const [isArchivedOpen, setIsArchivedOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const viewportActive = useViewportStore(
-    (state) => Boolean(state.session || state.browserOpen),
+    (state) => state.tabs.length > 0,
   );
   const stopStreamingRef = useRef<(() => void) | null>(null);
   const notify = useNotify();
@@ -174,11 +174,11 @@ function App() {
   }, [selectedPromptPreset, general.systemPrompt]);
 
   useEffect(() => {
-    if (import.meta.env.DEV && general.experimentalFeatures) return;
+    if (general.betaFeatures && general.memoryBeta) return;
     void disableMemoryForOwner(getCurrentProviderAccountId()).catch(
       () => undefined,
     );
-  }, [general.experimentalFeatures]);
+  }, [general.betaFeatures, general.memoryBeta]);
 
   const { conversations, activeConversationId } = useChatStore(
     useShallow((state) => ({
