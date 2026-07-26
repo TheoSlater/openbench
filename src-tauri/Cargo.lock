@@ -3936,6 +3936,7 @@ dependencies = [
  "async-trait",
  "bcrypt",
  "cef",
+ "cef-dll-sys",
  "chrono",
  "cpal",
  "dirs 6.0.0",

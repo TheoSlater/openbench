@@ -44,6 +44,13 @@ describe("CEF packaging", () => {
     expect(platform).toContain("SUPPORTS_CHROMIUM_BROWSER = IS_LINUX || IS_WINDOWS");
   });
 
+  it("stages CEF before Tauri validates bundle resources", () => {
+    expect(cargoManifest).toContain(
+      `[target.'cfg(any(target_os = "linux", target_os = "windows"))'.build-dependencies]`,
+    );
+    expect(cargoManifest).toContain('cef-dll-sys = "150.0.0"');
+  });
+
   it("ships the CEF runtime beside the exe on Windows", () => {
     expect(windowsBundleConfig.bundle).not.toHaveProperty("//");
     // Same rule as Linux: libcef.dll is a load-time dependency and resolves

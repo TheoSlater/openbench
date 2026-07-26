@@ -64,3 +64,6 @@ gtk = { version = "0.18", features = ["v3_24"] }
 # viewport runs with `no_sandbox`; `build-util` is only for CEF's own tooling.
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 cef = { version = "150.0.0", default-features = false }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.build-dependencies]
+cef-dll-sys = "150.0.0"
