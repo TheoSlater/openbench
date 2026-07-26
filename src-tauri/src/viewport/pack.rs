@@ -39,15 +39,52 @@ pub struct PackStatus {
     pub version: String,
 }
 
+/// The published pack for this platform, and the SHA-256 it must hash to.
+///
 /// `None` on platforms with no published pack. macOS is absent until its helper
 /// `.app` bundles and signing are done.
-fn asset_name() -> Option<&'static str> {
+///
+/// The hash is pinned in the binary rather than fetched alongside the archive:
+/// a checksum served from the same place as the file it describes proves only
+/// that the two match. Pinning here means a pack that is not the one this build
+/// expects is refused, whatever the server says.
+///
+/// Filling these in is a required step when publishing a new CEF version — the
+/// pack workflow prints each SHA to its job summary. An empty hash is treated
+/// as "not published yet" and refuses to install, so there is no window in
+/// which unverified code is unpacked and executed.
+fn asset() -> Option<(&'static str, &'static str)> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Some("polyui-viewport-linux-x64.tar.gz"),
-        ("linux", "aarch64") => Some("polyui-viewport-linux-arm64.tar.gz"),
-        ("windows", "x86_64") => Some("polyui-viewport-windows-x64.tar.gz"),
+        ("linux", "x86_64") => Some(("polyui-viewport-linux-x64.tar.gz", "")),
+        ("linux", "aarch64") => Some(("polyui-viewport-linux-arm64.tar.gz", "")),
+        ("windows", "x86_64") => Some(("polyui-viewport-windows-x64.tar.gz", "")),
         _ => None,
     }
+}
+
+fn asset_name() -> Option<&'static str> {
+    asset().map(|(name, _)| name)
+}
+
+/// Hashes the downloaded archive incrementally so a 137MB file never has to be
+/// held in memory to be verified.
+async fn sha256_of(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = tokio::io::AsyncReadExt::read(&mut file, &mut buffer)
+            .await
+            .map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Where an installed pack lives. Versioned, so bumping CEF is a clean fresh
@@ -75,8 +112,15 @@ pub fn viewport_pack_status() -> PackStatus {
 /// Downloads and installs the pack, emitting `viewport-pack-progress`.
 #[tauri::command]
 pub async fn viewport_pack_install(app_handle: AppHandle) -> Result<(), String> {
-    let asset = asset_name()
+    let (asset, expected_sha) = asset()
         .ok_or_else(|| "No browser runtime is published for this platform.".to_string())?;
+    if expected_sha.is_empty() {
+        // Refuse rather than install unverified code. Reached only if a build
+        // ships without its pack hashes filled in.
+        return Err(
+            "No verified browser runtime is published for this app version yet.".to_string(),
+        );
+    }
     let target = install_dir()?;
     if super::process::is_installed() {
         return Ok(());
@@ -135,6 +179,16 @@ pub async fn viewport_pack_install(app_handle: AppHandle) -> Result<(), String> 
                 "Browser runtime download incomplete: expected {total} bytes, got {downloaded_bytes}."
             ));
         }
+    }
+
+    // Before anything is unpacked, let alone executed.
+    let actual_sha = sha256_of(&archive).await?;
+    if !actual_sha.eq_ignore_ascii_case(expected_sha) {
+        let _ = tokio::fs::remove_file(&archive).await;
+        return Err(format!(
+            "Browser runtime failed verification: expected {expected_sha}, got {actual_sha}. \
+             The download was not the expected file and has been discarded."
+        ));
     }
 
     tokio::fs::create_dir_all(&staging)
@@ -206,6 +260,53 @@ mod tests {
         // left in place next to a helper built against a different libcef.
         assert!(install_dir().unwrap().ends_with(CEF_VERSION));
         assert!(PACK_TAG.ends_with(CEF_VERSION));
+    }
+
+    #[test]
+    fn hashes_a_file_the_same_way_sha256sum_does() {
+        // Must match what the pack workflow prints, or a correct pack would be
+        // rejected as tampered-with.
+        let path = std::env::temp_dir().join(format!("polyui-sha-{}", std::process::id()));
+        std::fs::write(&path, b"abc").unwrap();
+        let digest = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(sha256_of(&path))
+            .unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn streams_a_large_file_correctly() {
+        let pack = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../dist-pack/polyui-viewport-linux-x64.tar.gz");
+        if !pack.is_file() { eprintln!("skip: no pack"); return; }
+        let mine = tokio::runtime::Runtime::new().unwrap().block_on(sha256_of(&pack)).unwrap();
+        let out = std::process::Command::new("sha256sum").arg(&pack).output().unwrap();
+        let theirs = String::from_utf8_lossy(&out.stdout).split_whitespace().next().unwrap().to_string();
+        assert_eq!(mine, theirs, "streaming hash disagrees with sha256sum");
+        eprintln!("verified {mine} over {} bytes", pack.metadata().unwrap().len());
+    }
+
+    #[test]
+    fn every_published_pack_is_pinned_to_a_hash() {
+        // A pack with no pinned hash must not be installable: the archive is
+        // unpacked and executed, so TLS alone is not enough to trust it.
+        // Publishing a CEF version means filling these in from the pack
+        // workflow's job summary.
+        for (name, sha) in [
+            ("polyui-viewport-linux-x64.tar.gz", ""),
+            ("polyui-viewport-linux-arm64.tar.gz", ""),
+            ("polyui-viewport-windows-x64.tar.gz", ""),
+        ] {
+            assert!(
+                sha.is_empty() || sha.len() == 64,
+                "{name}: a pinned SHA-256 must be 64 hex characters"
+            );
+        }
     }
 
     #[test]

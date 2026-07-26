@@ -74,14 +74,25 @@ jobs:
         shell: bash
         run: node scripts/build-viewport-pack.mjs "${{ matrix.asset }}"
 
-      - name: Report size
+      - name: Report size and SHA-256
         shell: bash
         run: |
-          ls -la "dist-pack/${{ matrix.asset }}"
-          echo "### ${{ matrix.asset }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          ls -la "dist-pack/${{ matrix.asset }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          PACK="dist-pack/${{ matrix.asset }}"
+          SHA="$(sha256sum "$PACK" | cut -d' ' -f1)"
+          SIZE="$(du -h "$PACK" | cut -f1)"
+          {
+            echo "### ${{ matrix.asset }}"
+            echo ""
+            echo "size: \`$SIZE\`"
+            echo ""
+            echo "Paste into \`asset()\` in \`src-tauri/src/viewport/pack.rs\`:"
+            echo ""
+            echo '```rust'
+            echo "(\"${{ matrix.asset }}\", \"$SHA\")"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$SHA  ${{ matrix.asset }}"
 
       - uses: actions/upload-artifact@v4
         with:
