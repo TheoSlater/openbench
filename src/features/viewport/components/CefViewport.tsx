@@ -11,15 +11,17 @@ export function CefViewport({
   url,
   onFirstFrame,
   onAddressChange,
+  onError,
 }: {
   url: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
+  onError: (message: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { handlers, takeScrollLatencyMs } = useCefCanvasInput(canvasRef);
 
-  useCefSurface({ canvasRef, url, onFirstFrame, onAddressChange, takeScrollLatencyMs });
+  useCefSurface({ canvasRef, url, onFirstFrame, onAddressChange, onError, takeScrollLatencyMs });
 
   return (
     <canvas

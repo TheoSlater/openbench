@@ -44,6 +44,7 @@ export function ViewportDrawer() {
   // anything that cannot reload in place.
   const [frameNonce, setFrameNonce] = useState(0);
   const [frameLoading, setFrameLoading] = useState(false);
+  const [browserError, setBrowserError] = useState("");
   const [history, setHistory] = useState<BrowserHistoryState>({ entries: [], index: -1 });
   // Set while replaying history, so the resulting session URL is not pushed
   // back onto the stack as a new entry.
@@ -51,9 +52,10 @@ export function ViewportDrawer() {
 
   const { dragging, startResize } = useDrawerResize(width, setDrawerWidth);
   const visible = Boolean(open && (browserOpen || session));
-  const browserLoading = Boolean(session?.url && frameLoading);
+  const browserLoading = Boolean(session?.url && frameLoading && !browserError);
 
   const remountBrowser = useCallback(() => {
+    setBrowserError("");
     setFrameLoading(true);
     setFrameNonce((nonce) => nonce + 1);
   }, []);
@@ -66,7 +68,11 @@ export function ViewportDrawer() {
     },
   });
 
-  const handleFirstFrame = useCallback(() => setFrameLoading(false), []);
+  const handleFirstFrame = useCallback(() => {
+    setBrowserError("");
+    setFrameLoading(false);
+  }, []);
+  const handleBrowserError = useCallback((message: string) => setBrowserError(message), []);
   const handleAddressChange = useCallback((address: string) => {
     setUrl(address);
     setHistory((state) => pushBrowserHistory(state, address));
@@ -78,6 +84,7 @@ export function ViewportDrawer() {
       return;
     }
     setUrl(session.url);
+    setBrowserError("");
     setFrameLoading(true);
     setHistory((state) => {
       if (historyMoveRef.current) {
@@ -181,6 +188,7 @@ export function ViewportDrawer() {
                   url={session.url}
                   onFirstFrame={handleFirstFrame}
                   onAddressChange={handleAddressChange}
+                  onError={handleBrowserError}
                 />
               ) : (
                 <iframe
@@ -194,7 +202,18 @@ export function ViewportDrawer() {
                   onLoad={handleFirstFrame}
                 />
               )}
-              {browserLoading ? (
+              {browserError ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-sidebar p-6 text-center">
+                  <p className="text-sm font-medium">Browser failed to start</p>
+                  <p className="max-w-full break-words text-xs text-muted-foreground">
+                    {browserError}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Open with the system browser, or turn the Chromium browser off in Settings →
+                    Advanced.
+                  </p>
+                </div>
+              ) : browserLoading ? (
                 <div
                   className={cn(
                     "pointer-events-none absolute inset-0 flex items-center justify-center",

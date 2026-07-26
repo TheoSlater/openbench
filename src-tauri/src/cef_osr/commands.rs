@@ -51,7 +51,10 @@ pub fn cef_viewport_open(
     }
     let geometry = geometry(width, height, scale_factor)?;
 
-    on_cef_ui(move || {
+    // Logged: an open that never returns a frame is the one CEF failure the
+    // frontend cannot describe on its own.
+    crate::startup_log::log_phase("CEF viewport open");
+    let opened = on_cef_ui(move || {
         open_browser(
             url,
             geometry.width,
@@ -61,7 +64,13 @@ pub fn cef_viewport_open(
             on_cursor,
             on_address,
         )
-    })?
+    })
+    .and_then(|result| result);
+    match &opened {
+        Ok(()) => crate::startup_log::log_phase("CEF viewport opened"),
+        Err(error) => crate::startup_log::log_error(format!("CEF viewport open failed: {error}")),
+    }
+    opened
 }
 
 #[tauri::command]

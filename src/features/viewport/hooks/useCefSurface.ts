@@ -4,11 +4,14 @@ import { getMotionPolicy } from "@/lib/performance/policy";
 import * as native from "../native";
 import { decodeCefFrame, type CefFrame } from "../cefFrame";
 
+const FIRST_FRAME_TIMEOUT_MS = 15000;
+
 type CefSurfaceOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   url: string;
   onFirstFrame: () => void;
   onAddressChange: (url: string) => void;
+  onError: (message: string) => void;
   takeScrollLatencyMs: () => number | null;
 };
 
@@ -22,6 +25,7 @@ export function useCefSurface({
   url,
   onFirstFrame,
   onAddressChange,
+  onError,
   takeScrollLatencyMs,
 }: CefSurfaceOptions) {
   useEffect(() => {
@@ -33,6 +37,9 @@ export function useCefSurface({
     let disposed = false;
     let pendingFrame: CefFrame | null = null;
     let paintAnimationFrame = 0;
+    // The browser can open cleanly and still never paint. Without this the
+    // drawer shows its loading spinner forever, with nothing to report.
+    let firstFrameTimeout: ReturnType<typeof setTimeout> | undefined;
 
     const frames = new Channel<ArrayBuffer>();
     const cursors = new Channel<string>();
@@ -63,6 +70,7 @@ export function useCefSurface({
       if (scrollLatencyMs !== null) {
         canvas.dataset.scrollInputLatencyMs = scrollLatencyMs.toFixed(1);
       }
+      clearTimeout(firstFrameTimeout);
       onFirstFrame();
       if (pendingFrame) paintAnimationFrame = requestAnimationFrame(present);
     };
@@ -86,6 +94,9 @@ export function useCefSurface({
       lastSize = size;
       if (!opened) {
         opened = true;
+        firstFrameTimeout = setTimeout(() => {
+          if (!disposed) onError("The browser opened but never painted a frame.");
+        }, FIRST_FRAME_TIMEOUT_MS);
         void native
           .cefViewportOpen({
             url,
@@ -98,7 +109,9 @@ export function useCefSurface({
           })
           .catch((error) => {
             opened = false;
+            clearTimeout(firstFrameTimeout);
             console.error("Failed to open CEF viewport:", error);
+            if (!disposed) onError(String(error));
           });
       } else {
         void native.cefViewportResize(width, height, scaleFactor).catch((error) => {
@@ -119,9 +132,10 @@ export function useCefSurface({
     return () => {
       disposed = true;
       clearTimeout(settle);
+      clearTimeout(firstFrameTimeout);
       observer.disconnect();
       if (paintAnimationFrame) cancelAnimationFrame(paintAnimationFrame);
       if (opened) void native.cefViewportClose().catch(() => undefined);
     };
-  }, [canvasRef, url, onFirstFrame, onAddressChange, takeScrollLatencyMs]);
+  }, [canvasRef, url, onFirstFrame, onAddressChange, onError, takeScrollLatencyMs]);
 }

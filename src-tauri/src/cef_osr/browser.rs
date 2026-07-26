@@ -6,13 +6,18 @@
 use cef::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 
 use super::handlers::{OsrClient, OsrDisplayHandler, OsrRenderHandler};
 use super::lifecycle::is_initialized;
 
 const TARGET_FRAME_RATE: i32 = 60;
+/// Generous: creating a browser pulls up Chromium's network/render machinery.
+/// Only meant to catch a UI thread that is never coming back.
+const CEF_UI_TASK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Viewport geometry shared between the browser and its render handler: CEF
 /// pulls the current values from the handler whenever it needs to lay out or
@@ -92,6 +97,11 @@ cef::wrap_task! {
 pub(super) fn on_cef_ui<T: Send + 'static>(
     task: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
+    // Without this, a failed startup init leaves every command posting into a
+    // CEF that does not exist, and the UI only sees a generic rejection.
+    if !is_initialized() {
+        return Err("CEF is not initialized — startup init failed, see startup.log.".to_string());
+    }
     if cef::currently_on(ThreadId::UI) == 1 {
         return Ok(task());
     }
@@ -103,8 +113,19 @@ pub(super) fn on_cef_ui<T: Send + 'static>(
     if cef::post_task(ThreadId::UI, Some(&mut task)) != 1 {
         return Err("CEF UI thread rejected the viewport task.".to_string());
     }
-    rx.recv()
-        .map_err(|_| "CEF viewport task was dropped by the UI thread.".to_string())
+    // Bounded: a wedged CEF UI thread would otherwise block this Tauri command
+    // forever, and the frontend has no way to tell that apart from a slow page —
+    // it just spins its loader with no error, indefinitely.
+    rx.recv_timeout(CEF_UI_TASK_TIMEOUT)
+        .map_err(|error| match error {
+            RecvTimeoutError::Timeout => format!(
+                "CEF UI thread did not respond within {}s.",
+                CEF_UI_TASK_TIMEOUT.as_secs()
+            ),
+            RecvTimeoutError::Disconnected => {
+                "CEF viewport task was dropped by the UI thread.".to_string()
+            }
+        })
 }
 
 /// Runs `f` against the open browser's host. UI thread only.
@@ -192,4 +213,18 @@ pub(super) fn close_browser() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn viewport_tasks_fail_fast_when_cef_never_initialized() {
+        // INITIALIZED is false in tests, matching a prod run whose startup init
+        // failed: the command must return, not leave the UI loading forever.
+        let error = on_cef_ui(|| ()).expect_err("uninitialized CEF must be an error");
+
+        assert!(error.contains("startup.log"), "unexpected error: {error}");
+    }
 }

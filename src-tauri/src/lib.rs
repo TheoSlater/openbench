@@ -300,6 +300,7 @@ pub fn run() {
             mobile_pairing_status,
         ])
         .build(context);
+    startup_log::log_phase("tauri app built");
 
     let app = match result {
         Ok(app) => app,
