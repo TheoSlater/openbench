@@ -61,8 +61,16 @@ describe("the helper owns CEF", () => {
 
   it("depends on cef and builds a binary", () => {
     expect(helperManifest).toMatch(/^cef\s*=/m);
-    expect(helperManifest).toContain("cef-dll-sys");
     expect(helperManifest).toContain('name = "polyui-viewport"');
+  });
+
+  it("does not also declare cef-dll-sys as a build-dependency", () => {
+    // cef-dll-sys arrives through `cef`. Declaring it again under
+    // [build-dependencies] makes cargo compile a second, host-side unit and run
+    // its build script twice — and the two runs race extracting CEF into the
+    // same CEF_PATH, which fails a cold build with a rename ENOENT.
+    expect(helperManifest).not.toContain("[build-dependencies]");
+    expect(helperManifest).not.toContain("cef-dll-sys");
   });
 
   it("pins the CEF version the app looks for to the one it is built against", () => {

@@ -21,6 +21,3 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation"] }
-
-[build-dependencies]
-cef-dll-sys = "150.0.0"

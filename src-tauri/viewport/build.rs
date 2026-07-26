@@ -13,6 +13,11 @@ fn main() {
     // version script — that existed because polyui's bundled sqlx SQLite
     // interposed over the system one that CEF's NSS drives, and this binary
     // links no sqlx at all.
+    //
+    // Note that cef-dll-sys must NOT also be a build-dependency here. It
+    // arrives through `cef`; declaring it twice makes cargo build a second,
+    // host-side unit and run its build script concurrently with the first, and
+    // the two races extracting CEF into the same CEF_PATH.
     if target.contains("linux") {
         println!("cargo::rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
     }
