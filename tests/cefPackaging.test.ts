@@ -10,6 +10,10 @@ const tauriConfig = JSON.parse(
   readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
 );
 const appBackend = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+const cefHandlers = readFileSync(
+  new URL("../src-tauri/src/cef_osr/handlers.rs", import.meta.url),
+  "utf8",
+);
 const startup = readFileSync(new URL("../src/startup.ts", import.meta.url), "utf8");
 const linuxBundleConfig = JSON.parse(
   readFileSync(new URL("../src-tauri/tauri.linux.conf.json", import.meta.url), "utf8"),
@@ -42,6 +46,10 @@ describe("CEF packaging", () => {
     expect(buildScript).toContain('if target.contains("linux") || target.contains("windows")');
     expect(buildScript).toContain("cargo::rustc-cfg=cef");
     expect(platform).toContain("SUPPORTS_CHROMIUM_BROWSER = IS_LINUX || IS_WINDOWS");
+  });
+
+  it("uses CEF's platform-native cursor handle", () => {
+    expect(cefHandlers).toContain("_cursor: CursorHandle");
   });
 
   it("stages CEF before Tauri validates bundle resources", () => {

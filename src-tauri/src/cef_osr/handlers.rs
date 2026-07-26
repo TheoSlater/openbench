@@ -85,7 +85,7 @@ cef::wrap_display_handler! {
         fn on_cursor_change(
             &self,
             _browser: Option<&mut Browser>,
-            _cursor: ::std::os::raw::c_ulong,
+            _cursor: CursorHandle,
             type_: CursorType,
             _custom_cursor_info: Option<&CursorInfo>,
         ) -> ::std::os::raw::c_int {
