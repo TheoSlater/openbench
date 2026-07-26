@@ -45,6 +45,7 @@ describe("CEF packaging", () => {
   });
 
   it("ships the CEF runtime beside the exe on Windows", () => {
+    expect(windowsBundleConfig.bundle).not.toHaveProperty("//");
     // Same rule as Linux: libcef.dll is a load-time dependency and resolves
     // its data files from its own directory. On Windows, Tauri resources land
     // next to the exe, so `resources` is the right mechanism here.

@@ -18,7 +18,6 @@
     ]
   },
   "bundle": {
-    "//": "CEF runtime. libcef.dll is a load-time dependency of the executable and resolves icudtl.dat, the pak files and locales from its own directory, so all of it has to land beside the exe. On Windows that is exactly where Tauri puts resources, unlike Linux where the DT_NEEDED layout forces bundle.linux.*.files instead.",
     "resources": {
       "target/release/libcef.dll": "libcef.dll",
       "target/release/chrome_elf.dll": "chrome_elf.dll",
