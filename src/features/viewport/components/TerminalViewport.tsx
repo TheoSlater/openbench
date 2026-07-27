@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
+import { TerminalLoading } from "./TerminalLoading";
 
 // Both emulators are heavy — a WASM bash on one side, xterm on the other — and
 // only ever one runs. Importing them eagerly put ~512kB in the drawer's chunk,
@@ -25,7 +26,7 @@ export function TerminalViewport() {
   if (!betaFeatures) return null;
 
   return (
-    <Suspense fallback={<div className="h-full w-full bg-sidebar" />}>
+    <Suspense fallback={<TerminalLoading label="Loading terminal…" />}>
       {terminalEmulator === "native" ? (
         <NativeTerminalViewportLazy />
       ) : (
