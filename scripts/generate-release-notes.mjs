@@ -25,7 +25,18 @@ function tryGit(args) {
 }
 
 function notesForCurrentRef() {
-  const previousTag = tryGit(["describe", "--tags", "--abbrev=0", "HEAD^"]);
+  // Only app tags. The repo also carries cef-pack-* tags for the viewport
+  // runtime, and those are in main's history -- without the filter, a pack
+  // published after the last release becomes the "previous tag" and the
+  // changelog silently collapses to whatever landed since the pack.
+  const previousTag = tryGit([
+    "describe",
+    "--tags",
+    "--abbrev=0",
+    "--match",
+    "v*",
+    "HEAD^",
+  ]);
   const range = previousTag ? `${previousTag}..HEAD` : "HEAD";
   const log = tryGit(["log", "--pretty=format:* %s (%h)", range]);
   return log || `Poly UI v${version}`;
