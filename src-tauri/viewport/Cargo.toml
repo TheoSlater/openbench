@@ -1,6 +1,6 @@
 [package]
 name = "polyui-viewport"
-version = "0.21.1"
+version = "0.22.0"
 description = "Out-of-process CEF viewport helper for PolyUI"
 edition = "2021"
 

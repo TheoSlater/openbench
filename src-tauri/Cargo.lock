@@ -3965,7 +3965,7 @@ dependencies = [
 
 [[package]]
 name = "polyui"
-version = "0.21.1"
+version = "0.22.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -4011,7 +4011,7 @@ dependencies = [
 
 [[package]]
 name = "polyui-viewport"
-version = "0.21.1"
+version = "0.22.0"
 dependencies = [
  "cef",
  "dirs 6.0.0",
