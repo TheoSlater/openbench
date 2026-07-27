@@ -1,16 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import {
-  closePty,
-  resizePty,
-  startPty,
-  writePty,
-} from "../pty";
+import { closePty, resizePty, startPty, writePty } from "../pty";
+import { TerminalLoading } from "./TerminalLoading";
 
 export function NativeTerminalViewport() {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Spawning the shell is a round trip through Rust. Until it lands the
+  // terminal is a black rectangle that swallows keystrokes, so cover it.
+  const [starting, setStarting] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -58,6 +57,11 @@ export function NativeTerminalViewport() {
       })
       .catch((error) => {
         terminal.writeln(`\r\nUnable to start PTY: ${String(error)}`);
+      })
+      .finally(() => {
+        // Also on failure: the error is written into the terminal, so the
+        // spinner must come off for it to be readable.
+        if (!disposed) setStarting(false);
       });
 
     return () => {
@@ -70,5 +74,14 @@ export function NativeTerminalViewport() {
     };
   }, []);
 
-  return <div ref={containerRef} className="h-full w-full bg-black p-3" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full bg-black p-3" />
+      {starting ? (
+        <div className="absolute inset-0">
+          <TerminalLoading label="Starting shell…" />
+        </div>
+      ) : null}
+    </div>
+  );
 }

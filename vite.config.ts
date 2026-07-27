@@ -37,6 +37,18 @@ export default defineConfig(async () => ({
       ),
     },
   },
+  // The terminal emulators are only reachable through a dynamic import, so Vite
+  // never sees them while scanning entry points. Without this, the first drawer
+  // open in `tauri dev` triggers a dependency re-bundle and a page reload
+  // instead of just rendering. No effect on production builds.
+  optimizeDeps: {
+    include: [
+      "@wterm/just-bash",
+      "@wterm/react",
+      "@xterm/xterm",
+      "@xterm/addon-fit",
+    ],
+  },
   build: {
     rollupOptions: {
       input: {
