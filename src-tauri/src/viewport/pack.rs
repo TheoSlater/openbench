@@ -57,9 +57,24 @@ pub struct PackStatus {
 /// which unverified code is unpacked and executed.
 const PACKS: &[(&str, &str, &str, &str)] = &[
     // (os, arch, asset, sha256)
-    ("linux", "x86_64", "polyui-viewport-linux-x64.tar.gz", ""),
-    ("linux", "aarch64", "polyui-viewport-linux-arm64.tar.gz", ""),
-    ("windows", "x86_64", "polyui-viewport-windows-x64.tar.gz", ""),
+    (
+        "linux",
+        "x86_64",
+        "polyui-viewport-linux-x64.tar.gz",
+        "07fca638807b0a810d4cbf76425ed3914b5976413dff13b7618f52000b4f71dc",
+    ),
+    (
+        "linux",
+        "aarch64",
+        "polyui-viewport-linux-arm64.tar.gz",
+        "eecf4e89dfeb778db717c0c779dcb3f3b59e092530fb02d4c0d389201770a5d5",
+    ),
+    (
+        "windows",
+        "x86_64",
+        "polyui-viewport-windows-x64.tar.gz",
+        "d9019f9e1bc595bf9a0d67f79e8f5e84d52f03fb79e1989f7d40d8c0f1e3a413",
+    ),
 ];
 
 fn asset() -> Option<(&'static str, &'static str)> {
