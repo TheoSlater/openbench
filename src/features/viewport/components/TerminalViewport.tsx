@@ -2,18 +2,16 @@ import { lazy, Suspense } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import { TerminalLoading } from "./TerminalLoading";
 
-// Both emulators are heavy — a WASM bash on one side, xterm on the other — and
-// only ever one runs. Importing them eagerly put ~512kB in the drawer's chunk,
-// all of which had to arrive before the drawer could paint. Split so the drawer
-// opens immediately and only the chosen emulator is fetched.
-const BrowserTerminalViewportLazy = lazy(() =>
-  import("./BrowserTerminalViewport").then((module) => ({
-    default: module.BrowserTerminalViewport,
-  })),
-);
+// Ghostty's WASM core is intentionally split from the drawer so opening the
+// viewport does not make the drawer wait for the terminal engine to download.
 const NativeTerminalViewportLazy = lazy(() =>
   import("./NativeTerminalViewport").then((module) => ({
     default: module.NativeTerminalViewport,
+  })),
+);
+const XtermTerminalViewportLazy = lazy(() =>
+  import("./XtermTerminalViewport").then((module) => ({
+    default: module.XtermTerminalViewport,
   })),
 );
 
@@ -22,15 +20,14 @@ export function TerminalViewport() {
   const terminalEmulator = useSettingsStore(
     (state) => state.general.terminalEmulator,
   );
-
   if (!betaFeatures) return null;
 
   return (
     <Suspense fallback={<TerminalLoading label="Loading terminal…" />}>
-      {terminalEmulator === "native" ? (
-        <NativeTerminalViewportLazy />
+      {terminalEmulator === "xterm" ? (
+        <XtermTerminalViewportLazy />
       ) : (
-        <BrowserTerminalViewportLazy />
+        <NativeTerminalViewportLazy />
       )}
     </Suspense>
   );

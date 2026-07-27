@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "polyui",
@@ -23,6 +22,7 @@
         "@tauri-apps/plugin-sql": "^2.4.0",
         "@tauri-apps/plugin-window-state": "^2.4.1",
         "@wterm/dom": "^0.3.0",
+        "@wterm/ghostty": "^0.3.0",
         "@wterm/just-bash": "^0.3.0",
         "@wterm/react": "^0.3.0",
         "@xterm/addon-fit": "^0.11.0",
@@ -624,6 +624,8 @@
     "@wterm/core": ["@wterm/core@0.3.0", "", {}, "sha512-aQ73QBP+eyA3kcn31mA7DmAi7qmEsQijZdmvgwxtSjCi2248EAOZgtkGDpjlspfrxyVxQbUl/IF+gCVcXt4nZQ=="],
 
     "@wterm/dom": ["@wterm/dom@0.3.0", "", { "dependencies": { "@wterm/core": "0.3.0" } }, "sha512-OiUl7reGSlW02yb5wGXMplMZhW2HBkBSFxvbFj15I832UK0QFIHRvhE2l6Xgae8ROn9bNLaALoKDFvcUuz80iQ=="],
+
+    "@wterm/ghostty": ["@wterm/ghostty@0.3.0", "", { "dependencies": { "@wterm/core": "0.3.0" } }, "sha512-TDjEmUSRD7IaFxq31P7+I3Inkp5mHCfBfO6LYj3/vbLbWOkOZOKPhjAcZ36AYFHe9Q0HLCFvLWmrxIO3aGCjDA=="],
 
     "@wterm/just-bash": ["@wterm/just-bash@0.3.0", "", { "peerDependencies": { "just-bash": "^2" } }, "sha512-jaW0E5vg+gouWlbNRJX2arRsmscNIAusRWW2dbVXHRTEqYAiitdv7c85bin9uLyYBVJ0BcXoAuoz6qo3CjA8Jw=="],
 

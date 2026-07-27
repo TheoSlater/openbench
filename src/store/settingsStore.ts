@@ -21,7 +21,14 @@ export type GeneralSettings = {
   memoryBeta: boolean;
 };
 
-export type TerminalEmulator = "browser" | "native";
+export type TerminalEmulator = "browser" | "native" | "xterm";
+
+/** Maps pre-Ghostty renderer values without overwriting an intentional xterm choice. */
+export function migrateTerminalEmulatorV27(
+  emulator: TerminalEmulator,
+): TerminalEmulator {
+  return emulator === "native" || emulator === "xterm" ? "xterm" : "native";
+}
 
 export type BrowserTtsSettings = {
   voiceURI: string;
@@ -91,7 +98,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 26;
+const SETTINGS_VERSION = 27;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -130,7 +137,7 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
       experimentalFeatures: false,
       betaFeatures: false,
       previewFeatures: false,
-      terminalEmulator: "browser",
+      terminalEmulator: "native",
       mobileWebAccess: false,
       showModelInEmptyState: false,
       voiceModeExperimental: false,
@@ -305,6 +312,13 @@ export const useSettingsStore = create<SettingsState>()(
           state.general.betaFeatures = Boolean(state.general.memoryBeta);
           state.general.previewFeatures = false;
           state.general.terminalEmulator = "browser";
+        }
+        if (version < 27 && state?.general) {
+          // Before v27, `native` meant xterm.js. Preserve that explicit user
+          // choice while moving the former browser/Just Bash default to Ghostty.
+          state.general.terminalEmulator = migrateTerminalEmulatorV27(
+            state.general.terminalEmulator,
+          );
         }
         startupPhase("settings migration complete");
         return state as SettingsState;

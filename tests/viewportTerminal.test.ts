@@ -25,6 +25,10 @@ const nativeTerminal = existsSync(
       "utf8",
     )
   : "";
+const xtermTerminal = readFileSync(
+  "src/features/viewport/components/XtermTerminalViewport.tsx",
+  "utf8",
+);
 const ptyClient = existsSync("src/features/viewport/pty.ts")
   ? readFileSync("src/features/viewport/pty.ts", "utf8")
   : "";
@@ -68,12 +72,17 @@ describe("viewport terminal tab", () => {
     expect(terminal).not.toContain('from "@xterm/xterm"');
   });
 
-  it("selects the configured terminal emulator", () => {
+  it("uses the Ghostty-backed wterm for native commands", () => {
     expect(terminal).toContain("betaFeatures");
-    expect(terminal).toContain("terminalEmulator");
-    expect(terminal).toContain("<NativeTerminalViewport");
-    expect(nativeTerminal).toContain('from "@xterm/xterm"');
+    expect(terminal).toContain("<NativeTerminalViewportLazy");
+    expect(nativeTerminal).toContain('from "@wterm/ghostty"');
+    expect(nativeTerminal).toContain("GhosttyCore.load()");
+    expect(nativeTerminal).toContain("core={core}");
     expect(nativeTerminal).toContain("startPty");
+    expect(terminal).toContain('terminalEmulator === "xterm"');
+    expect(terminal).toContain("<XtermTerminalViewportLazy");
+    expect(xtermTerminal).toContain('from "@xterm/xterm"');
+    expect(xtermTerminal).toContain("startPty");
     expect(ptyClient).toContain('invoke<string>("pty_spawn"');
     expect(ptyClient).toContain('invoke("pty_write"');
     expect(ptyClient).toContain('invoke("pty_resize"');

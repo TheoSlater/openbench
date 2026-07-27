@@ -12,7 +12,9 @@ describe("advanced feature tiers", () => {
     expect(source).toContain("Enable beta features");
     expect(source).toContain("Enable preview features");
     expect(source).toContain("Terminal (Beta)");
+    expect(source).toContain("Native PTY (Ghostty)");
     expect(source).toContain("Native PTY (xterm.js)");
+    expect(source).not.toContain("Just Bash (Browser)");
     expect(source).toContain("disabled={!betaFeatures}");
   });
 });

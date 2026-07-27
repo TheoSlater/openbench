@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a selectable xterm.js terminal backed by a real native PTY, while retaining the browser-only wterm shell and organizing experimental, beta, and preview feature gates.
+**Goal:** Offer Ghostty-backed wterm by default and xterm.js as an alternative renderer for a real native PTY, while retaining the browser-only Just Bash shell for internal use.
 
-**Architecture:** Persist the terminal emulator and release-channel master toggles in the existing settings store. Keep terminal selection in the existing viewport tab, with a dedicated xterm React component invoking a small Tauri PTY API. Rust owns PTY sessions and streams output through a Tauri channel; closing the React component kills its process.
+**Architecture:** Persist the terminal renderer and release-channel master toggles in the existing settings store. The user-facing choices are Ghostty-backed wterm (`native`) and xterm.js (`xterm`); Just Bash (`browser`) is not selectable. Both native renderers invoke the same small Tauri PTY API. Rust owns PTY sessions and streams output through a Tauri channel; closing either React component kills its process.
 
-**Tech Stack:** React 19, Zustand, xterm.js, Tauri v2 channels, Rust, portable-pty.
+**Tech Stack:** React 19, Zustand, wterm with `@wterm/ghostty`, xterm.js, Tauri v2 channels, Rust, portable-pty.
 
 ## Global Constraints
 
