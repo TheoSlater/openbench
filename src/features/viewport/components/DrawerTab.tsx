@@ -73,12 +73,3 @@ export function DrawerTab({
   );
 }
 
-/** Hostname if the value parses as a URL, else a truncated fallback. */
-export function browserTabLabel(value?: string | null) {
-  if (!value) return "New tab";
-  try {
-    return new URL(value).hostname.replace(/^www\./, "") || "New tab";
-  } catch {
-    return value.length > 22 ? `${value.slice(0, 22)}...` : value;
-  }
-}
