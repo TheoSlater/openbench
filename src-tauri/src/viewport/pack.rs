@@ -18,9 +18,17 @@ use tokio::io::AsyncWriteExt;
 
 use super::{helper_name, install_dir, CEF_VERSION};
 
-/// Release that carries the packs. Tagged separately from app releases.
+/// Repository and tag carrying the packs.
+///
+/// A separate repo from the app on purpose: pack releases would otherwise sit
+/// in PolyUI's public release list looking like product versions, and a pack
+/// published after an app tag becomes the "previous release" that GitHub's
+/// auto-generated notes are computed from.
+///
+/// This URL is baked into every shipped build, so it has to keep resolving for
+/// as long as any release that references it is in use.
+const PACK_REPO: &str = "monolabsdev/poly-ui-viewport";
 const PACK_TAG: &str = "cef-pack-150.0.10";
-const PACK_REPO: &str = "monolabsdev/poly-ui";
 /// How much must arrive before another progress event is worth sending.
 const PROGRESS_INTERVAL_BYTES: u64 = 1024 * 1024;
 

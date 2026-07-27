@@ -4,6 +4,11 @@ name: Viewport pack
 # data files. Keyed on the CEF version, not the app version, so a normal app
 # release never rebuilds 330MB of Chromium and an installed pack survives app
 # updates. Bump CEF -> push a `cef-pack-<version>` tag.
+#
+# Publishes to a separate repository so PolyUI's own release list stays app
+# versions only. That needs PACK_PUBLISH_TOKEN: a fine-grained PAT with
+# contents:write on the pack repo, because GITHUB_TOKEN cannot write across
+# repositories.
 on:
   push:
     tags: ["cef-pack-*"]
@@ -117,6 +122,12 @@ jobs:
       - run: ls -la packs/
       - uses: softprops/action-gh-release@v2
         with:
+          repository: monolabsdev/poly-ui-viewport
+          token: ${{ secrets.PACK_PUBLISH_TOKEN }}
+          tag_name: ${{ github.ref_name }}
           # Not a prerelease and not draft: the app downloads these by URL, so
           # they have to be publicly fetchable the moment the tag exists.
+          #
+          # Never replace an asset in place -- the app pins each file's SHA-256
+          # and would reject the new bytes. Publish a new tag instead.
           files: packs/*

@@ -10,6 +10,8 @@ const buildScript = read("../src-tauri/build.rs");
 const appBackend = read("../src-tauri/src/lib.rs");
 const appMain = read("../src-tauri/src/main.rs");
 const viewportModule = read("../src-tauri/src/viewport/mod.rs");
+const packModule = read("../src-tauri/src/viewport/pack.rs");
+const packWorkflow = read("../.github/workflows/viewport-pack.yml");
 const tauriConfig = readJson("../src-tauri/tauri.conf.json");
 const linuxBundleConfig = readJson("../src-tauri/tauri.linux.conf.json");
 const windowsBundleConfig = readJson("../src-tauri/tauri.windows.conf.json");
@@ -71,6 +73,14 @@ describe("the helper owns CEF", () => {
     // same CEF_PATH, which fails a cold build with a rename ENOENT.
     expect(helperManifest).not.toContain("[build-dependencies]");
     expect(helperManifest).not.toContain("cef-dll-sys");
+  });
+
+  it("downloads packs from the repo the pack workflow publishes to", () => {
+    // The download URL is compiled into every shipped build, so a build whose
+    // PACK_REPO disagrees with where CI publishes ships a browser that 404s.
+    const downloadsFrom = packModule.match(/PACK_REPO: &str = "([^"]+)"/)?.[1];
+    const publishesTo = packWorkflow.match(/repository: (\S+)/)?.[1];
+    expect(downloadsFrom).toBe(publishesTo);
   });
 
   it("pins the CEF version the app looks for to the one it is built against", () => {
