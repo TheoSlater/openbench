@@ -20,7 +20,11 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-import { mergeSettingsWithDefaults, useSettingsStore } from "../src/store/settingsStore";
+import {
+  mergeSettingsWithDefaults,
+  migrateTerminalEmulatorV27,
+  useSettingsStore,
+} from "../src/store/settingsStore";
 
 describe("mergeSettingsWithDefaults", () => {
   const defaults = useSettingsStore.getState();
@@ -43,7 +47,7 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.general.webSearch.apiKeys).toEqual(defaults.general.webSearch.apiKeys);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
-    expect(merged.general.terminalEmulator).toBe("browser");
+    expect(merged.general.terminalEmulator).toBe("native");
     expect(merged.tts.supertonic.speed).toBe(defaults.tts.supertonic.speed);
     expect(merged.performance).toEqual(defaults.performance);
     expect(merged.actions).toBe(defaults.actions);
@@ -61,6 +65,12 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.mobileWebAccess).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
-    expect(defaults.general.terminalEmulator).toBe("browser");
+    expect(defaults.general.terminalEmulator).toBe("native");
+  });
+
+  it("migrates terminal renderers without replacing an explicit xterm choice", () => {
+    expect(migrateTerminalEmulatorV27("browser")).toBe("native");
+    expect(migrateTerminalEmulatorV27("native")).toBe("xterm");
+    expect(migrateTerminalEmulatorV27("xterm")).toBe("xterm");
   });
 });

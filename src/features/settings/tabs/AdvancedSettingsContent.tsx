@@ -47,9 +47,7 @@ export function AdvancedSettingsContent() {
   const handleBetaToggle = useCallback((checked: boolean) => {
     actions.updateGeneral({
       betaFeatures: checked,
-      ...(checked
-        ? {}
-        : { memoryBeta: false, terminalEmulator: "browser" as const }),
+      ...(!checked && { memoryBeta: false }),
     });
     if (!checked) {
       void disableMemoryForOwner(getCurrentProviderAccountId()).catch((err) =>
@@ -144,10 +142,10 @@ export function AdvancedSettingsContent() {
         </SettingRow>
         <SettingRow
           title="Terminal (Beta)"
-          description="Choose the offline browser shell or a native PTY with full system commands."
+          description="Choose a terminal renderer for the native PTY and full system commands."
           action={
             <Select
-              value={betaFeatures ? terminalEmulator : "browser"}
+              value={terminalEmulator === "xterm" ? "xterm" : "native"}
               onValueChange={(value) =>
                 actions.updateGeneral({
                   terminalEmulator: value as TerminalEmulator,
@@ -163,8 +161,8 @@ export function AdvancedSettingsContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="browser">Just Bash (Browser)</SelectItem>
-                  <SelectItem value="native">Native PTY (xterm.js)</SelectItem>
+                  <SelectItem value="native">Native PTY (Ghostty)</SelectItem>
+                  <SelectItem value="xterm">Native PTY (xterm.js)</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
