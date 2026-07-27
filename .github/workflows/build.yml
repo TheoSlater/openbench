@@ -43,15 +43,6 @@ jobs:
             arch: arm64
             artifact: linux-arm64
 
-    # Windows only: CEF's wrapper is built /MT, so every other native dep must be
-    # too. whisper.cpp declares cmake_minimum_required(3.5), leaving CMP0091 OLD
-    # and CMAKE_MSVC_RUNTIME_LIBRARY ignored, so force the policy as well. Set at
-    # job level, not via GITHUB_ENV, so it is part of the Rust cache key and
-    # reaches the build script on a cold compile.
-    env:
-      CMAKE_MSVC_RUNTIME_LIBRARY: ${{ matrix.platform == 'windows' && 'MultiThreaded' || '' }}
-      CMAKE_POLICY_DEFAULT_CMP0091: ${{ matrix.platform == 'windows' && 'NEW' || '' }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,29 +65,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # cef-dll-sys defaults to downloading the ~600MB CEF archive into OUT_DIR,
-      # which drags 1.4GB of unstripped libcef into the Rust cache. Park it
-      # outside target/ so it is cached once, on its own, and the Rust cache
-      # stays small enough that four platforms fit in the 10GB repo budget.
-      - name: Cache CEF distribution
-        if: matrix.platform != 'macos'
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cef
-          key: ${{ runner.os }}-${{ matrix.arch }}-cef-${{ hashFiles('src-tauri/Cargo.lock') }}
-
-      - name: Point cef-dll-sys at the cached distribution
-        if: matrix.platform != 'macos'
-        shell: bash
-        run: echo "CEF_PATH=${{ github.workspace }}/.cef" >> "$GITHUB_ENV"
-
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          # Bumped when native CRT/link flags change: stale objects are built
-          # with the old runtime library and cargo will not rebuild them.
-          key: crt-mt-1
+          # Bumped when link flags change: stale objects are built against the
+          # old settings and cargo will not rebuild them. Bumped when CEF left
+          # this build graph.
+          key: no-cef-1
           # Only main writes. Tag and nightly-tag runs get a ref-scoped cache
           # that no later run can read, so saving from them is pure waste that
           # evicts the one cache releases can actually restore (main's).
@@ -225,13 +201,14 @@ jobs:
           RPM="$(find "$BUNDLE/rpm" -maxdepth 1 -name '*.rpm' -type f | head -n 1)"
           APPIMAGE="$(find "$BUNDLE/appimage" -maxdepth 1 -name '*.AppImage' -type f | head -n 1)"
           test -n "$DEB" && test -n "$RPM" && test -n "$APPIMAGE"
-          # CEF runtime must ship inside the packages: libcef.so is a hard
-          # dynamic dependency of the binary, so a package without it does
-          # not even launch.
           CONTENTS="$(dpkg-deb -c "$DEB")"
-          for f in libonnxruntime.so PolyUI/libcef.so PolyUI/icudtl.dat PolyUI/resources.pak PolyUI/locales/en-US.pak; do
-            grep -q "$f" <<<"$CONTENTS" || { echo "deb is missing $f"; exit 1; }
-          done
+          grep -q libonnxruntime.so <<<"$CONTENTS" || { echo "deb is missing libonnxruntime.so"; exit 1; }
+          # Chromium must NOT be in the package: it is a separate download, and
+          # shipping it here is the 261MB regression this split removed.
+          if grep -Eq 'libcef|icudtl|swiftshader|resources\.pak' <<<"$CONTENTS"; then
+            echo "deb contains the CEF runtime; it belongs in the viewport pack."
+            exit 1
+          fi
           mkdir -p "$OUT"
           cp "$DEB" "$OUT/PolyUI-$VERSION-linux-${{ matrix.arch }}.deb"
           cp "$RPM" "$OUT/PolyUI-$VERSION-linux-${{ matrix.arch }}.rpm"

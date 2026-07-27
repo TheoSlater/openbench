@@ -1,54 +1,9 @@
 {
   "bundle": {
     "linux": {
-      "deb": {
-        "files": {
-          "/usr/lib/PolyUI/libcef.so": "target/release/libcef.so",
-          "/usr/lib/PolyUI/libEGL.so": "target/release/libEGL.so",
-          "/usr/lib/PolyUI/libGLESv2.so": "target/release/libGLESv2.so",
-          "/usr/lib/PolyUI/libvk_swiftshader.so": "target/release/libvk_swiftshader.so",
-          "/usr/lib/PolyUI/libvulkan.so.1": "target/release/libvulkan.so.1",
-          "/usr/lib/PolyUI/vk_swiftshader_icd.json": "target/release/vk_swiftshader_icd.json",
-          "/usr/lib/PolyUI/icudtl.dat": "target/release/icudtl.dat",
-          "/usr/lib/PolyUI/chrome_100_percent.pak": "target/release/chrome_100_percent.pak",
-          "/usr/lib/PolyUI/chrome_200_percent.pak": "target/release/chrome_200_percent.pak",
-          "/usr/lib/PolyUI/resources.pak": "target/release/resources.pak",
-          "/usr/lib/PolyUI/v8_context_snapshot.bin": "target/release/v8_context_snapshot.bin",
-          "/usr/lib/PolyUI/locales/en-US.pak": "target/release/locales/en-US.pak"
-        }
-      },
-      "rpm": {
-        "files": {
-          "/usr/lib/PolyUI/libcef.so": "target/release/libcef.so",
-          "/usr/lib/PolyUI/libEGL.so": "target/release/libEGL.so",
-          "/usr/lib/PolyUI/libGLESv2.so": "target/release/libGLESv2.so",
-          "/usr/lib/PolyUI/libvk_swiftshader.so": "target/release/libvk_swiftshader.so",
-          "/usr/lib/PolyUI/libvulkan.so.1": "target/release/libvulkan.so.1",
-          "/usr/lib/PolyUI/vk_swiftshader_icd.json": "target/release/vk_swiftshader_icd.json",
-          "/usr/lib/PolyUI/icudtl.dat": "target/release/icudtl.dat",
-          "/usr/lib/PolyUI/chrome_100_percent.pak": "target/release/chrome_100_percent.pak",
-          "/usr/lib/PolyUI/chrome_200_percent.pak": "target/release/chrome_200_percent.pak",
-          "/usr/lib/PolyUI/resources.pak": "target/release/resources.pak",
-          "/usr/lib/PolyUI/v8_context_snapshot.bin": "target/release/v8_context_snapshot.bin",
-          "/usr/lib/PolyUI/locales/en-US.pak": "target/release/locales/en-US.pak"
-        }
-      },
-      "appimage": {
-        "files": {
-          "/usr/lib/PolyUI/libcef.so": "target/release/libcef.so",
-          "/usr/lib/PolyUI/libEGL.so": "target/release/libEGL.so",
-          "/usr/lib/PolyUI/libGLESv2.so": "target/release/libGLESv2.so",
-          "/usr/lib/PolyUI/libvk_swiftshader.so": "target/release/libvk_swiftshader.so",
-          "/usr/lib/PolyUI/libvulkan.so.1": "target/release/libvulkan.so.1",
-          "/usr/lib/PolyUI/vk_swiftshader_icd.json": "target/release/vk_swiftshader_icd.json",
-          "/usr/lib/PolyUI/icudtl.dat": "target/release/icudtl.dat",
-          "/usr/lib/PolyUI/chrome_100_percent.pak": "target/release/chrome_100_percent.pak",
-          "/usr/lib/PolyUI/chrome_200_percent.pak": "target/release/chrome_200_percent.pak",
-          "/usr/lib/PolyUI/resources.pak": "target/release/resources.pak",
-          "/usr/lib/PolyUI/v8_context_snapshot.bin": "target/release/v8_context_snapshot.bin",
-          "/usr/lib/PolyUI/locales/en-US.pak": "target/release/locales/en-US.pak"
-        }
-      }
+      "deb": {},
+      "rpm": {},
+      "appimage": {}
     }
   },
   "app": {

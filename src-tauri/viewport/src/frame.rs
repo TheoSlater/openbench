@@ -9,16 +9,17 @@
 //! pixels: each rect's BGRA rows, in rect order
 //! ```
 //!
-//! `cefFrame.ts` decodes it; the two must change together.
+//! `cefFrame.ts` decodes it; the two must change together. The main process
+//! forwards these packets verbatim and never parses one.
 
 use cef::Rect;
 
-pub(super) const FRAME_VERSION: u32 = 1;
-pub(super) const FRAME_HEADER_BYTES: usize = 24;
-pub(super) const RECT_HEADER_BYTES: usize = 16;
-pub(super) const BYTES_PER_PIXEL: usize = 4;
+pub const FRAME_VERSION: u32 = 1;
+pub const FRAME_HEADER_BYTES: usize = 24;
+pub const RECT_HEADER_BYTES: usize = 16;
+pub const BYTES_PER_PIXEL: usize = 4;
 
-pub(super) fn encode_frame(
+pub fn encode_frame(
     pixels: &[u8],
     width: i32,
     height: i32,
@@ -73,7 +74,17 @@ pub(super) fn encode_frame(
     let source_stride = width_usize * BYTES_PER_PIXEL;
     for rect in dirty_rects {
         let row_bytes = rect.width as usize * BYTES_PER_PIXEL;
-        for row in rect.y as usize..(rect.y + rect.height) as usize {
+        let first_row = rect.y as usize;
+        let last_row = (rect.y + rect.height) as usize;
+        // A full-width rect is already contiguous, which is the common case:
+        // every resize forces one, and CEF reports one on most repaints. One
+        // memcpy instead of 1,600 row copies at 2x.
+        if row_bytes == source_stride {
+            let start = first_row * source_stride;
+            packet.extend_from_slice(&pixels[start..last_row * source_stride]);
+            continue;
+        }
+        for row in first_row..last_row {
             let start = row * source_stride + rect.x as usize * BYTES_PER_PIXEL;
             packet.extend_from_slice(&pixels[start..start + row_bytes]);
         }

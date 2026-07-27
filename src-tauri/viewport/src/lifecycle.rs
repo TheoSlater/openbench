@@ -1,11 +1,26 @@
 //! Process-level CEF lifecycle: subprocess entry point, browser-process
-//! initialization, teardown, and the user-facing on/off preference.
+//! initialization and teardown.
+//!
+//! Compared with the in-process version this replaces, three hacks are gone
+//! because nothing else lives in this process:
+//!
+//! - no `gtk-version=3` switch. That existed because Tauri had already loaded
+//!   GTK3 via webkit2gtk and Chromium defaults to GTK4; both in one process
+//!   aborts inside GTK's CSS code. Chromium gets its own default here.
+//! - no `hide-bundled-sqlite.map` version script. That existed because polyui's
+//!   sqlx-bundled SQLite interposed over the system libsqlite3 that CEF's NSS
+//!   init drives. This binary links no sqlx.
+//! - no `gdk_threads_init`. There is no GTK main loop here to coordinate with.
+//!
+//! `XInitThreads` stays: CEF's multi-threaded message loop still talks to X11
+//! from more than one thread, and Xlib requires the call before any other Xlib
+//! work regardless of who else is in the process.
 
 use cef::{args::Args, *};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::browser::{close_browser, on_cef_ui};
+use crate::browser::{close_all_browsers, on_cef_ui};
 
 #[cfg(target_os = "linux")]
 #[link(name = "X11")]
@@ -14,7 +29,6 @@ extern "C" {
 }
 
 const CEF_CACHE_DIR: &str = "com.tslater.polyui/cef";
-const CEF_ENABLED_FILE: &str = "com.tslater.polyui/cef-enabled";
 const CEF_LOCALE: &str = "en-US";
 /// Keep Chromium's HTTP cache bounded; page storage/cookies are separate.
 const CEF_DISK_CACHE_BYTES: &str = "67108864";
@@ -23,7 +37,7 @@ const CEF_DISK_CACHE_BYTES: &str = "67108864";
 /// uninitialized CEF (which aborts inside Chromium) and cannot run twice.
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-pub(super) fn is_initialized() -> bool {
+pub fn is_initialized() -> bool {
     INITIALIZED.load(Ordering::SeqCst)
 }
 
@@ -31,14 +45,8 @@ fn browser_switches() -> [&'static str; 2] {
     ["disable-gpu", "disable-gpu-compositing"]
 }
 
-fn browser_switch_values() -> [(&'static str, &'static str); 2] {
-    [
-        ("disk-cache-size", CEF_DISK_CACHE_BYTES),
-        // Chromium defaults to GTK4, but we already have GTK3 loaded via
-        // webkit2gtk/Tauri. Both in one process aborts in GTK's CSS code.
-        // Ignored on non-Linux.
-        ("gtk-version", "3"),
-    ]
+fn browser_switch_values() -> [(&'static str, &'static str); 1] {
+    [("disk-cache-size", CEF_DISK_CACHE_BYTES)]
 }
 
 cef::wrap_app! {
@@ -68,19 +76,18 @@ cef::wrap_app! {
 /// Runs the CEF subprocess entry point.
 ///
 /// CEF re-executes *this same binary* for its render/GPU/zygote/utility
-/// processes, distinguishing them by `--type=` on the command line. In those
-/// processes this call blocks until that subprocess is done and returns its
-/// exit code; in the browser process it returns `None` immediately and startup
-/// continues into Tauri.
+/// processes, distinguishing them by `--type=`. In those processes this call
+/// blocks until the subprocess is done and returns its exit code; in the
+/// browser process it returns `None` immediately.
 ///
-/// Must be called before anything else in `main` — see module threading
-/// invariants.
+/// Must be called before anything else in `main` — CEF forks a zygote on Linux
+/// and forking a process that already has threads is undefined behaviour.
 pub fn execute_subprocess() -> Option<i32> {
     initialize_api_version();
     let args = Args::new();
     // SAFETY: the third argument is Windows sandbox info; CEF requires null on
-    // every other platform. `None` for the app: the spike registers no custom
-    // process handlers, so the subprocesses need no Rust-side callbacks.
+    // every other platform. `None` for the app: the subprocesses register no
+    // Rust-side callbacks.
     let code = cef::execute_process(Some(args.as_main_args()), None, std::ptr::null_mut());
     // >= 0 means "this process was a CEF subprocess and has finished".
     // -1 means "this is the browser process, carry on".
@@ -91,19 +98,31 @@ fn initialize_api_version() {
     let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
 }
 
+/// Chromium enforces a process singleton per user-data-dir: a second process
+/// pointed at a live profile hands its command line to the first and exits with
+/// code 24 rather than initializing. The override exists so a helper can be run
+/// against a scratch profile (smoke tests, a second dev instance) without
+/// colliding with an app that is already running.
+fn cache_path() -> Result<std::path::PathBuf, String> {
+    if let Some(path) = std::env::var_os("POLYUI_VIEWPORT_CACHE_DIR") {
+        return Ok(std::path::PathBuf::from(path));
+    }
+    Ok(dirs::cache_dir()
+        .ok_or_else(|| "OS cache directory is unavailable.".to_string())?
+        .join(CEF_CACHE_DIR))
+}
+
 /// Initializes CEF in the browser process. Main thread only.
 pub fn init() -> Result<(), String> {
     prepare_windowing_threads()?;
     let args = Args::new();
-    let cache_path = dirs::cache_dir()
-        .ok_or_else(|| "OS cache directory is unavailable.".to_string())?
-        .join(CEF_CACHE_DIR);
+    let cache_path = cache_path()?;
     std::fs::create_dir_all(&cache_path).map_err(|error| error.to_string())?;
     let settings = cef_settings(&cache_path);
     let mut app = OsrApp::new();
 
     // SAFETY: null sandbox info, as required on Linux. Called on the main
-    // application thread before GTK; CEF creates its separate UI thread.
+    // thread before anything else; CEF creates its separate UI thread.
     let ok = cef::initialize(
         Some(args.as_main_args()),
         Some(&settings),
@@ -120,17 +139,13 @@ pub fn init() -> Result<(), String> {
     Ok(())
 }
 
-/// X11 and GDK have to be told the process is multi-threaded before anything
-/// touches them. Windows has no equivalent — the message loop CEF starts is
-/// already thread-safe.
+/// Xlib requires this before any other Xlib call in a multi-threaded process.
 #[cfg(target_os = "linux")]
 fn prepare_windowing_threads() -> Result<(), String> {
-    // SAFETY: this is the first Xlib/GDK work in the process. CEF's Linux
-    // multi-threaded loop requires both calls before CEF and GTK initialize.
+    // SAFETY: this is the first Xlib work in the process.
     if unsafe { XInitThreads() } == 0 {
         return Err("XInitThreads failed before CEF initialization.".to_string());
     }
-    unsafe { gtk::gdk::ffi::gdk_threads_init() };
     Ok(())
 }
 
@@ -155,48 +170,11 @@ fn cef_settings(cache_path: &Path) -> Settings {
 }
 
 /// Tears CEF down. Main thread only, and only from the exit path.
-///
-/// This must run before the process exits, otherwise CEF's child processes are
-/// orphaned and survive as zombies. `lib.rs` hard-exits on `ExitRequested`
-/// (Tauri teardown deadlocks on Linux), so this is called from there rather
-/// than relying on any Drop impl, which a `process::exit` would skip.
 pub fn shutdown() {
     if is_initialized() {
-        let _ = on_cef_ui(close_browser);
+        let _ = on_cef_ui(close_all_browsers);
         cef::shutdown();
         INITIALIZED.store(false, Ordering::SeqCst);
-    }
-}
-
-fn enabled_path() -> Result<PathBuf, String> {
-    dirs::config_dir()
-        .map(|path| path.join(CEF_ENABLED_FILE))
-        .ok_or_else(|| "OS config directory is unavailable.".to_string())
-}
-
-/// Whether the next launch should bring CEF up. Read by `main` before any
-/// CEF or Tauri work happens, so it is a file rather than app state.
-pub fn enabled_on_next_start() -> bool {
-    enabled_path().is_ok_and(|path| path.is_file())
-}
-
-pub(super) fn set_enabled(enabled: bool) -> Result<(), String> {
-    set_enabled_at(&enabled_path()?, enabled)
-}
-
-fn set_enabled_at(path: &Path, enabled: bool) -> Result<(), String> {
-    if enabled {
-        let parent = path
-            .parent()
-            .ok_or_else(|| "CEF preference path has no parent directory.".to_string())?;
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        return std::fs::write(path, b"enabled").map_err(|error| error.to_string());
-    }
-
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -211,32 +189,14 @@ mod tests {
         assert_eq!(settings.external_message_pump, 0);
         assert_eq!(settings.multi_threaded_message_loop, 1);
         assert_eq!(settings.cache_path.to_string(), "/tmp/polyui-cef-test");
-        assert_eq!(settings.root_cache_path.to_string(), "/tmp/polyui-cef-test");
         assert_eq!(settings.locale.to_string(), "en-US");
     }
 
     #[test]
     fn cpu_osr_disables_unneeded_gpu_processes() {
-        assert_eq!(
-            browser_switches(),
-            ["disable-gpu", "disable-gpu-compositing"]
-        );
-        assert_eq!(
-            browser_switch_values(),
-            [("disk-cache-size", "67108864"), ("gtk-version", "3")]
-        );
-    }
-
-    #[test]
-    fn cef_preference_can_be_enabled_and_disabled() {
-        let path = std::env::temp_dir().join(format!("polyui-cef-enabled-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-
-        set_enabled_at(&path, true).expect("enable CEF preference");
-        assert!(path.is_file());
-
-        set_enabled_at(&path, false).expect("disable CEF preference");
-        assert!(!path.exists());
+        assert_eq!(browser_switches(), ["disable-gpu", "disable-gpu-compositing"]);
+        // gtk-version is deliberately absent: no GTK3 webkit in this process.
+        assert_eq!(browser_switch_values(), [("disk-cache-size", "67108864")]);
     }
 
     #[test]

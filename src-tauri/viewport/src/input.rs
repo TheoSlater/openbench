@@ -6,7 +6,8 @@
 
 use cef::*;
 
-use super::browser::with_host;
+use crate::browser::with_host;
+use crate::protocol::BrowserId;
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -87,8 +88,8 @@ impl From<CefKeyEventType> for KeyEventType {
 }
 
 /// UI thread only.
-pub(super) fn dispatch_input(events: Vec<CefInputEvent>) -> Result<(), String> {
-    with_host(|host| {
+pub fn dispatch_input(id: BrowserId, events: Vec<CefInputEvent>) -> Result<(), String> {
+    with_host(id, |host| {
         for event in events {
             dispatch_event(host, event)?;
         }

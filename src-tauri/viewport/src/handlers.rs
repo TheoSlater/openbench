@@ -1,18 +1,19 @@
 //! CEF callback objects. Everything here is invoked by Chromium on the CEF UI
-//! thread and must not block: each callback packs its payload and pushes it
-//! down a Tauri channel to the frontend.
+//! thread and must not block: each callback packs its payload and writes one
+//! framed message to the main process.
 
 use cef::*;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::browser::ViewState;
-use super::frame::{encode_frame, BYTES_PER_PIXEL};
+use crate::browser::ViewState;
+use crate::frame::{encode_frame, BYTES_PER_PIXEL};
+use crate::protocol::{BrowserId, NavState, Sink, Tag};
 
 cef::wrap_render_handler! {
     pub struct OsrRenderHandler {
         view: ViewState,
-        on_frame: Channel<InvokeResponseBody>,
+        sink: Sink,
+        id: BrowserId,
     }
 
     impl RenderHandler {
@@ -69,7 +70,7 @@ cef::wrap_render_handler! {
                 .map(|duration| duration.as_secs_f64() * 1_000.0)
                 .unwrap_or_default();
             if let Ok(packet) = encode_frame(pixels, width, height, rects, painted_at_ms) {
-                let _ = self.on_frame.send(InvokeResponseBody::Raw(packet));
+                self.sink.send(Tag::Frame, self.id, &packet);
             }
         }
     }
@@ -77,8 +78,8 @@ cef::wrap_render_handler! {
 
 cef::wrap_display_handler! {
     pub struct OsrDisplayHandler {
-        on_cursor: Channel<String>,
-        on_address: Channel<String>,
+        sink: Sink,
+        id: BrowserId,
     }
 
     impl DisplayHandler {
@@ -89,7 +90,7 @@ cef::wrap_display_handler! {
             type_: CursorType,
             _custom_cursor_info: Option<&CursorInfo>,
         ) -> ::std::os::raw::c_int {
-            let _ = self.on_cursor.send(cursor_css(type_).to_string());
+            self.sink.send(Tag::Cursor, self.id, cursor_css(type_).as_bytes());
             1
         }
 
@@ -101,28 +102,16 @@ cef::wrap_display_handler! {
         ) {
             let is_main_frame = frame.is_some_and(|frame| frame.is_main() != 0);
             if let Some(url) = url.filter(|_| is_main_frame) {
-                let _ = self.on_address.send(url.to_string());
+                self.sink.send(Tag::Address, self.id, url.to_string().as_bytes());
             }
         }
     }
 }
 
-/// Toolbar state that only Chromium can answer.
-///
-/// Back/forward availability is a property of Chromium's session history, not
-/// of any list the app could keep: an in-page `pushState`, a redirect, or a
-/// same-document anchor all move that history without the app being told.
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NavState {
-    pub is_loading: bool,
-    pub can_go_back: bool,
-    pub can_go_forward: bool,
-}
-
 cef::wrap_load_handler! {
     pub struct OsrLoadHandler {
-        on_nav_state: Channel<NavState>,
+        sink: Sink,
+        id: BrowserId,
     }
 
     impl LoadHandler {
@@ -133,11 +122,14 @@ cef::wrap_load_handler! {
             can_go_back: ::std::os::raw::c_int,
             can_go_forward: ::std::os::raw::c_int,
         ) {
-            let _ = self.on_nav_state.send(NavState {
+            let state = NavState {
                 is_loading: is_loading != 0,
                 can_go_back: can_go_back != 0,
                 can_go_forward: can_go_forward != 0,
-            });
+            };
+            if let Ok(payload) = serde_json::to_vec(&state) {
+                self.sink.send(Tag::NavState, self.id, &payload);
+            }
         }
     }
 }

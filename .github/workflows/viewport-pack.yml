@@ -1,0 +1,122 @@
+name: Viewport pack
+
+# Builds the CEF runtime pack: the polyui-viewport helper plus libcef and its
+# data files. Keyed on the CEF version, not the app version, so a normal app
+# release never rebuilds 330MB of Chromium and an installed pack survives app
+# updates. Bump CEF -> push a `cef-pack-<version>` tag.
+on:
+  push:
+    tags: ["cef-pack-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  pack:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+            asset: polyui-viewport-linux-x64.tar.gz
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            asset: polyui-viewport-linux-arm64.tar.gz
+          - name: Windows x64
+            os: windows-latest
+            asset: polyui-viewport-windows-x64.tar.gz
+
+    # CEF's wrapper is built /MT, so every native dep in this crate must be too.
+    # Only the helper needs this now — the app went back to the default /MD when
+    # CEF left its build graph.
+    env:
+      CMAKE_MSVC_RUNTIME_LIBRARY: ${{ matrix.os == 'windows-latest' && 'MultiThreaded' || '' }}
+      CMAKE_POLICY_DEFAULT_CMP0091: ${{ matrix.os == 'windows-latest' && 'NEW' || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache CEF distribution
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cef
+          key: ${{ runner.os }}-${{ matrix.asset }}-cef-${{ hashFiles('src-tauri/viewport/Cargo.toml') }}
+
+      - name: Point cef-dll-sys at the cached distribution
+        shell: bash
+        run: echo "CEF_PATH=${{ github.workspace }}/.cef" >> "$GITHUB_ENV"
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: viewport-pack
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libgtk-3-dev
+
+      - name: Build the helper
+        run: cargo build --release -p polyui-viewport --manifest-path src-tauri/Cargo.toml
+
+      - name: Assemble the pack
+        shell: bash
+        run: node scripts/build-viewport-pack.mjs "${{ matrix.asset }}"
+
+      - name: Report size and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACK="dist-pack/${{ matrix.asset }}"
+          SHA="$(sha256sum "$PACK" | cut -d' ' -f1)"
+          SIZE="$(du -h "$PACK" | cut -f1)"
+          {
+            echo "### ${{ matrix.asset }}"
+            echo ""
+            echo "size: \`$SIZE\`"
+            echo ""
+            echo "Paste into \`asset()\` in \`src-tauri/src/viewport/pack.rs\`:"
+            echo ""
+            echo '```rust'
+            echo "(\"${{ matrix.asset }}\", \"$SHA\")"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$SHA  ${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist-pack/${{ matrix.asset }}
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish pack
+    needs: [pack]
+    if: startsWith(github.ref, 'refs/tags/cef-pack-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packs
+          merge-multiple: true
+      - run: ls -la packs/
+      - uses: softprops/action-gh-release@v2
+        with:
+          # Not a prerelease and not draft: the app downloads these by URL, so
+          # they have to be publicly fetchable the moment the tag exists.
+          files: packs/*

@@ -1,3 +1,10 @@
+# The viewport helper is a separate binary so that CEF (261MB of libcef) is
+# never linked into polyui itself. `cargo build` here still builds only the
+# root package, so the helper stays out of the main build graph entirely;
+# build it explicitly with `cargo build -p polyui-viewport`.
+[workspace]
+members = ["viewport"]
+
 [package]
 name = "polyui"
 version = "0.21.1"
@@ -62,13 +69,6 @@ portable-pty = "0.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
+# PR_SET_PDEATHSIG, so a crashed app cannot orphan the viewport helper.
+libc = "0.2"
 
-# CEF OSR viewport. Pinned: cef crate 150.0.0+150.0.10 -> CEF 150.0.10.
-# macOS is absent on purpose: it requires separate helper executables in the
-# app bundle instead of re-executing this binary. `sandbox` is off because the
-# viewport runs with `no_sandbox`; `build-util` is only for CEF's own tooling.
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-cef = { version = "150.0.0", default-features = false }
-
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.build-dependencies]
-cef-dll-sys = "150.0.0"

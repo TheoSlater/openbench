@@ -1,6 +1,5 @@
 mod auth;
-#[cfg(cef)]
-pub mod cef_osr;
+pub mod viewport;
 mod commands;
 mod db;
 mod error;
@@ -84,8 +83,7 @@ fn initialize_onnxruntime(app: &tauri::App) -> Result<(), String> {
 fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
     let env = app.env();
     app.run_on_main_thread(move || {
-        #[cfg(cef)]
-        cef_osr::shutdown();
+        viewport::process::shutdown();
         tauri::process::restart(&env);
     })
     .map_err(|error| error.to_string())
@@ -96,25 +94,6 @@ pub fn run() {
     startup_log::install_panic_hook();
     startup_log::log_phase("app entry reached");
     startup_log::log_startup_environment();
-
-    // CEF must initialize before tao/GTK does. On Linux CEF initializes GTK
-    // itself, and doing that after `gtk_init` has already run warns
-    // ("gtk_disable_setlocale() must be called before gtk_init()") and then
-    // segfaults. Tauri calls gtk_init while building the app, so CEF cannot
-    // wait for the setup hook. Failure is non-fatal: it costs the viewport,
-    // not the app.
-    #[cfg(cef)]
-    {
-        if cef_osr::enabled_on_next_start() {
-            startup_log::log_phase("CEF initialization");
-            match cef_osr::init() {
-                Ok(()) => startup_log::log_phase("CEF ready"),
-                Err(error) => startup_log::log_error(format!("CEF init failed: {error}")),
-            }
-        } else {
-            startup_log::log_phase("CEF disabled");
-        }
-    }
 
     let context = tauri::generate_context!();
     startup_log::log_phase("config loaded");
@@ -266,26 +245,17 @@ pub fn run() {
             check_for_updates,
             download_update,
             install_update,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_open,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_resize,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_close,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_reload,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_navigate,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_back,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_forward,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_input,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_set_enabled,
-            #[cfg(cef)]
-            cef_osr::commands::cef_viewport_is_enabled,
+            viewport::commands::cef_viewport_open,
+            viewport::commands::cef_viewport_resize,
+            viewport::commands::cef_viewport_close,
+            viewport::commands::cef_viewport_reload,
+            viewport::commands::cef_viewport_navigate,
+            viewport::commands::cef_viewport_back,
+            viewport::commands::cef_viewport_forward,
+            viewport::commands::cef_viewport_input,
+            viewport::pack::viewport_pack_status,
+            viewport::pack::viewport_pack_install,
+            viewport::pack::viewport_pack_remove,
             restart_app,
             get_whisper_models_status,
             download_whisper_model,
@@ -330,15 +300,12 @@ pub fn run() {
             // window. SQLite is crash-safe and window state is saved on
             // CloseRequested, so skipping cleanup loses nothing.
             //
-            // CEF is the one thing that does NOT survive this: process::exit
-            // skips destructors, and CEF's child processes would outlive us as
-            // zombies. Shut it down explicitly first, from the same main
-            // application thread that initialized it.
-            #[cfg(cef)]
-            {
-                startup_log::log_phase("CEF shutdown");
-                cef_osr::shutdown();
-            }
+            // The viewport helper does NOT survive this: process::exit skips
+            // destructors, and its Chromium tree would outlive us as zombies.
+            // Stop it explicitly first. (PR_SET_PDEATHSIG covers a crash; this
+            // covers an orderly quit.)
+            startup_log::log_phase("viewport shutdown");
+            viewport::process::shutdown();
             startup_log::log_phase("exit requested; terminating process");
             std::process::exit(code.unwrap_or(0));
         }

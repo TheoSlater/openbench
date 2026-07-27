@@ -9,6 +9,7 @@ export type CefNavState = {
 };
 
 export function cefViewportOpen(input: {
+  id: number;
   url: string;
   width: number;
   height: number;
@@ -17,6 +18,7 @@ export function cefViewportOpen(input: {
   onCursor: Channel<string>;
   onAddress: Channel<string>;
   onNavState: Channel<CefNavState>;
+  onError: Channel<string>;
 }): Promise<void> {
   return invoke("cef_viewport_open", input);
 }
@@ -25,40 +27,56 @@ export function cefViewportOpen(input: {
  * Navigates the open browser in place, keeping Chromium's session history.
  * Reopening instead would reset that history and break back/forward.
  */
-export function cefViewportNavigate(url: string): Promise<void> {
-  return invoke("cef_viewport_navigate", { url });
+export function cefViewportNavigate(id: number, url: string): Promise<void> {
+  return invoke("cef_viewport_navigate", { id, url });
 }
 
-export function cefViewportBack(): Promise<void> {
-  return invoke("cef_viewport_back");
+export function cefViewportBack(id: number): Promise<void> {
+  return invoke("cef_viewport_back", { id });
 }
 
-export function cefViewportForward(): Promise<void> {
-  return invoke("cef_viewport_forward");
+export function cefViewportForward(id: number): Promise<void> {
+  return invoke("cef_viewport_forward", { id });
 }
 
-export function cefViewportResize(width: number, height: number, scaleFactor: number): Promise<void> {
-  return invoke("cef_viewport_resize", { width, height, scaleFactor });
+export function cefViewportResize(
+  id: number,
+  width: number,
+  height: number,
+  scaleFactor: number,
+): Promise<void> {
+  return invoke("cef_viewport_resize", { id, width, height, scaleFactor });
 }
 
-export function cefViewportClose(): Promise<void> {
-  return invoke("cef_viewport_close");
+export function cefViewportClose(id: number): Promise<void> {
+  return invoke("cef_viewport_close", { id });
 }
 
-export function cefViewportReload(): Promise<void> {
-  return invoke("cef_viewport_reload");
+export function cefViewportReload(id: number): Promise<void> {
+  return invoke("cef_viewport_reload", { id });
 }
 
-export function cefViewportInput(events: CefInputEvent[]): Promise<void> {
-  return invoke("cef_viewport_input", { events });
+export function cefViewportInput(id: number, events: CefInputEvent[]): Promise<void> {
+  return invoke("cef_viewport_input", { id, events });
 }
 
-export function cefViewportSetEnabled(enabled: boolean): Promise<void> {
-  return invoke("cef_viewport_set_enabled", { enabled });
+export type ViewportPackStatus = {
+  installed: boolean;
+  supported: boolean;
+  version: string;
+};
+
+export function viewportPackStatus(): Promise<ViewportPackStatus> {
+  return invoke<ViewportPackStatus>("viewport_pack_status");
 }
 
-export function cefViewportIsEnabled(): Promise<boolean> {
-  return invoke<boolean>("cef_viewport_is_enabled");
+/** Downloads and installs the CEF runtime. Emits `viewport-pack-progress`. */
+export function viewportPackInstall(): Promise<void> {
+  return invoke("viewport_pack_install");
+}
+
+export function viewportPackRemove(): Promise<void> {
+  return invoke("viewport_pack_remove");
 }
 
 export function restartApp(): Promise<void> {

@@ -44,6 +44,7 @@ import { useViewportSuspension } from "../hooks/useViewportSuspension";
 import { BrowserNewTabEmpty } from "./BrowserNewTabEmpty";
 import { BrowserToolbar } from "./BrowserToolbar";
 import { CefViewport } from "./CefViewport";
+import { allocateBrowserId } from "../hooks/useCefSurface";
 import { browserTabLabel, DrawerTab } from "./DrawerTab";
 import { TerminalViewport } from "./TerminalViewport";
 
@@ -208,6 +209,9 @@ function BrowserViewport({
   // The page Chromium reports it is showing. Guards the navigate effect below
   // against echoing its own address changes back as fresh navigations.
   const cefUrlRef = useRef(session?.url ?? "");
+  // One browser per tab, named for the helper process that hosts them all.
+  // Stable across a frameNonce remount: the same tab keeps the same browser.
+  const [browserId] = useState(allocateBrowserId);
 
   const remountBrowser = useCallback(() => {
     setBrowserError("");
@@ -235,7 +239,7 @@ function BrowserViewport({
       // away the session history that back/forward walk.
       if (session.url !== cefUrlRef.current) {
         cefUrlRef.current = session.url;
-        void native.cefViewportNavigate(session.url).catch(remountBrowser);
+        void native.cefViewportNavigate(browserId, session.url).catch(remountBrowser);
       }
       return;
     }
@@ -261,7 +265,11 @@ function BrowserViewport({
 
   const handleNavState = useCallback((state: CefNavState) => {
     setNavState(state);
-    if (state.isLoading) setFrameLoading(true);
+    // Chromium's loading flag is authoritative in both directions. Setting only
+    // the true edge and waiting for a paint to clear it left the spinner stuck
+    // over a finished page: Chromium does not repaint a surface that has not
+    // changed, so a load that ends after the last paint never cleared it.
+    setFrameLoading(state.isLoading);
   }, []);
 
   const handleFirstFrame = useCallback(() => {
@@ -279,7 +287,7 @@ function BrowserViewport({
   const moveHistory = (delta: -1 | 1) => {
     if (useChromiumBrowser) {
       const go = delta === -1 ? native.cefViewportBack : native.cefViewportForward;
-      void go().catch(() => undefined);
+      void go(browserId).catch(() => undefined);
       return;
     }
     const moved = moveBrowserHistory(history, delta);
@@ -301,7 +309,7 @@ function BrowserViewport({
     if (!session?.url) return;
     if (useChromiumBrowser) {
       setFrameLoading(true);
-      void native.cefViewportReload().catch(remountBrowser);
+      void native.cefViewportReload(browserId).catch(remountBrowser);
       return;
     }
     remountBrowser();
@@ -342,6 +350,7 @@ function BrowserViewport({
                 // Keyed on the tab, not the URL: one browser per tab for its
                 // whole life, so navigating never rebuilds Chromium.
                 key={`${tab.id}#${frameNonce}`}
+                browserId={browserId}
                 initialUrl={session.url}
                 onFirstFrame={handleFirstFrame}
                 onAddressChange={handleAddressChange}

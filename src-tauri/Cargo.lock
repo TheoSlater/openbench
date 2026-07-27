@@ -3970,14 +3970,13 @@ dependencies = [
  "async-stream",
  "async-trait",
  "bcrypt",
- "cef",
- "cef-dll-sys",
  "chrono",
  "cpal",
  "dirs 6.0.0",
  "futures",
  "gtk",
  "hound",
+ "libc",
  "log",
  "ollama-rs",
  "ort",
@@ -4007,6 +4006,18 @@ dependencies = [
  "url",
  "uuid",
  "whisper-rs",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "polyui-viewport"
+version = "0.21.1"
+dependencies = [
+ "cef",
+ "dirs 6.0.0",
+ "libc",
+ "serde",
+ "serde_json",
  "windows-sys 0.59.0",
 ]
 

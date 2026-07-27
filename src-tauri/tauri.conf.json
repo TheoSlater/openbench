@@ -7,7 +7,6 @@
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
-    "beforeBundleCommand": "node scripts/optimize-cef-runtime.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -40,7 +39,10 @@
     "resources": {
       "target/onnxruntime/*onnxruntime*": ""
     },
-    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
     "windows": {
       "nsis": {
         "installerHooks": "./windows/hooks.nsh"
