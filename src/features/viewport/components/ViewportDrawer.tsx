@@ -57,22 +57,22 @@ export function ViewportDrawer() {
           <Reorder.Group
             as="div"
             axis="x"
-            values={tabs.map((tab) => tab.id)}
+            values={tabs}
             onReorder={setViewportTabOrder}
             className="flex items-center gap-1.5"
           >
-            {tabs.map((tab) => (
+            {tabs.map((id) => (
               <DrawerTab
-                key={tab.id}
-                id={tab.id}
+                key={id}
+                id={id}
                 icon={<SquareTerminal />}
                 label="Terminal"
-                active={activeTabId === tab.id}
-                dragging={draggedTabId === tab.id}
+                active={activeTabId === id}
+                dragging={draggedTabId === id}
                 reduceMotion={reduceMotion}
-                onSelect={() => selectViewportTab(tab.id)}
-                onClose={() => closeViewportTab(tab.id)}
-                onDragStart={() => setDraggedTabId(tab.id)}
+                onSelect={() => selectViewportTab(id)}
+                onClose={() => closeViewportTab(id)}
+                onDragStart={() => setDraggedTabId(id)}
                 onDragEnd={() => setDraggedTabId(null)}
               />
             ))}
@@ -98,12 +98,14 @@ export function ViewportDrawer() {
           <PanelRightIcon className="-scale-x-100" size={16} />
         </IconButton>
       </header>
-      {tabs.map((tab) => (
+      {/* Every tab stays mounted and inactive ones are hidden with CSS, so a
+          running shell survives switching away from it. */}
+      {tabs.map((id) => (
         <section
-          key={tab.id}
+          key={id}
           className={cn(
             "min-h-0 flex-1 bg-sidebar",
-            activeTabId === tab.id ? "block" : "hidden",
+            activeTabId === id ? "block" : "hidden",
           )}
         >
           <TerminalViewport />

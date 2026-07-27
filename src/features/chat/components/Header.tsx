@@ -34,7 +34,7 @@ import {
   useMemoryPanelOpen,
 } from "@/features/memory/MemoryPanel";
 import { useConversationMemoryCount } from "@/features/memory/useConversationMemoryCount";
-import { openViewportTerminal, useViewportStore } from "@/features/viewport/viewportStore";
+import { showViewportDrawer, useViewportStore } from "@/features/viewport/viewportStore";
 
 
 interface HeaderProps {
@@ -305,7 +305,7 @@ export const Header = memo(function Header({
           <Tooltip placement="bottom" title="Open terminal">
             <IconButton
               aria-label="Open terminal"
-              onClick={openViewportTerminal}
+              onClick={showViewportDrawer}
               size="small"
             >
               <PanelRightIcon size={16} />

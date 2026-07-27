@@ -1,11 +1,8 @@
 import { create } from "zustand";
 
-export type ViewportTab = {
-  id: string;
-};
-
 type ViewportStore = {
-  tabs: ViewportTab[];
+  /** Terminal tab ids, in display order. */
+  tabs: string[];
   activeTabId: string | null;
   drawerOpen: boolean;
   drawerWidth: number;
@@ -37,19 +34,6 @@ function loadWidth(): number {
     : 440;
 }
 
-function withoutTab(
-  state: Pick<ViewportStore, "tabs" | "activeTabId">,
-  id: string,
-) {
-  const removedIndex = state.tabs.findIndex((tab) => tab.id === id);
-  if (removedIndex < 0) return null;
-  const tabs = state.tabs.filter((tab) => tab.id !== id);
-  const neighborIndex = Math.min(tabs.length - 1, Math.max(0, removedIndex - 1));
-  const activeTabId =
-    state.activeTabId === id ? tabs[neighborIndex]?.id ?? null : state.activeTabId;
-  return { tabs, activeTabId, drawerOpen: tabs.length > 0 };
-}
-
 export const useViewportStore = create<ViewportStore>((set) => ({
   tabs: [],
   activeTabId: null,
@@ -59,27 +43,35 @@ export const useViewportStore = create<ViewportStore>((set) => ({
     addTab: () => {
       const id = `viewport-${nextTabId++}`;
       set((state) => ({
-        tabs: [...state.tabs, { id }],
+        tabs: [...state.tabs, id],
         activeTabId: id,
         drawerOpen: true,
       }));
       return id;
     },
-    closeTab: (id) => set((state) => withoutTab(state, id) ?? state),
-    selectTab: (activeTabId) => set({ activeTabId, drawerOpen: true }),
-    setTabOrder: (ids) =>
+    closeTab: (id) =>
       set((state) => {
-        if (
-          ids.length !== state.tabs.length ||
-          new Set(ids).size !== state.tabs.length
-        ) {
-          return state;
-        }
-        const tabs = ids
-          .map((id) => state.tabs.find((tab) => tab.id === id))
-          .filter((tab): tab is ViewportTab => Boolean(tab));
-        return tabs.length === state.tabs.length ? { tabs } : state;
+        const index = state.tabs.indexOf(id);
+        if (index < 0) return state;
+        const tabs = state.tabs.filter((tab) => tab !== id);
+        const neighbor = tabs[Math.min(tabs.length - 1, Math.max(0, index - 1))];
+        return {
+          tabs,
+          activeTabId: state.activeTabId === id ? neighbor ?? null : state.activeTabId,
+          drawerOpen: tabs.length > 0,
+        };
       }),
+    selectTab: (activeTabId) => set({ activeTabId, drawerOpen: true }),
+    // Must be a permutation: the Set check rejects a duplicated id, which
+    // would otherwise render one tab twice and drop another.
+    setTabOrder: (ids) =>
+      set((state) =>
+        ids.length === state.tabs.length &&
+        new Set(ids).size === ids.length &&
+        ids.every((id) => state.tabs.includes(id))
+          ? { tabs: ids }
+          : state,
+      ),
     setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
     setDrawerWidth: (drawerWidth) => {
       localStorage.setItem(WIDTH_STORAGE_KEY, String(drawerWidth));
@@ -91,6 +83,19 @@ export const useViewportStore = create<ViewportStore>((set) => ({
 
 export function closeViewport(): void {
   useViewportStore.getState().actions.clear();
+}
+
+/**
+ * Reveals the drawer, only spawning a terminal when there is none.
+ *
+ * Hiding the drawer keeps its tabs, so reopening has to reattach to the
+ * running shells — spawning unconditionally threw away the session every time
+ * and looked like the terminal failing to persist.
+ */
+export function showViewportDrawer(): void {
+  const { tabs, actions } = useViewportStore.getState();
+  if (tabs.length) actions.setDrawerOpen(true);
+  else actions.addTab();
 }
 
 export function openViewportTerminal(): string {

@@ -5,6 +5,7 @@ import {
   openViewportTerminal,
   selectViewportTab,
   setViewportTabOrder,
+  showViewportDrawer,
   useViewportStore,
 } from "../src/features/viewport/viewportStore";
 
@@ -34,7 +35,7 @@ describe("viewport drawer state", () => {
     const second = openViewportTerminal();
 
     expect(first).not.toBe(second);
-    expect(useViewportStore.getState().tabs.map((tab) => tab.id)).toEqual([
+    expect(useViewportStore.getState().tabs).toEqual([
       first,
       second,
     ]);
@@ -50,7 +51,7 @@ describe("viewport drawer state", () => {
     closeViewportTab(second);
 
     const state = useViewportStore.getState();
-    expect(state.tabs.map((tab) => tab.id)).toEqual([first, third]);
+    expect(state.tabs).toEqual([first, third]);
     expect(state.activeTabId).toBe(first);
   });
 
@@ -73,7 +74,7 @@ describe("viewport drawer state", () => {
     setViewportTabOrder([second, first]);
 
     const state = useViewportStore.getState();
-    expect(state.tabs.map((tab) => tab.id)).toEqual([second, first]);
+    expect(state.tabs).toEqual([second, first]);
     expect(state.activeTabId).toBe(first);
   });
 
@@ -84,7 +85,7 @@ describe("viewport drawer state", () => {
     setViewportTabOrder([first]);
     setViewportTabOrder([first, first]);
 
-    expect(useViewportStore.getState().tabs.map((tab) => tab.id)).toEqual([
+    expect(useViewportStore.getState().tabs).toEqual([
       first,
       second,
     ]);
@@ -98,6 +99,27 @@ describe("viewport drawer state", () => {
     const state = useViewportStore.getState();
     expect(state.drawerOpen).toBe(false);
     expect(state.tabs).toHaveLength(1);
+  });
+
+  it("reopens the existing terminal instead of spawning another", () => {
+    const first = openViewportTerminal();
+    hideViewportDrawer();
+
+    showViewportDrawer();
+
+    const state = useViewportStore.getState();
+    expect(state.tabs).toEqual([first]);
+    expect(state.drawerOpen).toBe(true);
+  });
+
+  it("spawns a terminal on first open only", () => {
+    showViewportDrawer();
+
+    expect(useViewportStore.getState().tabs).toHaveLength(1);
+
+    showViewportDrawer();
+
+    expect(useViewportStore.getState().tabs).toHaveLength(1);
   });
 
   it("clears every tab", () => {
