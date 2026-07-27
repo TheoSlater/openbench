@@ -70,9 +70,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
           # Bumped when link flags change: stale objects are built against the
-          # old settings and cargo will not rebuild them. Bumped when CEF left
-          # this build graph.
-          key: no-cef-1
+          # old settings and cargo will not rebuild them.
+          key: no-cef-2
           # Only main writes. Tag and nightly-tag runs get a ref-scoped cache
           # that no later run can read, so saving from them is pure waste that
           # evicts the one cache releases can actually restore (main's).
@@ -203,12 +202,6 @@ jobs:
           test -n "$DEB" && test -n "$RPM" && test -n "$APPIMAGE"
           CONTENTS="$(dpkg-deb -c "$DEB")"
           grep -q libonnxruntime.so <<<"$CONTENTS" || { echo "deb is missing libonnxruntime.so"; exit 1; }
-          # Chromium must NOT be in the package: it is a separate download, and
-          # shipping it here is the 261MB regression this split removed.
-          if grep -Eq 'libcef|icudtl|swiftshader|resources\.pak' <<<"$CONTENTS"; then
-            echo "deb contains the CEF runtime; it belongs in the viewport pack."
-            exit 1
-          fi
           mkdir -p "$OUT"
           cp "$DEB" "$OUT/PolyUI-$VERSION-linux-${{ matrix.arch }}.deb"
           cp "$RPM" "$OUT/PolyUI-$VERSION-linux-${{ matrix.arch }}.rpm"

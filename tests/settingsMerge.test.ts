@@ -41,7 +41,6 @@ describe("mergeSettingsWithDefaults", () => {
     // Fields absent from the persisted blob come from defaults.
     expect(merged.dictation.vadSensitivity).toBe(defaults.dictation.vadSensitivity);
     expect(merged.general.webSearch.apiKeys).toEqual(defaults.general.webSearch.apiKeys);
-    expect(merged.general.experimentalChromiumBrowser).toBe(false);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
     expect(merged.general.terminalEmulator).toBe("browser");
@@ -60,7 +59,6 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.webSearch.provider).toBe("local");
     expect(defaults.general.webSearchEnabled).toBe(false);
     expect(defaults.general.mobileWebAccess).toBe(false);
-    expect(defaults.general.experimentalChromiumBrowser).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
     expect(defaults.general.terminalEmulator).toBe("browser");

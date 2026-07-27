@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ExternalLink, PanelRightOpen } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ContextMenu,
@@ -7,7 +7,6 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { openViewportForUser } from "@/features/viewport/viewportStore";
 import { cn } from "@/lib/utils";
 
 type LinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -70,16 +69,6 @@ export function LinkContextMenu({ href, children }: LinkContextMenuProps) {
         >
           <ExternalLink />
           Open in Browser
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => {
-            void openViewportForUser(href).catch((error) =>
-              console.warn("Failed to open link in viewport:", error),
-            );
-          }}
-        >
-          <PanelRightOpen />
-          Open in Viewport
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
