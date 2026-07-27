@@ -228,12 +228,27 @@ pub async fn viewport_pack_remove() -> Result<(), String> {
 
 /// `tar` is present on every supported Linux and on Windows 10+ (bsdtar), and
 /// preserves the executable bit. Same call shape `build.rs` uses for ONNX.
+///
+/// Runs from the directory holding both paths and passes only file names: an
+/// absolute Windows path like `C:\Users\...` is read as a remote `host:path`
+/// spec by GNU tar, which is what `tar` resolves to if a Git for Windows
+/// install precedes System32 on PATH.
 async fn extract(archive: &Path, into: &Path) -> Result<(), String> {
+    let working_dir = archive
+        .parent()
+        .ok_or_else(|| "Invalid browser runtime archive path.".to_string())?;
+    let archive_name = archive
+        .file_name()
+        .ok_or_else(|| "Invalid browser runtime archive name.".to_string())?;
+    let into_name = into
+        .file_name()
+        .ok_or_else(|| "Invalid browser runtime staging name.".to_string())?;
     let output = tokio::process::Command::new("tar")
+        .current_dir(working_dir)
         .arg("-xzf")
-        .arg(archive)
+        .arg(archive_name)
         .arg("-C")
-        .arg(into)
+        .arg(into_name)
         .output()
         .await
         .map_err(|error| format!("Could not run tar to unpack the browser runtime: {error}"))?;

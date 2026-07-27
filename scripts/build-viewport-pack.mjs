@@ -88,7 +88,12 @@ if (!isWindows) {
   );
 }
 
-const tar = spawnSync("tar", ["-czf", join(outDir, asset), "-C", stage, "."], {
+// Run from the staging directory with relative paths only. MSYS tar (what
+// `tar` resolves to under Git bash on the Windows runners) reads an absolute
+// `D:\\a\\...` path as a remote host:path spec and tries to connect to a host
+// called "D".
+const tar = spawnSync("tar", ["-czf", join("..", asset), "."], {
+  cwd: stage,
   stdio: "inherit",
 });
 if (tar.status !== 0) {
