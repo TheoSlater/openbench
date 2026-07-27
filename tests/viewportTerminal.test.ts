@@ -13,6 +13,10 @@ const terminal = readFileSync(
   "src/features/viewport/components/TerminalViewport.tsx",
   "utf8",
 );
+const browserTerminal = readFileSync(
+  "src/features/viewport/components/BrowserTerminalViewport.tsx",
+  "utf8",
+);
 const nativeTerminal = existsSync(
   "src/features/viewport/components/NativeTerminalViewport.tsx",
 )
@@ -51,9 +55,17 @@ describe("viewport terminal tab", () => {
   });
 
   it("connects terminal input to the browser Bash shell", () => {
-    expect(terminal).toContain('from "@wterm/just-bash"');
-    expect(terminal).toContain("shell.attach(write)");
-    expect(terminal).toContain("shellRef.current?.handleInput(data)");
+    expect(browserTerminal).toContain('from "@wterm/just-bash"');
+    expect(browserTerminal).toContain("shell.attach(write)");
+    expect(browserTerminal).toContain("shellRef.current?.handleInput(data)");
+  });
+
+  it("loads only the emulator in use", () => {
+    // Both engines are heavy and only one runs. Importing either eagerly puts
+    // it in the drawer's chunk, which gates how fast the drawer can open.
+    expect(terminal).toContain("lazy(() =>");
+    expect(terminal).not.toContain('from "@wterm/just-bash"');
+    expect(terminal).not.toContain('from "@xterm/xterm"');
   });
 
   it("selects the configured terminal emulator", () => {
