@@ -7,7 +7,6 @@ import { setTtsSettings, setTtsLoadNotifier, useTtsStore, type TtsLoadProgress }
 import { useNotificationStore } from "./notificationStore";
 import { setUpdateInstallSimulation } from "./updateStore";
 import { getRepository } from "@/lib/repositories";
-import { bindViewportOpenRequests, closeViewportForChat } from "@/features/viewport/viewportStore";
 import { useProviderStore } from "@/features/providers";
 
 // Cross-store effects live here. Stores own local state only.
@@ -71,18 +70,9 @@ function makeTtsLoadToast() {
   };
 }
 
-function cleanupDeletedConversation(id: string) {
-  closeViewportForChat(id);
-}
-
 export function initStoreCoordinator() {
   if (initialized) return;
   initialized = true;
-
-  // Chat model's show_webpage tool → open the viewport on the active chat.
-  void bindViewportOpenRequests(() => useChatStore.getState().activeConversationId)
-    .then((unlisten) => unsubscribeFns.push(unlisten))
-    .catch(() => undefined);
 
   const initialAuth = useAuthStore.getState();
   const initialAccountId = accountIdFromAuth(initialAuth);
@@ -132,13 +122,7 @@ export function initStoreCoordinator() {
     }
   }));
 
-  unsubscribeFns.push(useChatStore.subscribe((state, prev) => {
-    if (state.deletedConversationIds !== prev.deletedConversationIds) {
-      state.deletedConversationIds.forEach((id) => {
-        cleanupDeletedConversation(id);
-      });
-    }
-
+  unsubscribeFns.push(useChatStore.subscribe((state) => {
     const currentId = state.activeConversationId;
     if (lastActiveConversationId !== undefined && currentId !== lastActiveConversationId) {
       useTtsStore.getState().actions.stop();

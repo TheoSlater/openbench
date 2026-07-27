@@ -1,22 +1,12 @@
 use crate::error::AppError;
 use crate::models::chat::{
     ChatMessage, SearchResultItem, StreamMetadata, StreamPayload, ThinkingPayload, ToolCallInfo,
-    ToolDefinition, ViewportOpenEvent, WebSearchEvent,
+    ToolDefinition, WebSearchEvent,
 };
 use crate::providers::base::ChatProvider;
 use crate::stream_emitter::StreamEmitter;
 use crate::web_search::{WebSearchClient, WebSearchConfig};
 use tokio_stream::StreamExt;
-
-fn validate_viewport_url(raw: &str) -> Result<url::Url, String> {
-    let url = url::Url::parse(raw).map_err(|error| format!("Invalid URL: {error}"))?;
-    match url.scheme() {
-        "http" | "https" => Ok(url),
-        scheme => Err(format!(
-            "Blocked URL scheme \"{scheme}\": only http and https are allowed."
-        )),
-    }
-}
 
 fn format_search_results(query: &str, results: &[SearchResultItem], error: Option<&str>) -> String {
     let mut output = String::new();
@@ -48,12 +38,9 @@ fn format_search_results(query: &str, results: &[SearchResultItem], error: Optio
 
 #[cfg(test)]
 mod tests {
-    use super::validate_viewport_url;
 
     #[test]
     fn viewport_urls_only_allow_http() {
-        assert!(validate_viewport_url("https://example.com").is_ok());
-        assert!(validate_viewport_url("javascript:alert(1)").is_err());
     }
 }
 
@@ -203,30 +190,10 @@ impl ToolLoop {
                 "required": ["query"]
             }),
         };
-        let show_webpage_tool = ToolDefinition {
-            name: "show_webpage".into(),
-            description: "Display a webpage to the user in the app's side viewport panel. Use when the user asks to see or open a page, or when showing a page visually helps more than describing it. http/https URLs only.".into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": { "url": { "type": "string", "description": "Full http(s) URL of the page to display" } },
-                "required": ["url"]
-            }),
-        };
 
-        // Models deny capabilities the prompt doesn't mention, so tell the
-        // model about the viewport exactly when the tool is actually sent.
         let tools_enabled = web_search
             .filter(|(_, config)| config.is_configured())
             .is_some();
-        let system_prompt = if tools_enabled {
-            const VIEWPORT_HINT: &str = "You can display any http(s) webpage to the user in a side viewport panel by calling the show_webpage tool. When the user asks you to show, open, or display a webpage, call it instead of only giving the link.";
-            Some(match system_prompt {
-                Some(prompt) if !prompt.trim().is_empty() => format!("{prompt}\n\n{VIEWPORT_HINT}"),
-                _ => VIEWPORT_HINT.to_string(),
-            })
-        } else {
-            system_prompt
-        };
 
         let mut messages = initial_messages;
         let mut content_acc = String::new();
@@ -239,9 +206,7 @@ impl ToolLoop {
 
             // ponytail: tools only sent when web search is configured — the
             // pre-existing gate that keeps non-tool-capable models working.
-            // show_webpage rides along; decouple if viewport-without-search matters.
-            let tools = tools_enabled
-                .then(|| vec![web_search_tool.clone(), show_webpage_tool.clone()]);
+            let tools = tools_enabled.then(|| vec![web_search_tool.clone()]);
 
             let mut stream = provider
                 .chat_completion(
@@ -428,29 +393,9 @@ impl ToolLoop {
                                     search_error.as_deref(),
                                 )
                             }
-                            "show_webpage" => {
-                                let url = tc
-                                    .arguments
-                                    .get("url")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                match validate_viewport_url(url) {
-                                    Ok(valid) => {
-                                        let valid = valid.to_string();
-                                        emitter
-                                            .emit_viewport_open(&ViewportOpenEvent {
-                                                request_id: request_id.to_string(),
-                                                url: valid.clone(),
-                                            })
-                                            .await;
-                                        format!("Now displaying {valid} to the user in the viewport panel.")
-                                    }
-                                    Err(e) => format!("Could not display the page: {e}"),
-                                }
+                            other => {
+                                format!("Unknown tool \"{other}\". Available tools: web_search.")
                             }
-                            other => format!(
-                                "Unknown tool \"{other}\". Available tools: web_search, show_webpage."
-                            ),
                         };
 
                         messages.push(ChatMessage {

@@ -15,7 +15,6 @@ export type GeneralSettings = {
   betaFeatures: boolean;
   previewFeatures: boolean;
   terminalEmulator: TerminalEmulator;
-  experimentalChromiumBrowser: boolean;
   mobileWebAccess: boolean;
   showModelInEmptyState: boolean;
   voiceModeExperimental: boolean;
@@ -132,7 +131,6 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
       betaFeatures: false,
       previewFeatures: false,
       terminalEmulator: "browser",
-      experimentalChromiumBrowser: false,
       mobileWebAccess: false,
       showModelInEmptyState: false,
       voiceModeExperimental: false,

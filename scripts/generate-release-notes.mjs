@@ -25,10 +25,8 @@ function tryGit(args) {
 }
 
 function notesForCurrentRef() {
-  // Only app tags. The repo also carries cef-pack-* tags for the viewport
-  // runtime, and those are in main's history -- without the filter, a pack
-  // published after the last release becomes the "previous tag" and the
-  // changelog silently collapses to whatever landed since the pack.
+  // Only app tags, so a stray non-version tag can never become the point the
+  // changelog is computed from.
   const previousTag = tryGit([
     "describe",
     "--tags",

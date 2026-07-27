@@ -28,13 +28,13 @@ const ptyClient = existsSync("src/features/viewport/pty.ts")
 describe("viewport terminal tab", () => {
   it("opens from the add menu and renders in the active viewport tab", () => {
     expect(drawer).toContain("openViewportTerminal");
-    expect(drawer).toContain("Add viewport tab");
+    expect(drawer).toContain("New terminal tab");
     expect(drawer).toContain("<TerminalViewport");
   });
 
   it("gates the entire terminal feature behind beta features", () => {
     expect(drawer).toContain("state.general.betaFeatures");
-    expect(drawer).toContain('closeViewportTabs("terminal")');
+    expect(drawer).toContain("closeViewport()");
     expect(drawer).toContain("betaFeatures ? (");
     expect(terminal).toContain("if (!betaFeatures) return null");
   });
@@ -44,7 +44,7 @@ describe("viewport terminal tab", () => {
     expect(drawer).toContain('from "motion/react"');
     expect(drawer).toContain("<Reorder.Group");
     expect(drawer).toContain("setViewportTabOrder");
-    expect(drawer).toContain("<DropdownMenu>");
+    expect(drawer).toContain("New terminal tab");
     expect(drawerTab).toContain("<Reorder.Item");
     expect(drawerTab).toContain("onDragStart");
     expect(drawerTab).not.toContain("draggable");

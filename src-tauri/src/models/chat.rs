@@ -83,12 +83,6 @@ pub struct ToolDefinition {
 }
 
 #[derive(Serialize, Clone)]
-pub struct ViewportOpenEvent {
-    pub request_id: String,
-    pub url: String,
-}
-
-#[derive(Serialize, Clone)]
 pub struct WebSearchEvent {
     pub request_id: String,
     pub query: String,

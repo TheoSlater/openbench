@@ -1,12 +1,10 @@
 import {
-  closeViewportForChat,
+  closeViewport,
   closeViewportTab,
-  openEmptyViewport,
-  openViewportForUser,
-  openViewportPreviewUrl,
+  hideViewportDrawer,
   openViewportTerminal,
+  selectViewportTab,
   setViewportTabOrder,
-  updateViewportBrowserUrl,
   useViewportStore,
 } from "../src/features/viewport/viewportStore";
 
@@ -22,107 +20,94 @@ const resetViewportStore = () => {
 describe("viewport drawer state", () => {
   beforeEach(resetViewportStore);
 
-  it("opens multiple browser and terminal tabs", () => {
-    openEmptyViewport();
-    openEmptyViewport();
-    openViewportTerminal();
-    openViewportTerminal();
+  it("opens a terminal tab and shows the drawer", () => {
+    const id = openViewportTerminal();
 
-    expect(useViewportStore.getState().tabs.map((tab) => tab.type)).toEqual([
-      "browser",
-      "browser",
-      "terminal",
-      "terminal",
+    const state = useViewportStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe(id);
+    expect(state.drawerOpen).toBe(true);
+  });
+
+  it("gives each tab its own id and activates the newest", () => {
+    const first = openViewportTerminal();
+    const second = openViewportTerminal();
+
+    expect(first).not.toBe(second);
+    expect(useViewportStore.getState().tabs.map((tab) => tab.id)).toEqual([
+      first,
+      second,
     ]);
-    expect(useViewportStore.getState().activeTabId).toBe(
-      useViewportStore.getState().tabs[3].id,
-    );
-  });
-
-  it("opens user links in independent browser tabs", async () => {
-    await openViewportForUser("https://example.com");
-    await openViewportForUser("https://openai.com");
-
-    const sessions = useViewportStore
-      .getState()
-      .tabs.map((tab) => tab.session?.url);
-    expect(sessions).toEqual(["https://example.com/", "https://openai.com/"]);
-  });
-
-  it("navigates an empty browser without creating another tab", () => {
-    const id = openEmptyViewport();
-    updateViewportBrowserUrl(id, "https://example.com");
-
-    expect(useViewportStore.getState().tabs).toHaveLength(1);
-    expect(useViewportStore.getState().tabs[0].session?.url).toBe(
-      "https://example.com/",
-    );
-  });
-
-  it("ignores non-http preview urls", async () => {
-    await openViewportForUser("javascript:alert(1)");
-    expect(useViewportStore.getState().tabs).toEqual([]);
+    expect(useViewportStore.getState().activeTabId).toBe(second);
   });
 
   it("closes one tab and selects its nearest neighbor", () => {
-    const first = openEmptyViewport();
+    const first = openViewportTerminal();
     const second = openViewportTerminal();
-    const third = openEmptyViewport();
+    const third = openViewportTerminal();
 
-    closeViewportTab(third);
-    expect(useViewportStore.getState().activeTabId).toBe(second);
-
+    selectViewportTab(second);
     closeViewportTab(second);
-    expect(useViewportStore.getState().activeTabId).toBe(first);
 
-    closeViewportTab(first);
-    expect(useViewportStore.getState()).toMatchObject({
-      tabs: [],
-      activeTabId: null,
-      drawerOpen: false,
-    });
+    const state = useViewportStore.getState();
+    expect(state.tabs.map((tab) => tab.id)).toEqual([first, third]);
+    expect(state.activeTabId).toBe(first);
+  });
+
+  it("closes the drawer once the last tab goes", () => {
+    const only = openViewportTerminal();
+
+    closeViewportTab(only);
+
+    const state = useViewportStore.getState();
+    expect(state.tabs).toHaveLength(0);
+    expect(state.activeTabId).toBeNull();
+    expect(state.drawerOpen).toBe(false);
   });
 
   it("reorders tabs and keeps the active tab", () => {
-    const first = openEmptyViewport();
+    const first = openViewportTerminal();
     const second = openViewportTerminal();
-    const third = openEmptyViewport();
+    selectViewportTab(first);
 
-    setViewportTabOrder([third, first, second]);
+    setViewportTabOrder([second, first]);
+
+    const state = useViewportStore.getState();
+    expect(state.tabs.map((tab) => tab.id)).toEqual([second, first]);
+    expect(state.activeTabId).toBe(first);
+  });
+
+  it("ignores a reorder that does not name exactly the current tabs", () => {
+    const first = openViewportTerminal();
+    const second = openViewportTerminal();
+
+    setViewportTabOrder([first]);
+    setViewportTabOrder([first, first]);
 
     expect(useViewportStore.getState().tabs.map((tab) => tab.id)).toEqual([
-      third,
       first,
       second,
-    ]);
-    expect(useViewportStore.getState().activeTabId).toBe(third);
-
-    setViewportTabOrder([first, second, third]);
-    expect(useViewportStore.getState().tabs.map((tab) => tab.id)).toEqual([
-      first,
-      second,
-      third,
     ]);
   });
 
-  it("closes only browser tabs belonging to a chat", () => {
-    openViewportPreviewUrl({
-      chatId: "chat-1",
-      url: "https://example.com",
-      openedBy: "chat",
-    });
-    openViewportPreviewUrl({
-      chatId: "chat-2",
-      url: "https://openai.com",
-      openedBy: "chat",
-    });
+  it("hides the drawer without discarding tabs", () => {
     openViewportTerminal();
 
-    closeViewportForChat("chat-1");
+    hideViewportDrawer();
 
-    expect(useViewportStore.getState().tabs).toHaveLength(2);
-    expect(
-      useViewportStore.getState().tabs.some((tab) => tab.session?.chatId === "chat-1"),
-    ).toBe(false);
+    const state = useViewportStore.getState();
+    expect(state.drawerOpen).toBe(false);
+    expect(state.tabs).toHaveLength(1);
+  });
+
+  it("clears every tab", () => {
+    openViewportTerminal();
+    openViewportTerminal();
+
+    closeViewport();
+
+    const state = useViewportStore.getState();
+    expect(state.tabs).toHaveLength(0);
+    expect(state.drawerOpen).toBe(false);
   });
 });

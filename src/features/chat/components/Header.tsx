@@ -34,7 +34,7 @@ import {
   useMemoryPanelOpen,
 } from "@/features/memory/MemoryPanel";
 import { useConversationMemoryCount } from "@/features/memory/useConversationMemoryCount";
-import { openEmptyViewport, useViewportStore } from "@/features/viewport/viewportStore";
+import { openViewportTerminal, useViewportStore } from "@/features/viewport/viewportStore";
 
 
 interface HeaderProps {
@@ -65,9 +65,10 @@ export const Header = memo(function Header({
   isTemporary,
   onToggleTemporaryChat,
 }: HeaderProps) {
-  const { selectedPromptPreset, actions } = useSettingsStore(
+  const { selectedPromptPreset, betaFeatures, actions } = useSettingsStore(
     useShallow((state) => ({
       selectedPromptPreset: state.selectedPromptPreset,
+      betaFeatures: state.general.betaFeatures,
       actions: state.actions,
     })),
   );
@@ -300,11 +301,11 @@ export const Header = memo(function Header({
             </svg>
           </IconButton>
         </Tooltip>
-        {!viewportDrawerOpen ? (
-          <Tooltip placement="bottom" title="Open viewport drawer">
+        {!viewportDrawerOpen && betaFeatures ? (
+          <Tooltip placement="bottom" title="Open terminal">
             <IconButton
-              aria-label="Open viewport drawer"
-              onClick={openEmptyViewport}
+              aria-label="Open terminal"
+              onClick={openViewportTerminal}
               size="small"
             >
               <PanelRightIcon size={16} />

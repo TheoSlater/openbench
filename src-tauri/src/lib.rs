@@ -1,5 +1,4 @@
 mod auth;
-pub mod viewport;
 mod commands;
 mod db;
 mod error;
@@ -83,7 +82,6 @@ fn initialize_onnxruntime(app: &tauri::App) -> Result<(), String> {
 fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
     let env = app.env();
     app.run_on_main_thread(move || {
-        viewport::process::shutdown();
         tauri::process::restart(&env);
     })
     .map_err(|error| error.to_string())
@@ -245,17 +243,6 @@ pub fn run() {
             check_for_updates,
             download_update,
             install_update,
-            viewport::commands::cef_viewport_open,
-            viewport::commands::cef_viewport_resize,
-            viewport::commands::cef_viewport_close,
-            viewport::commands::cef_viewport_reload,
-            viewport::commands::cef_viewport_navigate,
-            viewport::commands::cef_viewport_back,
-            viewport::commands::cef_viewport_forward,
-            viewport::commands::cef_viewport_input,
-            viewport::pack::viewport_pack_status,
-            viewport::pack::viewport_pack_install,
-            viewport::pack::viewport_pack_remove,
             restart_app,
             get_whisper_models_status,
             download_whisper_model,
@@ -300,12 +287,6 @@ pub fn run() {
             // window. SQLite is crash-safe and window state is saved on
             // CloseRequested, so skipping cleanup loses nothing.
             //
-            // The viewport helper does NOT survive this: process::exit skips
-            // destructors, and its Chromium tree would outlive us as zombies.
-            // Stop it explicitly first. (PR_SET_PDEATHSIG covers a crash; this
-            // covers an orderly quit.)
-            startup_log::log_phase("viewport shutdown");
-            viewport::process::shutdown();
             startup_log::log_phase("exit requested; terminating process");
             std::process::exit(code.unwrap_or(0));
         }

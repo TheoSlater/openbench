@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -20,16 +20,10 @@ import {
   memoryUpdateSettings,
 } from "@/features/memory/memoryClient";
 import { getCurrentProviderAccountId } from "@/features/providers";
-import { SUPPORTS_CHROMIUM_BROWSER } from "@/lib/utils/platform";
-import { useConfirmStore } from "@/store/confirmStore";
-import { useNotify } from "@/hooks/useNotify";
-import * as native from "@/features/viewport/native";
-import { listen } from "@tauri-apps/api/event";
 
 export function AdvancedSettingsContent() {
   const {
     betaFeatures,
-    experimentalChromiumBrowser,
     experimentalFeatures,
     memoryBeta,
     previewFeatures,
@@ -38,7 +32,6 @@ export function AdvancedSettingsContent() {
   } = useSettingsStore(
     useShallow((state) => ({
       betaFeatures: state.general.betaFeatures,
-      experimentalChromiumBrowser: state.general.experimentalChromiumBrowser,
       experimentalFeatures: state.general.experimentalFeatures,
       memoryBeta: state.general.memoryBeta,
       previewFeatures: state.general.previewFeatures,
@@ -46,7 +39,6 @@ export function AdvancedSettingsContent() {
       actions: state.actions,
     })),
   );
-  const notify = useNotify();
 
   const handleExperimentalToggle = useCallback((checked: boolean) => {
     actions.updateGeneral({ experimentalFeatures: checked });
@@ -93,66 +85,6 @@ export function AdvancedSettingsContent() {
         console.error("[Memory] failed to update settings", err);
       });
   }, [actions]);
-
-  // The Chromium runtime is a ~140MB download rather than part of the app, so
-  // enabling it is an install, not just a preference. Nothing is decided at
-  // boot any more, so this no longer restarts the app. The preference itself
-  // is just the persisted store field — the backend only knows whether a pack
-  // is installed.
-  const [packStatus, setPackStatus] = useState<native.ViewportPackStatus | null>(null);
-  const [installProgress, setInstallProgress] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!SUPPORTS_CHROMIUM_BROWSER) return;
-    void native.viewportPackStatus().then(setPackStatus).catch(() => undefined);
-  }, []);
-
-  const handleChromiumToggle = useCallback(
-    (checked: boolean) => {
-      if (!checked || packStatus?.installed) {
-        actions.updateGeneral({ experimentalChromiumBrowser: checked });
-        return;
-      }
-
-      useConfirmStore.getState().actions.request({
-        title: "Download the Chromium browser runtime?",
-        description:
-          "The browser needs a one-time download of about 140MB. It is kept out of the app so everyone else does not pay for it.",
-        confirmLabel: "Download",
-        onConfirm: () => {
-          setInstallProgress(0);
-          // Subscribed for exactly the life of the install, rather than via an
-          // effect keyed on the progress state the listener itself writes.
-          const unlisten = listen<{ downloadedBytes: number; totalBytes: number | null }>(
-            "viewport-pack-progress",
-            (event) => {
-              const { downloadedBytes, totalBytes } = event.payload;
-              setInstallProgress(totalBytes ? downloadedBytes / totalBytes : 0);
-            },
-          );
-          void native
-            .viewportPackInstall()
-            .then(() => native.viewportPackStatus())
-            .then((status) => {
-              setPackStatus(status);
-              actions.updateGeneral({ experimentalChromiumBrowser: true });
-              notify.success("Chromium browser ready", "The browser is available in the viewport.");
-            })
-            .catch((error) => {
-              // Offline or a failed download must leave the switch off and the
-              // iframe fallback working, not a half-enabled browser.
-              actions.updateGeneral({ experimentalChromiumBrowser: false });
-              notify.error("Browser runtime download failed", String(error));
-            })
-            .finally(() => {
-              void unlisten.then((off) => off());
-              setInstallProgress(null);
-            });
-        },
-      });
-    },
-    [actions, notify, packStatus],
-  );
 
   return (
     <>
@@ -240,31 +172,6 @@ export function AdvancedSettingsContent() {
         />
       </SettingsSection>
 
-      {SUPPORTS_CHROMIUM_BROWSER ? (
-        <SettingsSection title="Experimental features">
-          <SettingRow
-            title="Experimental Chromium browser"
-            description="Use Chromium instead of the iframe browser for viewport pages."
-            action={
-              <Switch
-                checked={experimentalFeatures && experimentalChromiumBrowser}
-                disabled={!experimentalFeatures || installProgress !== null}
-                onCheckedChange={handleChromiumToggle}
-              />
-            }
-          >
-            <p className="text-sm text-muted-foreground">
-              {installProgress !== null
-                ? `Downloading the browser runtime… ${Math.round(installProgress * 100)}%`
-                : packStatus && !packStatus.supported
-                  ? "No browser runtime is published for this platform yet."
-                  : packStatus?.installed
-                    ? "Uses more memory and disk space than the iframe browser."
-                    : "Needs a one-time ~140MB download. Uses more memory and disk space."}
-            </p>
-          </SettingRow>
-        </SettingsSection>
-      ) : null}
     </>
   );
 }
