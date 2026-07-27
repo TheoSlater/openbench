@@ -22,6 +22,7 @@ import {
 import { useChatStore } from "@/store/chatStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useConfirmStore } from "@/store/confirmStore";
+import type { ThemeMode } from "@/store/themeStore";
 
 type EnrichedFeature = FeatureDef & { active: boolean; warning?: string };
 
@@ -55,7 +56,7 @@ export function useCommandPaletteItems({
   onDeleteAllConversations: (opts?: { confirmed?: boolean }) => void | Promise<void>;
   onOpenSettings: (tab?: string) => void;
   onRenameCurrentChat: (args: { title: string }) => void | Promise<void>;
-  onSetTheme: (args: { theme: string }) => void;
+  onSetTheme: (args: { theme?: ThemeMode }) => void;
   onSelectConversation: (id: string) => void;
   onOpenArchived: () => void;
   onOpenShortcuts: () => void;
@@ -242,10 +243,10 @@ export function useCommandPaletteItems({
         category: "action",
         keywords: ["theme", "appearance", "light", "dark", "system"],
         icon: <Settings size={16} />,
-        execute: () => undefined,
+        execute: () => onSetTheme({}),
         smartCommand: {
           command: "set-theme",
-          execute: (args) => onSetTheme(args as { theme: string }),
+          execute: (args) => onSetTheme(args as { theme: ThemeMode }),
         },
       },
     ];

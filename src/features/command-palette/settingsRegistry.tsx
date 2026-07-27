@@ -19,7 +19,7 @@ import type { SettingsTab } from "@/features/settings/SettingsModal";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useThemeStore } from "@/store/themeStore";
-import type { ThemeMode } from "@/store/themeStore";
+import { getNextThemeMode } from "@/lib/theme";
 import type { CommandPaletteItem } from "./types";
 
 export type SettingsCommandContext = {
@@ -117,8 +117,7 @@ export const settingsRegistry: SettingsEntry[] = [
     },
     execute: () => {
       const { mode, setMode } = useThemeStore.getState();
-      const cycle: ThemeMode[] = ["system", "dark", "light"];
-      const next = cycle[(cycle.indexOf(mode) + 1) % cycle.length];
+      const next = getNextThemeMode(mode);
       setMode(next);
       useNotificationStore.getState().actions.add({
         type: "success",
