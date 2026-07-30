@@ -13,6 +13,10 @@ const terminal = readFileSync(
   "src/features/viewport/components/TerminalViewport.tsx",
   "utf8",
 );
+const browserTerminal = readFileSync(
+  "src/features/viewport/components/BrowserTerminalViewport.tsx",
+  "utf8",
+);
 const nativeTerminal = existsSync(
   "src/features/viewport/components/NativeTerminalViewport.tsx",
 )
@@ -21,6 +25,10 @@ const nativeTerminal = existsSync(
       "utf8",
     )
   : "";
+const xtermTerminal = readFileSync(
+  "src/features/viewport/components/XtermTerminalViewport.tsx",
+  "utf8",
+);
 const ptyClient = existsSync("src/features/viewport/pty.ts")
   ? readFileSync("src/features/viewport/pty.ts", "utf8")
   : "";
@@ -51,17 +59,30 @@ describe("viewport terminal tab", () => {
   });
 
   it("connects terminal input to the browser Bash shell", () => {
-    expect(terminal).toContain('from "@wterm/just-bash"');
-    expect(terminal).toContain("shell.attach(write)");
-    expect(terminal).toContain("shellRef.current?.handleInput(data)");
+    expect(browserTerminal).toContain('from "@wterm/just-bash"');
+    expect(browserTerminal).toContain("shell.attach(write)");
+    expect(browserTerminal).toContain("shellRef.current?.handleInput(data)");
   });
 
-  it("selects the configured terminal emulator", () => {
+  it("loads only the emulator in use", () => {
+    // Both engines are heavy and only one runs. Importing either eagerly puts
+    // it in the drawer's chunk, which gates how fast the drawer can open.
+    expect(terminal).toContain("lazy(() =>");
+    expect(terminal).not.toContain('from "@wterm/just-bash"');
+    expect(terminal).not.toContain('from "@xterm/xterm"');
+  });
+
+  it("uses the Ghostty-backed wterm for native commands", () => {
     expect(terminal).toContain("betaFeatures");
-    expect(terminal).toContain("terminalEmulator");
-    expect(terminal).toContain("<NativeTerminalViewport");
-    expect(nativeTerminal).toContain('from "@xterm/xterm"');
+    expect(terminal).toContain("<NativeTerminalViewportLazy");
+    expect(nativeTerminal).toContain('from "@wterm/ghostty"');
+    expect(nativeTerminal).toContain("GhosttyCore.load()");
+    expect(nativeTerminal).toContain("core={core}");
     expect(nativeTerminal).toContain("startPty");
+    expect(terminal).toContain('terminalEmulator === "xterm"');
+    expect(terminal).toContain("<XtermTerminalViewportLazy");
+    expect(xtermTerminal).toContain('from "@xterm/xterm"');
+    expect(xtermTerminal).toContain("startPty");
     expect(ptyClient).toContain('invoke<string>("pty_spawn"');
     expect(ptyClient).toContain('invoke("pty_write"');
     expect(ptyClient).toContain('invoke("pty_resize"');

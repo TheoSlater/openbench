@@ -20,7 +20,11 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-import { mergeSettingsWithDefaults, useSettingsStore } from "../src/store/settingsStore";
+import {
+  mergeSettingsWithDefaults,
+  migrateTerminalEmulatorV27,
+  useSettingsStore,
+} from "../src/store/settingsStore";
 
 describe("mergeSettingsWithDefaults", () => {
   const defaults = useSettingsStore.getState();
@@ -43,7 +47,7 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.general.webSearch.apiKeys).toEqual(defaults.general.webSearch.apiKeys);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
-    expect(merged.general.terminalEmulator).toBe("browser");
+    expect(merged.general.terminalEmulator).toBe("native");
     expect(merged.tts.supertonic.speed).toBe(defaults.tts.supertonic.speed);
     expect(merged.performance).toEqual(defaults.performance);
     expect(merged.codex).toEqual(defaults.codex);

@@ -1,6 +1,7 @@
 import { useCallback, type MutableRefObject } from "react";
 import { useThemeStore } from "@/store/themeStore";
 import type { ThemeMode } from "@/store/themeStore";
+import { getNextThemeMode } from "@/lib/theme";
 
 export function useChatActionHandlers({
   stopStreamingRef,
@@ -40,10 +41,12 @@ export function useChatActionHandlers({
   );
 
   const handleSetTheme = useCallback(
-    ({ theme }: { theme: string }) => {
-      useThemeStore.getState().setMode(theme as ThemeMode);
+    ({ theme }: { theme?: ThemeMode }) => {
+      const themeStore = useThemeStore.getState();
+      const nextTheme = theme ?? getNextThemeMode(themeStore.mode);
+      themeStore.setMode(nextTheme);
       notify.success(
-        `Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`,
+        `Theme: ${nextTheme.charAt(0).toUpperCase() + nextTheme.slice(1)}`,
       );
     },
     [notify],

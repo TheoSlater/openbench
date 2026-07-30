@@ -1,74 +1,89 @@
-import { useEffect, useRef } from "react";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import "@xterm/xterm/css/xterm.css";
-import {
-  closePty,
-  resizePty,
-  startPty,
-  writePty,
-} from "../pty";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { GhosttyCore } from "@wterm/ghostty";
+import { Terminal, useTerminal, type WTerm } from "@wterm/react";
+import "@wterm/react/css";
+import { closePty, resizePty, startPty, writePty } from "../pty";
+import { TerminalLoading } from "./TerminalLoading";
 
 export function NativeTerminalViewport() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { ref, write } = useTerminal();
+  const sessionRef = useRef<string | null>(null);
+  const disposedRef = useRef(false);
+  const [core, setCore] = useState<GhosttyCore | null>(null);
+  const [starting, setStarting] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    void GhosttyCore.load().then(setCore).catch(setLoadError);
+    return () => {
+      disposedRef.current = true;
+      if (sessionRef.current) void closePty(sessionRef.current);
+    };
+  }, []);
 
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontFamily: "JetBrains Mono, monospace",
-      fontSize: 14,
-    });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(container);
-    fit.fit();
-    terminal.focus();
-
-    let id: string | null = null;
-    let disposed = false;
-    const input = terminal.onData((data) => {
-      if (id) void writePty(id, data);
-    });
-    const resized = terminal.onResize(({ cols, rows }) => {
-      if (id) void resizePty(id, cols, rows);
-    });
-    const observer = new ResizeObserver(() => fit.fit());
-    observer.observe(container);
-
+  const handleReady = useCallback((terminal: WTerm) => {
     void startPty(terminal.cols, terminal.rows, (event) => {
-      if (disposed) return;
+      if (disposedRef.current) return;
       if (event.kind === "data" && event.data) {
-        terminal.write(Uint8Array.from(event.data));
+        write(Uint8Array.from(event.data));
       }
       if (event.kind === "error") {
-        terminal.writeln(`\r\nPTY error: ${event.message ?? "unknown error"}`);
+        write(`\r\nPTY error: ${event.message ?? "unknown error"}`);
       }
-      if (event.kind === "exit") terminal.writeln("\r\n[Process exited]");
+      if (event.kind === "exit") write("\r\n[Process exited]");
     })
       .then((sessionId) => {
-        if (disposed) {
+        if (disposedRef.current) {
           void closePty(sessionId);
         } else {
-          id = sessionId;
+          sessionRef.current = sessionId;
           void resizePty(sessionId, terminal.cols, terminal.rows);
         }
       })
       .catch((error) => {
-        terminal.writeln(`\r\nUnable to start PTY: ${String(error)}`);
+        write(`\r\nUnable to start PTY: ${String(error)}`);
+      })
+      .finally(() => {
+        if (!disposedRef.current) setStarting(false);
       });
+  }, [write]);
 
-    return () => {
-      disposed = true;
-      observer.disconnect();
-      input.dispose();
-      resized.dispose();
-      terminal.dispose();
-      if (id) void closePty(id);
-    };
+  const handleData = useCallback((data: string) => {
+    if (sessionRef.current) void writePty(sessionRef.current, data);
   }, []);
 
-  return <div ref={containerRef} className="h-full w-full bg-black p-3" />;
+  const handleResize = useCallback((cols: number, rows: number) => {
+    if (sessionRef.current) void resizePty(sessionRef.current, cols, rows);
+  }, []);
+
+  if (loadError) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-destructive">
+        Unable to load terminal: {String(loadError)}
+      </div>
+    );
+  }
+
+  if (!core) return <TerminalLoading label="Loading terminal…" />;
+
+  return (
+    <div className="relative h-full w-full bg-black p-3">
+      <Terminal
+        ref={ref}
+        aria-label="Terminal"
+        autoResize
+        core={core}
+        cursorBlink
+        className="h-full w-full rounded-none shadow-none"
+        onData={handleData}
+        onReady={handleReady}
+        onResize={handleResize}
+      />
+      {starting ? (
+        <div className="absolute inset-0">
+          <TerminalLoading label="Starting shell…" />
+        </div>
+      ) : null}
+    </div>
+  );
 }
