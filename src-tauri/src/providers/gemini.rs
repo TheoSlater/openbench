@@ -1,7 +1,7 @@
 use crate::models::chat::{
     ChatMessage, ModelDetails, StreamMetadata, StreamPayload, ToolCallInfo, ToolDefinition,
 };
-use crate::providers::base::{ChatProvider, ModelCatalog, ProviderStatus, ProviderType};
+use crate::providers::base::{ChatProvider, ModelCatalog, ProviderType};
 use crate::providers::openai_compatible::SseParser;
 use async_stream::stream;
 use async_trait::async_trait;
@@ -31,17 +31,6 @@ impl GeminiNativeProvider {
 
 #[async_trait]
 impl ChatProvider for GeminiNativeProvider {
-    async fn health_check(&self) -> ProviderStatus {
-        let request = self
-            .client
-            .get(format!("{}/models", self.base_url))
-            .query(&[("key", &self.api_key)]);
-        match request.send().await {
-            Ok(response) if response.status().is_success() => ProviderStatus::Online,
-            _ => ProviderStatus::Offline,
-        }
-    }
-
     async fn chat_completion(
         &self,
         model: String,
@@ -53,7 +42,10 @@ impl ChatProvider for GeminiNativeProvider {
         let body = build_request_body(messages, system_prompt, options, tools);
         let request = self
             .client
-            .post(format!("{}/models/{model}:streamGenerateContent", self.base_url))
+            .post(format!(
+                "{}/models/{model}:streamGenerateContent",
+                self.base_url
+            ))
             .query(&[("alt", "sse"), ("key", &self.api_key)])
             .json(&body);
         let response = request.send().await.map_err(normalize_network_error)?;
@@ -116,10 +108,6 @@ impl ChatProvider for GeminiNativeProvider {
     fn get_provider_name(&self) -> String {
         "Gemini".to_string()
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::GeminiNative
-    }
 }
 
 #[async_trait]
@@ -162,10 +150,6 @@ impl ModelCatalog for GeminiNativeProvider {
             })
             .collect())
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::GeminiNative
-    }
 }
 
 fn normalize_base_url(base_url: &str) -> String {
@@ -204,7 +188,10 @@ fn build_request_body(
 
     let generation_config = generation_config_value(options);
     if !generation_config.is_empty() {
-        body.insert("generationConfig".to_string(), Value::Object(generation_config));
+        body.insert(
+            "generationConfig".to_string(),
+            Value::Object(generation_config),
+        );
     }
 
     Value::Object(body)
@@ -246,7 +233,10 @@ fn build_contents(messages: Vec<ChatMessage>) -> Vec<Value> {
     output
 }
 
-fn assistant_content_value(message: ChatMessage, id_to_name: &mut BTreeMap<String, String>) -> Value {
+fn assistant_content_value(
+    message: ChatMessage,
+    id_to_name: &mut BTreeMap<String, String>,
+) -> Value {
     let mut parts = Vec::new();
     if !message.content.is_empty() {
         parts.push(json!({ "text": message.content }));
@@ -308,10 +298,7 @@ fn parse_event(
     let value: Value = serde_json::from_str(event)
         .map_err(|error| format!("Gemini stream parse failed: {error}"))?;
 
-    if let Some(message) = value
-        .pointer("/error/message")
-        .and_then(Value::as_str)
-    {
+    if let Some(message) = value.pointer("/error/message").and_then(Value::as_str) {
         return Err(message.to_string());
     }
 
@@ -357,7 +344,10 @@ fn parse_event(
         if text.is_empty() {
             continue;
         }
-        let is_thought = part.get("thought").and_then(Value::as_bool).unwrap_or(false);
+        let is_thought = part
+            .get("thought")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         payloads.push(if is_thought {
             thinking_payload(text.to_string())
         } else {
@@ -547,7 +537,10 @@ mod tests {
 
         let contents = build_contents(messages);
 
-        assert_eq!(contents[0]["parts"][0]["functionCall"]["name"], "web_search");
+        assert_eq!(
+            contents[0]["parts"][0]["functionCall"]["name"],
+            "web_search"
+        );
         assert_eq!(contents[1]["role"], "user");
         assert_eq!(
             contents[1]["parts"][0]["functionResponse"]["name"],
@@ -594,7 +587,8 @@ mod tests {
     fn surfaces_gemini_error_events() {
         let mut tool_calls = Vec::new();
         let mut metadata = empty_stream_metadata("gemini-2.5-flash");
-        let error_event = json!({ "error": { "code": 429, "message": "Rate limited" } }).to_string();
+        let error_event =
+            json!({ "error": { "code": 429, "message": "Rate limited" } }).to_string();
 
         match parse_event(&error_event, &mut tool_calls, &mut metadata) {
             Err(message) => assert_eq!(message, "Rate limited"),

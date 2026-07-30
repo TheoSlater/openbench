@@ -16,4 +16,15 @@ describe("settings presentation", () => {
     expect(about).toContain("img.shields.io/github/stars/monolabsdev/poly-ui");
     expect(about).toContain("img.shields.io/github/last-commit/monolabsdev/poly-ui");
   });
+
+  it("renders coding-agent setup from the connections tab", () => {
+    const connections = readFileSync(
+      "src/features/settings/tabs/ConnectionsTab.tsx",
+      "utf8",
+    );
+
+    expect(connections).toContain("<CodingAgentSetup");
+    expect(connections).toContain("CODEX_AGENT");
+    expect(connections).toContain("CLAUDE_AGENT");
+  });
 });

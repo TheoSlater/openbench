@@ -1,8 +1,8 @@
 import { loggedInvoke, getSessionToken } from "@/lib/utils/utils";
 import type { ChatMessage } from "@/types/chat";
-import type { ModelProvider } from "@/store/modelStore";
 import { getCurrentProviderAccountId } from "@/features/providers";
 import { useChatStore } from "@/store/chatStore";
+import { connectionsClient } from "@/features/connections/client";
 
 export interface TitleStore {
   findConversation(id: string): { title: string; titleSource?: string; isTemporary?: boolean } | undefined;
@@ -24,7 +24,6 @@ type GenerateTitleArgs = {
   conversationId: string;
   model: string;
   userName?: string;
-  providerType?: ModelProvider;
 };
 
 export const titleStore: TitleStore = {
@@ -151,11 +150,10 @@ export function shouldGenerateTitle(store: TitleStore, conversationId: string): 
 export function queueTitleGeneration(store: TitleStore, {
   conversationId,
   model,
-  providerType,
   userName,
 }: GenerateTitleArgs): void {
   if (!model || !shouldGenerateTitle(store, conversationId)) return;
-  scheduleTitleGeneration(store, conversationId, model, providerType, userName);
+  scheduleTitleGeneration(store, conversationId, model, userName);
 }
 
 export function retryTitleForConversation(store: TitleStore, conversationId: string): void {
@@ -173,10 +171,9 @@ export function retryTitleForConversation(store: TitleStore, conversationId: str
     .reverse()
     .find((m) => m.role === "assistant");
   const model = lastAssistant?.model ?? "";
-  const providerType = lastAssistant?.provider;
   if (!model) return;
 
-  scheduleTitleGeneration(store, conversationId, model, providerType);
+  scheduleTitleGeneration(store, conversationId, model);
 }
 
 export function triggerTitleGeneration(store: TitleStore, conversationId: string): void {
@@ -193,24 +190,22 @@ export function triggerTitleGeneration(store: TitleStore, conversationId: string
   if (!firstUser || !lastAssistant) return;
 
   const model = lastAssistant.model ?? "";
-  const providerType = lastAssistant.provider;
   if (!model) return;
 
-  scheduleTitleGeneration(store, conversationId, model, providerType);
+  scheduleTitleGeneration(store, conversationId, model);
 }
 
 function scheduleTitleGeneration(
   store: TitleStore,
   conversationId: string,
   model: string,
-  providerType?: ModelProvider,
   userName?: string,
 ): void {
   pendingTitleGenerations.add(conversationId);
   store.setTitleGenerationStatus(conversationId, "generating");
 
   window.setTimeout(() => {
-    void generateAndApplyTitle(store, conversationId, model, providerType, userName)
+    void generateAndApplyTitle(store, conversationId, model, userName)
       .catch((error) => {
         console.warn("Title generation failed", error);
       });
@@ -221,7 +216,6 @@ async function generateAndApplyTitle(
   store: TitleStore,
   conversationId: string,
   model: string,
-  providerType?: ModelProvider,
   userName?: string,
 ): Promise<void> {
   const convMessages = store.getConversationMessages(conversationId);
@@ -240,11 +234,12 @@ async function generateAndApplyTitle(
 
   let title: string | null = null;
   try {
+    const runtime = await connectionsClient.getRuntime(conversationId);
     title = await loggedInvoke<string | null>("generate_chat_title", {
       model,
       messages: titleMessages.map(toBackendMessage),
       userName,
-      providerType,
+      connectionId: runtime?.kind === "chat-model" ? runtime.connection_id : null,
       accountId: getCurrentProviderAccountId(),
       token: getSessionToken(),
     });

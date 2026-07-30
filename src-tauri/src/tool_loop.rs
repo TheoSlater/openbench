@@ -7,6 +7,7 @@ use crate::providers::base::ChatProvider;
 use crate::stream_emitter::StreamEmitter;
 use crate::web_search::{WebSearchClient, WebSearchConfig};
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 
 fn format_search_results(query: &str, results: &[SearchResultItem], error: Option<&str>) -> String {
     let mut output = String::new();
@@ -34,14 +35,6 @@ fn format_search_results(query: &str, results: &[SearchResultItem], error: Optio
         output.push('\n');
     }
     output
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn viewport_urls_only_allow_http() {
-    }
 }
 
 const THINK_START_TAGS: [&str; 2] = ["<think>", "<|channel>thought"];
@@ -179,7 +172,7 @@ impl ToolLoop {
         request_id: &str,
         emitter: &dyn StreamEmitter,
         web_search: Option<(&dyn WebSearchClient, &WebSearchConfig)>,
-        is_cancelled: impl Fn() -> bool,
+        cancellation: CancellationToken,
     ) -> Result<ToolLoopResult, AppError> {
         let web_search_tool = ToolDefinition {
             name: "web_search".into(),
@@ -222,8 +215,26 @@ impl ToolLoop {
             let mut tool_calls_opt: Option<Vec<ToolCallInfo>> = None;
             let mut restart_for_tool_call = false;
 
-            while let Some(result) = stream.next().await {
-                if is_cancelled() {
+            loop {
+                let result = tokio::select! {
+                    _ = cancellation.cancelled() => {
+                        emitter
+                            .emit_chunk(&StreamPayload {
+                                request_id: request_id.to_string(),
+                                content: String::new(),
+                                thinking: None,
+                                done: true,
+                                metadata: None,
+                                tool_calls: None,
+                                error: None,
+                            })
+                            .await;
+                        return Err(AppError::Cancelled);
+                    }
+                    result = stream.next() => result,
+                };
+                let Some(result) = result else { break };
+                if cancellation.is_cancelled() {
                     emitter
                         .emit_chunk(&StreamPayload {
                             request_id: request_id.to_string(),
@@ -351,27 +362,25 @@ impl ToolLoop {
                                     })
                                     .await;
 
-                                let (search_results, search_error) = match web_search
-                                    .filter(|(_, config)| config.is_configured())
-                                {
-                                    Some((client, config)) => match client
-                                        .search(&query, &config.api_key)
-                                        .await
-                                    {
-                                        Ok(r) => (r, None),
-                                        Err(e) => {
-                                            eprintln!(
-                                                "[WebSearch] {:?} error: {e}",
-                                                client.provider()
-                                            );
-                                            (Vec::new(), Some(e))
+                                let (search_results, search_error) =
+                                    match web_search.filter(|(_, config)| config.is_configured()) {
+                                        Some((client, config)) => {
+                                            match client.search(&query, &config.api_key).await {
+                                                Ok(r) => (r, None),
+                                                Err(e) => {
+                                                    eprintln!(
+                                                        "[WebSearch] {:?} error: {e}",
+                                                        client.provider()
+                                                    );
+                                                    (Vec::new(), Some(e))
+                                                }
+                                            }
                                         }
-                                    },
-                                    None => (
-                                        Vec::new(),
-                                        Some("No web search provider configured".into()),
-                                    ),
-                                };
+                                        None => (
+                                            Vec::new(),
+                                            Some("No web search provider configured".into()),
+                                        ),
+                                    };
 
                                 let results_clone = search_results.clone();
                                 emitter

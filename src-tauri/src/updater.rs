@@ -2,12 +2,12 @@ use crate::AppState;
 use reqwest::Client;
 use serde::Serialize;
 use std::io::Write;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use tauri::{AppHandle, Emitter, State};
 
 const GITHUB_REPO: &str = "monolabsdev/poly-ui";
@@ -402,10 +402,7 @@ pub async fn install_update(app: AppHandle, state: State<'_, AppState>) -> Resul
                 let _ = std::process::Command::new("cmd")
                     .args([
                         "/c",
-                        &format!(
-                            "timeout /t 8 /nobreak >nul && start \"\" \"{}\"",
-                            exe_str
-                        ),
+                        &format!("timeout /t 8 /nobreak >nul && start \"\" \"{}\"", exe_str),
                     ])
                     .creation_flags(0x08000000)
                     .spawn();

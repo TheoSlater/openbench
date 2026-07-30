@@ -1,6 +1,5 @@
 import { ollamaClient } from "./client";
 import type { OllamaState, OllamaModel } from "./types";
-import { useProviderStore, type ProviderStatusResponse } from "../providers";
 
 type StateChangeCallback = (state: OllamaState, models?: OllamaModel[], error?: string) => void;
 
@@ -12,8 +11,6 @@ const ONLINE_INTERVAL = 10000;
 
 interface HealthMonitorDeps {
   getProviderAndModels: typeof ollamaClient.getProviderAndModels;
-  setProviders: (providers: ProviderStatusResponse[]) => void;
-  getProviderState: () => { providers: ProviderStatusResponse[] };
   onOnline?: () => void;
   onOffline?: (error: string) => void;
 }
@@ -45,11 +42,7 @@ function createHealthMonitor(deps: HealthMonitorDeps) {
       const result = await deps.getProviderAndModels();
       if (seq !== checkSeq) return;
 
-      deps.setProviders(result.providers);
-
-      const activeProvider = result.providers.find((p) => p.status === "Online");
-
-      if (!activeProvider) {
+      if (!result.online) {
         notify("offline", undefined, "No active provider");
       } else {
         if (currentState !== "online") {
@@ -136,10 +129,6 @@ export function getHealthMonitor(): HealthMonitor {
   if (!monitor) {
     monitor = createHealthMonitor({
       getProviderAndModels: ollamaClient.getProviderAndModels,
-      setProviders: (providers) => useProviderStore.getState().actions.setProviders(providers),
-      getProviderState: () => ({
-        providers: useProviderStore.getState().providers,
-      }),
     });
   }
   return monitor;

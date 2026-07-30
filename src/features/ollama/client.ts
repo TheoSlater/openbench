@@ -1,47 +1,34 @@
-import { loggedInvoke, getSessionToken } from "@/lib/utils/utils";
 import type { OllamaModel } from "./types";
-
-import type {
-  ProviderStatusResponse,
-  ProviderType,
-} from "@/features/providers";
-import { getCurrentProviderAccountId } from "@/features/providers";
+import type { ProviderType } from "@/features/providers";
+import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/providers";
+import { connectionsClient } from "@/features/connections/client";
 
 interface ProviderAndModelsResult {
-  providers: ProviderStatusResponse[];
   models: OllamaModel[];
+  online: boolean;
 }
 
 export const ollamaClient = {
-  async getLocalModels(): Promise<OllamaModel[]> {
-    return loggedInvoke<OllamaModel[]>("get_local_models", {
-      accountId: getCurrentProviderAccountId(),
-    });
-  },
-
   async getProviderAndModels(): Promise<ProviderAndModelsResult> {
-    return loggedInvoke<ProviderAndModelsResult>("get_provider_and_models", {
-      accountId: getCurrentProviderAccountId(),
-      token: getSessionToken(),
-    });
+    const summaries = await connectionsClient.list(getCurrentProviderAccountId());
+    const enabled = summaries.filter((item) =>
+      item.connection.enabled && item.health.status !== "failed"
+    );
+    const models = (await Promise.all(enabled.map(async ({ connection }) =>
+      (await connectionsClient.models(connection.id))
+        .filter((model) => model.enabled)
+        .map((model) => ({
+          name: model.remote_id,
+          families: [],
+          size: 0,
+          provider_type: toLegacyProviderType(connection.provider),
+        }))
+    ))).flat();
+    return { models, online: enabled.length > 0 };
   },
 
   async getProviderModels(providerType: ProviderType): Promise<OllamaModel[]> {
-    return loggedInvoke<OllamaModel[]>("get_provider_models", {
-      providerType,
-      accountId: getCurrentProviderAccountId(),
-      token: getSessionToken(),
-    });
-  },
-
-  async deleteModel(model: string): Promise<void> {
-    return loggedInvoke("delete_model", {
-      model,
-      accountId: getCurrentProviderAccountId(),
-    });
-  },
-
-  async cancelPull(): Promise<void> {
-    return loggedInvoke("cancel_pull");
+    const result = await this.getProviderAndModels();
+    return result.models.filter((model) => model.provider_type === providerType);
   },
 };

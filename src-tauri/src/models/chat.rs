@@ -32,14 +32,6 @@ pub struct ThinkingPayload {
 }
 
 #[derive(Serialize, Clone)]
-pub struct PullProgressPayload {
-    pub status: String,
-    pub digest: Option<String>,
-    pub total: Option<u64>,
-    pub completed: Option<u64>,
-}
-
-#[derive(Serialize, Clone)]
 pub struct ModelDetails {
     pub name: String,
     pub families: Vec<String>,

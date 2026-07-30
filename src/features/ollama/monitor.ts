@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { OllamaState, OllamaModel, PullProgress } from "./types";
 import { ollamaClient } from "./client";
 import { getHealthMonitor } from "./health-monitor";
-import { useProviderStore } from "../providers";
 import { useNotificationStore } from "@/store/notificationStore";
 import { mergeModelOptions } from "@/lib/models/model-selector";
 
@@ -55,15 +54,11 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
     
     if (state === "online" && models) {
       if (prevState !== "online" && prevState !== "loading") {
-        const providers = useProviderStore.getState().providers;
-        const activeProvider = providers.find(p => p.status === "Online");
-        if (activeProvider) {
-          useNotificationStore.getState().actions.add({
-            type: "success",
-            message: `${activeProvider.config.provider_type} Connected`,
-            description: `Connection to ${activeProvider.config.provider_type} established.`,
-          });
-        }
+        useNotificationStore.getState().actions.add({
+          type: "success",
+          message: "Provider connected",
+          description: "Model connection is ready.",
+        });
       }
       writeSessionModels(SESSION_LOCAL_KEY, models);
       set((current) => ({

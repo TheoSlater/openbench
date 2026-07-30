@@ -42,9 +42,8 @@ fn find_library(library_name: &str, target: &str) -> Option<PathBuf> {
         }
     }
 
-    let manifest_dir = PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"),
-    );
+    let manifest_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"));
     for entry in std::fs::read_dir(manifest_dir.join("target/onnxruntime"))
         .ok()
         .into_iter()
@@ -124,7 +123,11 @@ fn download_and_extract(url: &str, is_zip: bool, dest: &Path) {
         let ps = Command::new("powershell")
             .args([
                 "-Command",
-                &format!("Expand-Archive -Path '{}' -DestinationPath '{}' -Force", zip.display(), dest.display()),
+                &format!(
+                    "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+                    zip.display(),
+                    dest.display()
+                ),
             ])
             .status()
             .expect("failed to run powershell");
@@ -198,10 +201,9 @@ fn main() {
     let target = std::env::var("TARGET").expect("TARGET missing");
     let lib_name = library_name(&target);
 
-    let staged_dir = PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"),
-    )
-    .join("target/onnxruntime");
+    let staged_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR missing"))
+            .join("target/onnxruntime");
     std::fs::create_dir_all(&staged_dir).expect("failed to create ONNX Runtime resource directory");
 
     let staged_lib = staged_dir.join(lib_name);
@@ -232,17 +234,14 @@ fn main() {
         );
     });
 
-    println!(
-        "cargo:warning=downloading ONNX Runtime {ORT_VERSION} for {target}..."
-    );
+    println!("cargo:warning=downloading ONNX Runtime {ORT_VERSION} for {target}...");
     let download_dir = staged_dir.join("download");
     std::fs::create_dir_all(&download_dir).expect("failed to create download directory");
     download_and_extract(url, is_zip, &download_dir);
 
     if let Some(found) = find_file_recursive(&download_dir, lib_name) {
-        std::fs::copy(&found, &staged_lib).unwrap_or_else(|e| {
-            panic!("failed to stage downloaded ONNX Runtime: {e}")
-        });
+        std::fs::copy(&found, &staged_lib)
+            .unwrap_or_else(|e| panic!("failed to stage downloaded ONNX Runtime: {e}"));
     } else {
         panic!(
             "downloaded ONNX Runtime archive does not contain {lib_name}.\n\

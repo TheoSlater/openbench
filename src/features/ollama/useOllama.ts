@@ -1,6 +1,5 @@
 import { useOllamaStore } from "./monitor";
 import { useShallow } from "zustand/react/shallow";
-import { ollamaClient } from "./client";
 
 export function useOllama() {
   const store = useOllamaStore(
@@ -24,7 +23,5 @@ export function useOllama() {
     actions,
     online: store.state === "online",
     refresh: actions.refresh,
-    cancelPull: ollamaClient.cancelPull,
-    deleteModel: ollamaClient.deleteModel,
   };
 }

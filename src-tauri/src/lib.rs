@@ -1,5 +1,9 @@
+mod acp;
 mod auth;
+mod claude;
+mod codex;
 mod commands;
+mod connections;
 mod db;
 mod error;
 mod memory;
@@ -7,6 +11,7 @@ mod mobile_pairing;
 mod models;
 mod providers;
 pub mod pty;
+mod runtime;
 mod startup_log;
 mod stream_emitter;
 mod title_generator;
@@ -25,29 +30,42 @@ use crate::commands::dictation_commands::{
     start_native_dictation_recording, stop_native_dictation_and_transcribe,
     stop_native_dictation_recording, transcribe_audio, transcribe_native_dictation_partial,
 };
-use crate::commands::model_commands::{cancel_pull, delete_model, get_local_models, pull_model};
+use crate::connections::secrets::{KeyringSecretStore, SecretStore};
 use crate::mobile_pairing::{
     mobile_pairing_start, mobile_pairing_status, mobile_pairing_stop, MobilePairingState,
 };
 use crate::updater::{check_for_updates, download_update, install_update};
 use crate::whisper_state::WhisperState;
-use providers::ProviderSelector;
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
+/// The ACP host, reachable from the exit handler.
+///
+/// `RunEvent::ExitRequested` has no `AppState`, and the exit path hard-exits
+/// without unwinding, so the host has to be reachable without going through
+/// managed state.
+static ACP_HOST_FOR_EXIT: std::sync::OnceLock<Arc<crate::acp::host::AcpHost>> =
+    std::sync::OnceLock::new();
+
 pub struct AppState {
     pub db: SqlitePool,
-    pub current_generation_id: AtomicUsize,
-    pub is_pull_cancelled: AtomicBool,
-    pub provider_selector: ProviderSelector,
+    /// Owns every running coding-agent process.
+    pub acp: Arc<crate::acp::host::AcpHost>,
+    /// Cached Codex detection, so rendering the settings page never scans.
+    pub codex: crate::commands::codex_commands::CodexCache,
+    /// Cached Claude detection and negotiated setup data.
+    pub claude: crate::commands::claude_commands::ClaudeCache,
+    pub chat_requests: providers::adapter::ChatRequestRegistry,
     pub last_update_check: Mutex<Option<Instant>>,
     pub update_download_path: Mutex<Option<PathBuf>>,
+    /// OS keychain. The database only ever holds a reference into this.
+    pub secret_store: Arc<dyn SecretStore>,
 }
 
 #[cfg(target_os = "windows")]
@@ -156,13 +174,45 @@ pub fn run() {
             })?;
             startup_log::log_phase("database ready");
 
+            let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
+            crate::acp::lifecycle::sweep_pid_receipts();
+            let acp = crate::acp::host::AcpHost::new();
+            ACP_HOST_FOR_EXIT
+                .set(acp.clone())
+                .unwrap_or_else(|_| log::warn!("ACP host was registered twice"));
             app.manage(AppState {
                 db: db.clone(),
-                current_generation_id: AtomicUsize::new(0),
-                is_pull_cancelled: AtomicBool::new(false),
-                provider_selector: ProviderSelector::new(db),
+                acp,
+                codex: crate::commands::codex_commands::CodexCache::default(),
+                claude: crate::commands::claude_commands::ClaudeCache::default(),
+                chat_requests: providers::adapter::ChatRequestRegistry::default(),
                 last_update_check: Mutex::new(None),
                 update_download_path: Mutex::new(None),
+                secret_store: secret_store.clone(),
+            });
+
+            // Runtime rework data migration. Off the setup thread because it
+            // touches the OS keychain, which blocks. Idempotent, so a failure
+            // here is retried on the next launch and leaves provider_configs
+            // untouched — the app stays usable on the existing path either way.
+            let migration_db = db;
+            tauri::async_runtime::spawn(async move {
+                match db::rework_migration::run(&migration_db, secret_store.as_ref()).await {
+                    Ok(report) => {
+                        startup_log::log_phase(format!("runtime rework migration ok: {report:?}"));
+                        match db::cleanup_migration::run(&migration_db, &report).await {
+                            Ok(outcome) => startup_log::log_phase(format!(
+                                "runtime cleanup migration: {outcome:?}"
+                            )),
+                            Err(error) => startup_log::log_error(format!(
+                                "runtime cleanup migration failed: {error}"
+                            )),
+                        }
+                    }
+                    Err(error) => {
+                        startup_log::log_error(format!("runtime rework migration failed: {error}"));
+                    }
+                }
             });
             let app_data_dir = app.path().app_data_dir().map_err(|error| {
                 startup_log::log_error(format!("app data dir failed: {error}"));
@@ -200,14 +250,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_local_models,
-            pull_model,
-            delete_model,
             chat_stream,
             chat,
             generate_chat_title,
             cancel_chat,
-            cancel_pull,
             auth::auth_signup,
             auth::auth_login,
             auth::auth_logout,
@@ -215,12 +261,40 @@ pub fn run() {
             auth::auth_update_status,
             auth::auth_update_profile,
             auth::auth_change_password,
-            commands::provider_commands::get_providers,
-            commands::provider_commands::get_provider_and_models,
-            commands::provider_commands::get_provider_models,
-            commands::provider_commands::update_provider_config,
-            commands::provider_commands::add_provider,
-            commands::provider_commands::delete_provider,
+            commands::connection_commands::resolve_legacy_default_model,
+            commands::connection_commands::validate_connection,
+            commands::connection_commands::refresh_connection_models,
+            commands::connection_commands::save_manual_connection_model,
+            commands::connection_commands::set_connection_model_enabled,
+            commands::connection_commands::save_chat_connection,
+            commands::connection_commands::list_chat_connections,
+            commands::connection_commands::list_connection_models,
+            commands::connection_commands::list_connection_summaries,
+            commands::connection_commands::delete_chat_connection,
+            commands::connection_commands::list_workspaces,
+            commands::connection_commands::save_workspace,
+            commands::connection_commands::get_conversation_runtime,
+            commands::connection_commands::set_conversation_runtime,
+            commands::connection_commands::list_recent_runtimes,
+            commands::adapter_install_commands::adapter_install_plan,
+            commands::adapter_install_commands::install_adapter,
+            commands::codex_commands::codex_status,
+            commands::codex_commands::codex_revalidate,
+            commands::codex_commands::codex_refresh_detection,
+            commands::codex_commands::codex_verify,
+            commands::codex_commands::codex_authenticate,
+            commands::codex_commands::codex_cancel_authenticate,
+            commands::claude_commands::claude_status,
+            commands::claude_commands::claude_revalidate,
+            commands::claude_commands::claude_refresh_detection,
+            commands::claude_commands::claude_verify,
+            commands::claude_commands::claude_authenticate,
+            commands::claude_commands::claude_cancel_authenticate,
+            commands::acp_commands::acp_start_session,
+            commands::acp_commands::acp_prompt,
+            commands::acp_commands::acp_cancel_turn,
+            commands::acp_commands::acp_stop_session,
+            commands::acp_commands::acp_answer_permission,
             commands::memory_commands::memory_get_settings,
             commands::memory_commands::memory_update_settings,
             commands::memory_commands::memory_test_connection,
@@ -287,6 +361,15 @@ pub fn run() {
             // window. SQLite is crash-safe and window state is saved on
             // CloseRequested, so skipping cleanup loses nothing.
             //
+            // Kill every agent child before the hard exit below. `process::exit`
+            // runs no destructors, so `OwnedChild::drop` never fires here — this
+            // is the only thing standing between quitting the app and leaving an
+            // orphaned agent (and, via the job object, its whole tree) behind.
+            if let Some(acp) = ACP_HOST_FOR_EXIT.get() {
+                startup_log::log_phase("exit requested; stopping agent processes");
+                tauri::async_runtime::block_on(acp.shutdown());
+            }
+
             startup_log::log_phase("exit requested; terminating process");
             std::process::exit(code.unwrap_or(0));
         }

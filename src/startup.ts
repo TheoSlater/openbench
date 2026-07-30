@@ -1,4 +1,8 @@
+import { invoke } from "@tauri-apps/api/core";
 import type { SystemPrompt } from "@/store/modelStore";
+import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
+import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { getCurrentProviderAccountId } from "@/features/providers";
 import { useAuthStore } from "@/store/authStore";
 import { useModelStore } from "@/store/modelStore";
 import { useOllamaStore } from "@/features/ollama/monitor";
@@ -67,6 +71,27 @@ function startSystemPromptPersistence() {
   );
 }
 
+/**
+ * One-shot: resolve the pre-rework `default_model` string into a RuntimeRef.
+ *
+ * Deferred rather than blocking startup, and failure-tolerant — the legacy key
+ * is left in place, so the existing chat path is unaffected either way.
+ */
+async function migrateDefaultRuntime() {
+  try {
+    const { migrateLegacyDefaultModel } = await import("@/lib/runtime/legacy-default-model");
+    const runtime = await migrateLegacyDefaultModel((stored) =>
+      invoke<RuntimeRef | null>("resolve_legacy_default_model", {
+        accountId: getCurrentProviderAccountId(),
+        stored,
+      }),
+    );
+    if (runtime) useRuntimeStore.getState().actions.select(runtime, "");
+  } catch (error) {
+    console.warn("[startup] default runtime migration skipped", error);
+  }
+}
+
 async function preloadVisibleAppChunks() {
   startupPhase("preload visible chunks start");
   await Promise.all([
@@ -130,6 +155,16 @@ async function initializeDeferredStartupWork() {
   startupPhase("update checker init start");
   startUpdateChecker();
   startupPhase("update checker init complete");
+
+  startupPhase("legacy default model migration start");
+  void migrateDefaultRuntime();
+  startupPhase("legacy default model migration queued");
+
+  const [{ codexRevalidate }, { claudeRevalidate }] = await Promise.all([
+    import("@/features/codex/codexClient"),
+    import("@/features/claude/claudeClient"),
+  ]);
+  void Promise.allSettled([codexRevalidate(), claudeRevalidate()]);
 
   startupPhase("idle manager init start");
   const { idleManager, registerDefaultIdleHandlers } = await import("@/lib/idle");

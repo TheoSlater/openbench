@@ -1,10 +1,12 @@
 use crate::models::chat::ToolDefinition;
-use crate::models::chat::{ChatMessage, ModelDetails, PullProgressPayload, StreamPayload};
+use crate::models::chat::{ChatMessage, ModelDetails, StreamPayload};
 use async_trait::async_trait;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
+// Internal discriminator used by stable provider parsers. It never crosses the
+// Tauri boundary; connection identity uses connections::Provider.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, sqlx::Type)]
 pub enum ProviderType {
     OllamaLocal,
@@ -20,14 +22,8 @@ pub enum ProviderType {
     GeminiNative,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderStatus {
-    Online,
-    Offline,
-    Reconnecting,
-    Unavailable,
-}
-
+// Internal construction input for stable provider parsers. Credentials exist
+// only transiently after loading their keychain reference.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProviderConfig {
     pub id: i64,
@@ -47,7 +43,6 @@ pub struct ProviderConfig {
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {
-    async fn health_check(&self) -> ProviderStatus;
     async fn chat_completion(
         &self,
         model: String,
@@ -57,20 +52,9 @@ pub trait ChatProvider: Send + Sync {
         tools: Option<Vec<ToolDefinition>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamPayload, String>> + Send>>, String>;
     fn get_provider_name(&self) -> String;
-    fn get_provider_type(&self) -> ProviderType;
 }
 
 #[async_trait]
 pub trait ModelCatalog: Send + Sync {
     async fn get_available_models(&self) -> Result<Vec<ModelDetails>, String>;
-    fn get_provider_type(&self) -> ProviderType;
-}
-
-#[async_trait]
-pub trait LocalModelManager: ModelCatalog {
-    async fn pull_model(
-        &self,
-        model: String,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<PullProgressPayload, String>> + Send>>, String>;
-    async fn delete_model(&self, model: String) -> Result<(), String>;
 }

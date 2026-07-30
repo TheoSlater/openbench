@@ -1,0 +1,6 @@
+# ts-rs writes the generated TypeScript bindings here when `cargo test` runs.
+# `relative = true` resolves the path against this file's parent directory
+# (src-tauri/), so the output lands in the frontend tree regardless of where
+# cargo was invoked from.
+[env]
+TS_RS_EXPORT_DIR = { value = "../src/generated/bindings", relative = true }
