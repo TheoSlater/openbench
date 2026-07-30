@@ -1,9 +1,9 @@
 use crate::models::chat::ChatMessage;
+use crate::providers::adapter::{
+    AdapterChatRequest, ChatEventSink, ChatRuntimeEvent, ConnectionProviderAdapter, ProviderAdapter,
+};
 use crate::providers::base::ProviderType;
-use crate::providers::factory::ProviderFactory;
-use crate::providers::selector::ProviderSelector;
 use crate::AppState;
-use futures::StreamExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Row;
@@ -72,6 +72,7 @@ pub async fn mobile_pairing_start(
         listener,
         token,
         app_state.db.clone(),
+        app_state.secret_store.clone(),
         app_handle,
         stop_rx,
     ));
@@ -96,7 +97,12 @@ pub async fn mobile_pairing_stop(state: State<'_, MobilePairingState>) -> Result
 pub async fn mobile_pairing_status(
     state: State<'_, MobilePairingState>,
 ) -> Result<Option<MobilePairingInfo>, String> {
-    Ok(state.current.lock().await.as_ref().map(|session| session.info.clone()))
+    Ok(state
+        .current
+        .lock()
+        .await
+        .as_ref()
+        .map(|session| session.info.clone()))
 }
 
 fn build_pairing_info(host: &str, port: u16, token: &str) -> MobilePairingInfo {
@@ -156,6 +162,7 @@ async fn run_pairing_server(
     listener: TcpListener,
     token: String,
     db: sqlx::SqlitePool,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     app_handle: tauri::AppHandle,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -169,9 +176,18 @@ async fn run_pairing_server(
                 let token = Arc::clone(&token);
                 let limiter = Arc::clone(&limiter);
                 let db = db.clone();
+                let secret_store = secret_store.clone();
                 let app_handle = app_handle.clone();
                 tokio::spawn(async move {
-                    let _ = handle_connection(stream, token.as_str(), limiter, db, app_handle).await;
+                    let _ = handle_connection(
+                        stream,
+                        token.as_str(),
+                        limiter,
+                        db,
+                        secret_store,
+                        app_handle,
+                    )
+                    .await;
                 });
             }
         }
@@ -186,6 +202,7 @@ struct BrowserChatRequest {
     is_temporary: Option<bool>,
     provider_type: Option<ProviderType>,
     provider_config_id: Option<i64>,
+    connection_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -211,15 +228,13 @@ async fn handle_connection(
     token: &str,
     limiter: Arc<std::sync::Mutex<AuthRateLimiter>>,
     db: sqlx::SqlitePool,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     app_handle: tauri::AppHandle,
 ) -> std::io::Result<()> {
     let mut buffer = [0_u8; 65_536];
     let read = stream.read(&mut buffer).await?;
     let request = String::from_utf8_lossy(&buffer[..read]);
-    let first_line = request
-        .lines()
-        .next()
-        .unwrap_or("GET / HTTP/1.1");
+    let first_line = request.lines().next().unwrap_or("GET / HTTP/1.1");
     let mut parts = first_line.split_whitespace();
     let method = parts.next().unwrap_or("GET");
     let path = parts.next().unwrap_or("/");
@@ -235,9 +250,19 @@ async fn handle_connection(
         }
     }
     if method == "POST" && path.starts_with("/api/chat-stream") {
-        return handle_chat_stream_response(stream, path, body, token, db, app_handle).await;
+        return handle_chat_stream_response(
+            stream,
+            path,
+            body,
+            token,
+            db,
+            secret_store,
+            app_handle,
+        )
+        .await;
     }
-    let response = response_for_request(method, path, body, token, db, app_handle).await;
+    let response =
+        response_for_request(method, path, body, token, db, secret_store, app_handle).await;
     stream.write_all(&response).await
 }
 
@@ -247,6 +272,7 @@ async fn handle_chat_stream_response(
     body: &str,
     token: &str,
     db: sqlx::SqlitePool,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     app_handle: tauri::AppHandle,
 ) -> std::io::Result<()> {
     if !token_matches(path, token) {
@@ -262,58 +288,71 @@ async fn handle_chat_stream_response(
     let request = match serde_json::from_str::<BrowserChatRequest>(body) {
         Ok(request) => request,
         Err(error) => {
-            write_sse(&mut stream, "error", &serde_json::json!({ "error": error.to_string() }).to_string()).await?;
+            write_sse(
+                &mut stream,
+                "error",
+                &serde_json::json!({ "error": error.to_string() }).to_string(),
+            )
+            .await?;
             return Ok(());
         }
     };
-    let provider_type = request.provider_type.unwrap_or(ProviderType::OllamaLocal);
-    let provider_result = match request.provider_config_id {
-        Some(id) => get_provider_config_by_id(&db, id, provider_type)
-            .await
-            .and_then(|config| {
-                ProviderFactory::create_chat_provider(config)
-                    .ok_or_else(|| "Provider configuration is unavailable.".to_string())
-            }),
-        None => ProviderSelector::new(db.clone()).get_provider(provider_type, None).await,
-    };
-    let provider = match provider_result {
-        Ok(provider) => provider,
-        Err(error) => {
-            write_sse(&mut stream, "error", &serde_json::json!({ "error": error }).to_string()).await?;
-            return Ok(());
-        }
-    };
-    let mut provider_stream = match provider
-        .chat_completion(request.model.clone(), request.messages, None, None, None)
-        .await
-    {
-        Ok(stream) => stream,
-        Err(error) => {
-            write_sse(&mut stream, "error", &serde_json::json!({ "error": error }).to_string()).await?;
-            return Ok(());
-        }
-    };
-
-    let mut content = String::new();
-    while let Some(chunk) = provider_stream.next().await {
-        match chunk {
-            Ok(payload) => {
-                if !payload.content.is_empty() {
-                    content.push_str(&payload.content);
-                    write_sse(
-                        &mut stream,
-                        "chunk",
-                        &serde_json::json!({ "content": payload.content }).to_string(),
-                    )
-                    .await?;
-                }
-            }
+    let (provider_type, cancellation, mut events, task) =
+        match start_mobile_chat(&db, secret_store.as_ref(), &request).await {
+            Ok(started) => started,
             Err(error) => {
-                write_sse(&mut stream, "error", &serde_json::json!({ "error": error }).to_string()).await?;
+                write_sse(
+                    &mut stream,
+                    "error",
+                    &serde_json::json!({ "error": error }).to_string(),
+                )
+                .await?;
                 return Ok(());
             }
+        };
+
+    let mut content = String::new();
+    while let Some(event) = events.recv().await {
+        match event {
+            ChatRuntimeEvent::MessageDelta { delta, .. } => {
+                content.push_str(&delta);
+                if let Err(error) = write_sse(
+                    &mut stream,
+                    "chunk",
+                    &serde_json::json!({ "content": delta }).to_string(),
+                )
+                .await
+                {
+                    cancellation.cancel();
+                    let _ = task.await;
+                    return Err(error);
+                }
+            }
+            ChatRuntimeEvent::ReasoningDelta { delta, .. } => {
+                if let Err(error) = write_sse(
+                    &mut stream,
+                    "reasoning",
+                    &serde_json::json!({ "content": delta }).to_string(),
+                )
+                .await
+                {
+                    cancellation.cancel();
+                    let _ = task.await;
+                    return Err(error);
+                }
+            }
+            ChatRuntimeEvent::Failed { error, .. } => {
+                write_sse(
+                    &mut stream,
+                    "error",
+                    &serde_json::json!({ "error": error.message }).to_string(),
+                )
+                .await?;
+            }
+            _ => {}
         }
     }
+    let _ = task.await;
 
     let assistant_id = Uuid::new_v4().to_string();
     if !request.is_temporary.unwrap_or(false) {
@@ -334,9 +373,109 @@ async fn handle_chat_stream_response(
     write_sse(
         &mut stream,
         "done",
-        &serde_json::json!({ "id": assistant_id, "content": content, "provider": provider_type }).to_string(),
+        &serde_json::json!({ "id": assistant_id, "content": content, "provider": provider_type })
+            .to_string(),
     )
     .await
+}
+
+type MobileChatTask = tokio::task::JoinHandle<
+    Result<crate::tool_loop::ToolLoopResult, crate::providers::adapter::ChatRuntimeError>,
+>;
+
+async fn start_mobile_chat(
+    db: &sqlx::SqlitePool,
+    secret_store: &dyn crate::connections::secrets::SecretStore,
+    request: &BrowserChatRequest,
+) -> Result<
+    (
+        ProviderType,
+        tokio_util::sync::CancellationToken,
+        tokio::sync::mpsc::Receiver<ChatRuntimeEvent>,
+        MobileChatTask,
+    ),
+    String,
+> {
+    let _ = (request.provider_type, request.provider_config_id);
+    let (connection, model) = if let Some(connection_id) = request.connection_id.as_deref() {
+        (
+            crate::connections::repository::get_connection(db, connection_id)
+                .await?
+                .ok_or_else(|| format!("Connection {connection_id} was not found."))?,
+            request.model.clone(),
+        )
+    } else if let Some(conversation_id) = request.conversation_id.as_deref() {
+        match crate::connections::repository::get_conversation_runtime(db, conversation_id).await? {
+            Some(crate::runtime::RuntimeRef::ChatModel {
+                connection_id,
+                model_id,
+            }) => (
+                crate::connections::repository::get_connection(db, &connection_id)
+                    .await?
+                    .ok_or_else(|| format!("Connection {connection_id} was not found."))?,
+                model_id,
+            ),
+            _ => resolve_unique_mobile_connection(db, &request.model).await?,
+        }
+    } else {
+        resolve_unique_mobile_connection(db, &request.model).await?
+    };
+
+    let provider_type = legacy_provider_type(connection.provider);
+    let adapter =
+        ConnectionProviderAdapter::new(connection, secret_store).map_err(|error| error.message)?;
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let (sink, receiver) = ChatEventSink::channel();
+    let task_cancellation = cancellation.clone();
+    let request_id = Uuid::new_v4().to_string();
+    let messages = request.messages.clone();
+    let task = tokio::spawn(async move {
+        adapter
+            .stream_chat(
+                AdapterChatRequest {
+                    request_id,
+                    model,
+                    messages,
+                    system_prompt: None,
+                    reasoning_enabled: true,
+                    web_search: None,
+                },
+                task_cancellation,
+                sink,
+            )
+            .await
+    });
+    Ok((provider_type, cancellation, receiver, task))
+}
+
+async fn resolve_unique_mobile_connection(
+    db: &sqlx::SqlitePool,
+    model: &str,
+) -> Result<(crate::connections::Connection, String), String> {
+    let mut matches = Vec::new();
+    for connection in crate::connections::repository::list_enabled_connections(db).await? {
+        if crate::connections::repository::model_exists(db, &connection.id, model).await? {
+            matches.push(connection);
+        }
+    }
+    match matches.len() {
+        1 => Ok((matches.remove(0), model.to_string())),
+        0 => Err(format!(
+            "No enabled connection offers model {model}. Refresh models first."
+        )),
+        _ => Err(format!(
+            "More than one connection offers model {model}. Select a connection."
+        )),
+    }
+}
+
+fn legacy_provider_type(provider: crate::connections::Provider) -> ProviderType {
+    match provider {
+        crate::connections::Provider::Anthropic => ProviderType::AnthropicNative,
+        crate::connections::Provider::Gemini => ProviderType::GeminiNative,
+        crate::connections::Provider::Ollama => ProviderType::OllamaLocal,
+        _ => ProviderType::OpenAICompatible,
+    }
 }
 
 async fn write_sse(stream: &mut TcpStream, event: &str, data: &str) -> std::io::Result<()> {
@@ -351,6 +490,7 @@ async fn response_for_request(
     body: &str,
     token: &str,
     db: sqlx::SqlitePool,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     app_handle: tauri::AppHandle,
 ) -> Vec<u8> {
     if let Some(response) = response_for_static_path(method, path, token) {
@@ -365,35 +505,23 @@ async fn response_for_request(
     }
 
     if method == "GET" && path.starts_with("/api/models") {
-        let configs = get_all_enabled_provider_configs(&db).await;
-        let body = match configs {
-            Ok(configs) => {
+        let connections = crate::connections::repository::list_enabled_connections(&db).await;
+        let body = match connections {
+            Ok(connections) => {
                 let mut choices = Vec::new();
-                for config in configs.into_iter().filter(|config| config.enabled) {
-                    let provider_models = match ProviderFactory::create_model_catalog(config.clone()) {
-                        Some(catalog) => catalog
-                            .get_available_models()
-                            .await
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|model| model.name)
-                            .collect::<Vec<_>>(),
-                        None => Vec::new(),
-                    };
-                    let models = if provider_models.is_empty() {
-                        config
-                            .model_suggestions
-                            .as_deref()
-                            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
-                            .unwrap_or_default()
-                    } else {
-                        provider_models
-                    };
-                    for model in models {
+                for connection in connections {
+                    let provider_type = legacy_provider_type(connection.provider);
+                    for model in crate::connections::repository::list_models(&db, &connection.id)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|model| model.enabled)
+                    {
                         choices.push(serde_json::json!({
-                            "name": model,
-                            "providerType": config.provider_type,
-                            "providerConfigId": config.id,
+                            "name": model.remote_id,
+                            "providerType": provider_type,
+                            "providerConfigId": null,
+                            "connectionId": connection.id,
                         }));
                     }
                 }
@@ -406,7 +534,9 @@ async fn response_for_request(
 
     if method == "GET" && path.starts_with("/api/conversations") {
         let body = match list_conversations(&db).await {
-            Ok(conversations) => serde_json::json!({ "ok": true, "conversations": conversations }).to_string(),
+            Ok(conversations) => {
+                serde_json::json!({ "ok": true, "conversations": conversations }).to_string()
+            }
             Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
         };
         return json_response(200, &body);
@@ -415,7 +545,12 @@ async fn response_for_request(
     if method == "POST" && path.starts_with("/api/conversations") {
         let request = match serde_json::from_str::<BrowserConversationRequest>(body) {
             Ok(request) => request,
-            Err(error) => return json_response(400, &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string()),
+            Err(error) => {
+                return json_response(
+                    400,
+                    &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string(),
+                )
+            }
         };
         if request.is_temporary.unwrap_or(false) {
             return json_response(200, r#"{"ok":true}"#);
@@ -431,8 +566,10 @@ async fn response_for_request(
             Ok(_) => {
                 emit_mobile_chat_updated(&app_handle, None);
                 r#"{"ok":true}"#.to_string()
-            },
-            Err(error) => serde_json::json!({ "ok": false, "error": error.to_string() }).to_string(),
+            }
+            Err(error) => {
+                serde_json::json!({ "ok": false, "error": error.to_string() }).to_string()
+            }
         };
         return json_response(200, &body);
     }
@@ -449,7 +586,12 @@ async fn response_for_request(
     if method == "POST" && path.starts_with("/api/messages") {
         let request = match serde_json::from_str::<BrowserMessageRequest>(body) {
             Ok(request) => request,
-            Err(error) => return json_response(400, &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string()),
+            Err(error) => {
+                return json_response(
+                    400,
+                    &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string(),
+                )
+            }
         };
         if request.is_temporary.unwrap_or(false) {
             return json_response(200, r#"{"ok":true}"#);
@@ -459,7 +601,7 @@ async fn response_for_request(
             Ok(_) => {
                 emit_mobile_chat_updated(&app_handle, Some(&request.conversation_id));
                 r#"{"ok":true}"#.to_string()
-            },
+            }
             Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
         };
         return json_response(200, &body);
@@ -475,57 +617,42 @@ async fn response_for_request(
                 )
             }
         };
-        let provider_type = request.provider_type.unwrap_or(ProviderType::OllamaLocal);
-        let provider_result = match request.provider_config_id {
-            Some(id) => get_provider_config_by_id(&db, id, provider_type)
-                .await
-                .and_then(|config| {
-                    ProviderFactory::create_chat_provider(config)
-                        .ok_or_else(|| "Provider configuration is unavailable.".to_string())
-                }),
-            None => ProviderSelector::new(db.clone()).get_provider(provider_type, None).await,
-        };
-        let body = match provider_result {
-            Ok(provider) => match provider
-                .chat_completion(request.model, request.messages, None, None, None)
-                .await
-            {
-                Ok(mut stream) => {
-                    let mut content = String::new();
-                    let mut error = None;
-                    while let Some(chunk) = stream.next().await {
-                        match chunk {
-                            Ok(payload) => content.push_str(&payload.content),
-                            Err(message) => {
-                                error = Some(message);
-                                break;
-                            }
-                        }
-                    }
-                    match error {
-                        Some(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
-                        None => {
-                            if !request.is_temporary.unwrap_or(false) {
-                                if let Some(conversation_id) = request.conversation_id.as_deref() {
-                                    let message = BrowserMessageRequest {
-                                        id: Uuid::new_v4().to_string(),
-                                        conversation_id: conversation_id.to_string(),
-                                        role: "assistant".to_string(),
-                                        content: content.clone(),
-                                        model: None,
-                                        provider: Some(provider_type),
-                                        is_temporary: Some(false),
-                                    };
-                                    let _ = insert_message(&db, &message).await;
-                                    emit_mobile_chat_updated(&app_handle, Some(conversation_id));
-                                }
-                            }
-                            serde_json::json!({ "ok": true, "message": { "role": "assistant", "content": content, "provider": provider_type } }).to_string()
-                        },
+        let body = match start_mobile_chat(&db, secret_store.as_ref(), &request).await {
+            Ok((provider_type, _cancellation, mut events, task)) => {
+                let mut content = String::new();
+                let mut failure = None;
+                while let Some(event) = events.recv().await {
+                    match event {
+                        ChatRuntimeEvent::MessageDelta { delta, .. } => content.push_str(&delta),
+                        ChatRuntimeEvent::Failed { error, .. } => failure = Some(error.message),
+                        _ => {}
                     }
                 }
-                Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
-            },
+                let task_result = task.await;
+                if let Some(error) = failure {
+                    serde_json::json!({ "ok": false, "error": error }).to_string()
+                } else if task_result.is_err() {
+                    serde_json::json!({ "ok": false, "error": "Chat task stopped unexpectedly." })
+                        .to_string()
+                } else {
+                    if !request.is_temporary.unwrap_or(false) {
+                        if let Some(conversation_id) = request.conversation_id.as_deref() {
+                            let message = BrowserMessageRequest {
+                                id: Uuid::new_v4().to_string(),
+                                conversation_id: conversation_id.to_string(),
+                                role: "assistant".to_string(),
+                                content: content.clone(),
+                                model: Some(request.model.clone()),
+                                provider: Some(provider_type),
+                                is_temporary: Some(false),
+                            };
+                            let _ = insert_message(&db, &message).await;
+                            emit_mobile_chat_updated(&app_handle, Some(conversation_id));
+                        }
+                    }
+                    serde_json::json!({ "ok": true, "message": { "role": "assistant", "content": content, "provider": provider_type } }).to_string()
+                }
+            }
             Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
         };
         return json_response(200, &body);
@@ -607,80 +734,72 @@ async fn list_conversations(db: &sqlx::SqlitePool) -> Result<serde_json::Value, 
         .fetch_all(db)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(serde_json::Value::Array(rows.into_iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<String, _>("id"),
-            "title": row.get::<String, _>("title"),
-            "createdAt": row.get::<String, _>("createdAt"),
-            "updatedAt": row.get::<String, _>("updatedAt"),
-            "isArchived": row.get::<i64, _>("isArchived") != 0,
-            "folderId": row.try_get::<String, _>("folderId").ok(),
-        })
-    }).collect()))
+    Ok(serde_json::Value::Array(
+        rows.into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "title": row.get::<String, _>("title"),
+                    "createdAt": row.get::<String, _>("createdAt"),
+                    "updatedAt": row.get::<String, _>("updatedAt"),
+                    "isArchived": row.get::<i64, _>("isArchived") != 0,
+                    "folderId": row.try_get::<String, _>("folderId").ok(),
+                })
+            })
+            .collect(),
+    ))
 }
 
 async fn mobile_owner_account_id(db: &sqlx::SqlitePool) -> Result<String, String> {
-    if let Ok(row) = sqlx::query("SELECT account_id FROM provider_configs WHERE account_id <> '' ORDER BY updated_at DESC LIMIT 1")
+    if let Ok(row) = sqlx::query("SELECT account_id FROM connections WHERE account_id <> '' ORDER BY updated_at DESC LIMIT 1")
         .fetch_one(db)
         .await
     {
         return Ok(row.get::<String, _>("account_id"));
     }
-    if let Ok(row) = sqlx::query("SELECT userId FROM conversations WHERE userId <> '' ORDER BY updatedAt DESC LIMIT 1")
-        .fetch_one(db)
-        .await
+    if let Ok(row) = sqlx::query(
+        "SELECT userId FROM conversations WHERE userId <> '' ORDER BY updatedAt DESC LIMIT 1",
+    )
+    .fetch_one(db)
+    .await
     {
         return Ok(row.get::<String, _>("userId"));
     }
     Ok(String::new())
 }
 
-async fn get_all_enabled_provider_configs(db: &sqlx::SqlitePool) -> Result<Vec<crate::providers::base::ProviderConfig>, String> {
-    sqlx::query_as::<_, crate::providers::base::ProviderConfig>(
-        "SELECT id, account_id, provider_type, enabled, ollama_host, ollama_api_key, ollama_api_base_url, api_key, api_base_url, priority, preset, headers, model_suggestions FROM provider_configs WHERE enabled = 1 ORDER BY account_id ASC, priority ASC"
-    )
-    .fetch_all(db)
-    .await
-    .map_err(|error| error.to_string())
-}
-
-async fn get_provider_config_by_id(
+async fn list_messages(
     db: &sqlx::SqlitePool,
-    id: i64,
-    provider_type: ProviderType,
-) -> Result<crate::providers::base::ProviderConfig, String> {
-    sqlx::query_as::<_, crate::providers::base::ProviderConfig>(
-        "SELECT id, account_id, provider_type, enabled, ollama_host, ollama_api_key, ollama_api_base_url, api_key, api_base_url, priority, preset, headers, model_suggestions FROM provider_configs WHERE id = ?1 AND provider_type = ?2 AND enabled = 1"
-    )
-    .bind(id)
-    .bind(provider_type)
-    .fetch_one(db)
-    .await
-    .map_err(|error| error.to_string())
-}
-
-async fn list_messages(db: &sqlx::SqlitePool, conversation_id: &str) -> Result<serde_json::Value, String> {
+    conversation_id: &str,
+) -> Result<serde_json::Value, String> {
     let rows = sqlx::query("SELECT id, conversationId, role, content, createdAt, model, provider, status, errorMessage FROM messages WHERE conversationId = ?1 ORDER BY createdAt ASC")
         .bind(conversation_id)
         .fetch_all(db)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(serde_json::Value::Array(rows.into_iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<String, _>("id"),
-            "conversationId": row.get::<String, _>("conversationId"),
-            "role": row.get::<String, _>("role"),
-            "content": row.get::<String, _>("content"),
-            "createdAt": row.get::<String, _>("createdAt"),
-            "model": row.try_get::<String, _>("model").ok(),
-            "provider": row.try_get::<ProviderType, _>("provider").ok(),
-            "status": row.try_get::<String, _>("status").ok(),
-            "errorMessage": row.try_get::<String, _>("errorMessage").ok(),
-        })
-    }).collect()))
+    Ok(serde_json::Value::Array(
+        rows.into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "conversationId": row.get::<String, _>("conversationId"),
+                    "role": row.get::<String, _>("role"),
+                    "content": row.get::<String, _>("content"),
+                    "createdAt": row.get::<String, _>("createdAt"),
+                    "model": row.try_get::<String, _>("model").ok(),
+                    "provider": row.try_get::<ProviderType, _>("provider").ok(),
+                    "status": row.try_get::<String, _>("status").ok(),
+                    "errorMessage": row.try_get::<String, _>("errorMessage").ok(),
+                })
+            })
+            .collect(),
+    ))
 }
 
-async fn insert_message(db: &sqlx::SqlitePool, message: &BrowserMessageRequest) -> Result<(), String> {
+async fn insert_message(
+    db: &sqlx::SqlitePool,
+    message: &BrowserMessageRequest,
+) -> Result<(), String> {
     let owner_id = mobile_owner_account_id(db).await.unwrap_or_default();
     if !owner_id.is_empty() {
         let _ = sqlx::query("UPDATE conversations SET userId = ?1 WHERE id = ?2 AND (userId IS NULL OR userId = '')")
@@ -763,11 +882,7 @@ fn serve_dist_file(relative_path: &str) -> Vec<u8> {
         Ok(bytes) => {
             let content_type = content_type_for_path(&path);
             if content_type.starts_with("text/") || content_type == "application/javascript" {
-                return http_response(
-                    200,
-                    content_type,
-                    &String::from_utf8_lossy(&bytes),
-                );
+                return http_response(200, content_type, &String::from_utf8_lossy(&bytes));
             }
             binary_response(content_type, &bytes)
         }
@@ -811,7 +926,11 @@ fn dist_roots() -> Vec<PathBuf> {
         roots.push(current.join("dist"));
         roots.push(current.join("..").join("dist"));
     }
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("dist"));
+    roots.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dist"),
+    );
     roots
 }
 
@@ -821,7 +940,11 @@ fn public_roots() -> Vec<PathBuf> {
         roots.push(current.join("public"));
         roots.push(current.join("..").join("public"));
     }
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("public"));
+    roots.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("public"),
+    );
     roots
 }
 

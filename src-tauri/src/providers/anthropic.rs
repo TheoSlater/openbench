@@ -1,7 +1,7 @@
 use crate::models::chat::{
     ChatMessage, ModelDetails, StreamMetadata, StreamPayload, ToolCallInfo, ToolDefinition,
 };
-use crate::providers::base::{ChatProvider, ModelCatalog, ProviderStatus, ProviderType};
+use crate::providers::base::{ChatProvider, ModelCatalog, ProviderType};
 use crate::providers::openai_compatible::{extract_error_message, SseParser};
 use async_stream::stream;
 use async_trait::async_trait;
@@ -40,14 +40,6 @@ impl AnthropicNativeProvider {
 
 #[async_trait]
 impl ChatProvider for AnthropicNativeProvider {
-    async fn health_check(&self) -> ProviderStatus {
-        let request = self.request(self.client.get(format!("{}/models", self.base_url)));
-        match request.send().await {
-            Ok(response) if response.status().is_success() => ProviderStatus::Online,
-            _ => ProviderStatus::Offline,
-        }
-    }
-
     async fn chat_completion(
         &self,
         model: String,
@@ -117,10 +109,6 @@ impl ChatProvider for AnthropicNativeProvider {
     fn get_provider_name(&self) -> String {
         "Anthropic".to_string()
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::AnthropicNative
-    }
 }
 
 #[async_trait]
@@ -150,10 +138,6 @@ impl ModelCatalog for AnthropicNativeProvider {
             })
             .collect())
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::AnthropicNative
-    }
 }
 
 fn normalize_base_url(base_url: &str) -> String {
@@ -181,7 +165,10 @@ fn build_request_body(
     let mut body = Map::from_iter([
         ("model".to_string(), json!(model)),
         ("max_tokens".to_string(), json!(max_tokens)),
-        ("messages".to_string(), Value::Array(build_messages(messages))),
+        (
+            "messages".to_string(),
+            Value::Array(build_messages(messages)),
+        ),
         ("stream".to_string(), Value::Bool(true)),
     ]);
 
@@ -189,7 +176,10 @@ fn build_request_body(
         body.insert("system".to_string(), Value::String(prompt));
     }
 
-    if let Some(temperature) = options.as_ref().and_then(|options| options.get("temperature")) {
+    if let Some(temperature) = options
+        .as_ref()
+        .and_then(|options| options.get("temperature"))
+    {
         body.insert("temperature".to_string(), temperature.clone());
     }
 
@@ -273,6 +263,7 @@ fn user_message_value(message: ChatMessage) -> Value {
     json!({ "role": "user", "content": content })
 }
 
+#[allow(clippy::large_enum_variant)]
 enum EventOutcome {
     Payload(StreamPayload),
     Error(String),
@@ -307,7 +298,11 @@ fn handle_event(
                 return EventOutcome::None;
             };
             let block = value.get("content_block");
-            if block.and_then(|block| block.get("type")).and_then(Value::as_str) == Some("tool_use") {
+            if block
+                .and_then(|block| block.get("type"))
+                .and_then(Value::as_str)
+                == Some("tool_use")
+            {
                 let id = block
                     .and_then(|block| block.get("id"))
                     .and_then(Value::as_str)
@@ -334,7 +329,10 @@ fn handle_event(
                 return EventOutcome::None;
             };
             let delta = value.get("delta");
-            match delta.and_then(|delta| delta.get("type")).and_then(Value::as_str) {
+            match delta
+                .and_then(|delta| delta.get("type"))
+                .and_then(Value::as_str)
+            {
                 Some("text_delta") => {
                     let text = delta
                         .and_then(|delta| delta.get("text"))
@@ -488,7 +486,10 @@ mod tests {
             normalize_base_url("https://api.anthropic.com/v1/"),
             "https://api.anthropic.com/v1"
         );
-        assert_eq!(normalize_base_url("api.anthropic.com/v1"), "https://api.anthropic.com/v1");
+        assert_eq!(
+            normalize_base_url("api.anthropic.com/v1"),
+            "https://api.anthropic.com/v1"
+        );
     }
 
     #[test]

@@ -7,13 +7,14 @@ use crate::memory::types::{
     MemorySettings, MemoryTurnInput,
 };
 use crate::models::chat::ChatMessage;
-use crate::providers::base::{ChatProvider, ProviderType};
-use crate::providers::ProviderSelector;
+use crate::providers::adapter::{ConnectionProviderAdapter, ProviderAdapter};
+use crate::providers::base::ChatProvider;
 use crate::title_generator::strip_thinking_blocks;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_stream::StreamExt;
 
@@ -49,11 +50,15 @@ Rules:
 #[derive(Clone)]
 pub struct LlmMemoryExtractor {
     pool: SqlitePool,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
 }
 
 impl LlmMemoryExtractor {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(
+        pool: SqlitePool,
+        secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ) -> Self {
+        Self { pool, secret_store }
     }
 
     async fn recent_context(
@@ -71,7 +76,12 @@ impl LlmMemoryExtractor {
         .await?;
         let mut context: Vec<(String, String)> = rows
             .into_iter()
-            .map(|row| (row.get::<String, _>("role"), row.get::<String, _>("content")))
+            .map(|row| {
+                (
+                    row.get::<String, _>("role"),
+                    row.get::<String, _>("content"),
+                )
+            })
             .collect();
         context.reverse();
         Ok(context)
@@ -141,8 +151,7 @@ impl LlmMemoryExtractor {
             match tokio::time::timeout(EXTRACTION_TIMEOUT, collect).await {
                 Ok(Ok(raw)) if !raw.trim().is_empty() => return Ok(raw),
                 Ok(Ok(_)) => {
-                    last_error =
-                        MemoryError::StructuredOutputFailure("empty response".to_string());
+                    last_error = MemoryError::StructuredOutputFailure("empty response".to_string());
                 }
                 Ok(Err(error)) => last_error = MemoryError::StructuredOutputFailure(error),
                 Err(_) => return Err(MemoryError::Timeout),
@@ -156,10 +165,9 @@ impl LlmMemoryExtractor {
 impl MemoryExtractor for LlmMemoryExtractor {
     async fn extract(&self, input: MemoryTurnInput) -> Result<Vec<MemoryOperation>, MemoryError> {
         // ponytail: all extracted memories are user-scoped for now; per-scope routing later
-        let user_scope_enabled = input
-            .scopes
-            .iter()
-            .any(|scope| scope.scope == MemoryScope::User && scope.scope_owner_id == input.owner_id);
+        let user_scope_enabled = input.scopes.iter().any(|scope| {
+            scope.scope == MemoryScope::User && scope.scope_owner_id == input.owner_id
+        });
         if !user_scope_enabled {
             return Ok(Vec::new());
         }
@@ -168,6 +176,7 @@ impl MemoryExtractor for LlmMemoryExtractor {
         let settings = repository.get_settings(&input.owner_id).await?;
         let (provider, model) = resolve_extraction_target(
             &self.pool,
+            self.secret_store.as_ref(),
             &settings,
             &input.owner_id,
             input.chat_model.as_deref(),
@@ -178,7 +187,9 @@ impl MemoryExtractor for LlmMemoryExtractor {
         let context = self.recent_context(&input).await?;
         let prompt = build_extraction_prompt(&input, &context, &existing);
 
-        let raw = self.run_completion(provider.as_ref(), &model, prompt).await?;
+        let raw = self
+            .run_completion(provider.chat_provider(), &model, prompt)
+            .await?;
         let entries = parse_extracted_memories(&raw);
         Ok(convert_extracted_memories(entries, &input, &existing))
     }
@@ -187,62 +198,56 @@ impl MemoryExtractor for LlmMemoryExtractor {
 /// Shared by extraction and the settings "test connection" button.
 pub async fn resolve_extraction_target(
     pool: &SqlitePool,
+    secret_store: &dyn crate::connections::secrets::SecretStore,
     settings: &MemorySettings,
     owner_id: &str,
     chat_model: Option<&str>,
-) -> Result<(Box<dyn ChatProvider>, String), MemoryError> {
-    let selector = ProviderSelector::new(pool.clone());
-
-    let provider = match (
-        settings.extraction_provider_id,
-        settings.extraction_provider.as_deref(),
-    ) {
-        (Some(config_id), Some(provider_type)) => selector
-            .get_provider_by_config_id(parse_provider_type(provider_type)?, config_id, Some(owner_id))
-            .await
-            .map_err(MemoryError::ProviderUnavailable)?,
-        _ => selector
-            .get_active_provider_for_account(Some(owner_id))
-            .await
-            .map_err(MemoryError::ProviderUnavailable)?,
-    };
-
-    // Model priority: configured extraction model → the model the user is
-    // already chatting with → first catalog entry. Catalog-first is a poor
-    // last resort (arbitrary model, may be paywalled), never the default.
-    let model = match settings
+) -> Result<(ConnectionProviderAdapter, String), MemoryError> {
+    let connections = crate::connections::repository::list_connections(pool, owner_id)
+        .await
+        .map_err(MemoryError::ProviderUnavailable)?;
+    let requested_model = settings
         .extraction_model
         .as_deref()
         .or(chat_model)
         .map(str::trim)
-        .filter(|model| !model.is_empty())
+        .filter(|model| !model.is_empty());
+
+    let mut matches = Vec::new();
+    for connection in connections
+        .into_iter()
+        .filter(|connection| connection.enabled)
     {
-        Some(model) => model.to_string(),
-        None => selector
-            .get_model_catalog(provider.get_provider_type(), Some(owner_id))
+        let models = crate::connections::repository::list_models(pool, &connection.id)
             .await
-            .map_err(MemoryError::ProviderUnavailable)?
-            .get_available_models()
-            .await
-            .map_err(MemoryError::ProviderUnavailable)?
-            .first()
-            .map(|details| details.name.clone())
-            .ok_or_else(|| {
-                MemoryError::UnsupportedModel("no models available for extraction".to_string())
-            })?,
-    };
-
-    Ok((provider, model))
-}
-
-fn parse_provider_type(value: &str) -> Result<ProviderType, MemoryError> {
-    match value {
-        "OllamaLocal" => Ok(ProviderType::OllamaLocal),
-        "OpenAICompatible" => Ok(ProviderType::OpenAICompatible),
-        other => Err(MemoryError::ProviderUnavailable(format!(
-            "unknown extraction provider type: {other}"
-        ))),
+            .map_err(MemoryError::ProviderUnavailable)?;
+        if let Some(model) = requested_model {
+            if models.iter().any(|entry| {
+                entry.enabled
+                    && (entry.remote_id == model
+                        || entry.aliases.iter().any(|alias| alias == model))
+            }) {
+                matches.push((connection, model.to_string()));
+            }
+        } else if let Some(model) = models.into_iter().find(|model| model.enabled) {
+            matches.push((connection, model.remote_id));
+        }
     }
+    let (connection, model) = match matches.len() {
+        1 => matches.remove(0),
+        0 => {
+            return Err(MemoryError::UnsupportedModel(
+                "no enabled connection offers an extraction model".into(),
+            ))
+        }
+        _ => return Err(MemoryError::ProviderUnavailable(
+            "more than one connection offers the extraction model; choose one in memory settings"
+                .into(),
+        )),
+    };
+    let adapter = ConnectionProviderAdapter::new(connection, secret_store)
+        .map_err(|error| MemoryError::ProviderUnavailable(error.message))?;
+    Ok((adapter, model))
 }
 
 fn extraction_options() -> [Value; 2] {
@@ -306,7 +311,11 @@ fn build_extraction_prompt(
     if !context.is_empty() {
         prompt.push_str("\nRecent conversation:\n");
         for (role, content) in context {
-            let role = if role == "assistant" { "Assistant" } else { "User" };
+            let role = if role == "assistant" {
+                "Assistant"
+            } else {
+                "User"
+            };
             prompt.push_str(role);
             prompt.push_str(": ");
             prompt.push_str(&truncate_chars(content, MAX_CONTEXT_MESSAGE_CHARS));

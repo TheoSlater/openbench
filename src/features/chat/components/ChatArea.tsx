@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
   type RefObject,
+  type ReactNode,
 } from "react";
 import type { ChatMessage } from "@/types/chat";
 import { Message } from "./Message";
@@ -25,6 +26,7 @@ interface ChatAreaProps {
   bottomRef: RefObject<HTMLDivElement | null>;
   onRegenerate?: (messageIndex: number) => void;
   isTemporary?: boolean;
+  activity?: ReactNode;
 }
 
 interface MessageTurn {
@@ -147,6 +149,7 @@ export const ChatArea = memo(function ChatArea({
   bottomRef,
   onRegenerate,
   isTemporary,
+  activity,
 }: ChatAreaProps) {
   const hasMoreMessages = useChatStore((state) => state.hasMoreMessages);
   const loadMoreMessages = useChatStore(
@@ -442,6 +445,7 @@ export const ChatArea = memo(function ChatArea({
         })}
         </Box>
 
+        {activity}
         <Box ref={bottomRef} className="h-px" />
       </Box>
 

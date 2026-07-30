@@ -32,7 +32,6 @@ export function registerMemoryPurge(): void {
       setCache('hasMoreMessages', chat.hasMoreMessages)
       setCache('conversations', chat.conversations)
       setCache('streamingMessages', chat.streamingMessages)
-      setCache('availableModels', model.availableModels)
       setCache('systemPrompts', model.systemPrompts)
       setCache('activeSystemPromptId', model.activeSystemPromptId)
       setCache('folders', folder.folders)
@@ -45,7 +44,7 @@ export function registerMemoryPurge(): void {
         attachmentsByChat: {},
         messageQueue: [],
       })
-      useModelStore.setState({ availableModels: {}, systemPrompts: [], activeSystemPromptId: null })
+      useModelStore.setState({ systemPrompts: [], activeSystemPromptId: null })
       useFolderStore.setState({ folders: [], activeFolderId: null })
     },
     onResume: () => {
@@ -54,7 +53,6 @@ export function registerMemoryPurge(): void {
       const hasMore = getCache<boolean>('hasMoreMessages')
       const convs = getCache<any[]>('conversations')
       const streamMsgs = getCache<Record<string, any>>('streamingMessages')
-      const models = getCache<Record<string, string[]>>('availableModels')
       const prompts = getCache<any[]>('systemPrompts')
       const promptId = getCache<string | null>('activeSystemPromptId')
       const folders = getCache<any[]>('folders')
@@ -65,7 +63,6 @@ export function registerMemoryPurge(): void {
       if (hasMore !== null) useChatStore.setState({ hasMoreMessages: hasMore ?? false })
       if (convs) useChatStore.setState({ conversations: convs })
       if (streamMsgs) useChatStore.setState({ streamingMessages: streamMsgs })
-      if (models) useModelStore.setState({ availableModels: models })
       if (prompts) useModelStore.setState({ systemPrompts: prompts })
       if (promptId !== null) useModelStore.setState({ activeSystemPromptId: promptId })
       if (folders) useFolderStore.setState({ folders: folders })

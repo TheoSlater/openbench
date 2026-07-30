@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Box } from "@/components/ui/Box";
 import { useShallow } from "zustand/react/shallow";
 import { ChatArea } from "@/features/chat/components/ChatArea";
@@ -7,17 +7,20 @@ import { EmptyState } from "@/features/chat/components/EmptyState";
 import { Header } from "@/features/chat/components/Header";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { NEW_CHAT_DRAFT_KEY, useChatStore } from "@/store/chatStore";
-import { useModelStore } from "@/store/modelStore";
-import type { ModelProvider } from "@/store/modelStore";
 import type { ModelChoice } from "@/lib/models/model-choice";
-import { modelChoiceId } from "@/lib/models/model-choice";
 import { materializeAttachments, releaseImageAttachment } from "@/lib/image-upload/attachments";
 import { useFolderStore } from "@/store/folderStore";
 import { FolderHome } from "@/features/folders/FolderHome";
 import { useOllama } from "@/features/ollama";
 import { useViewStore, getViewComponent } from "@/lib/view-registry";
-import { useNotify } from "@/hooks/useNotify";
 import { useConfirmStore } from "@/store/confirmStore";
+import { AcpActivity } from "@/features/acp/AcpActivity";
+import { useAcpChat } from "@/features/acp/useAcpChat";
+import { useAcpActivityStore } from "@/features/acp/activity-store";
+import { connectionsClient } from "@/features/connections/client";
+import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { useConnectionsStore } from "@/features/connections/store";
+import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/providers";
 
 const EMPTY_ATTACHMENTS: never[] = [];
 
@@ -26,9 +29,6 @@ const VoiceModeOverlayLazy = lazy(() =>
 );
 
 type ChatWorkspaceProps = {
-  selectedModels: string[];
-  selectedProviders: ModelProvider[];
-  selectedModelChoices: ModelChoice[];
   systemPromptContent: string;
   userName?: string;
   isTemporary: boolean;
@@ -37,9 +37,6 @@ type ChatWorkspaceProps = {
 };
 
 export default function ChatWorkspace({
-  selectedModels,
-  selectedProviders,
-  selectedModelChoices,
   systemPromptContent,
   userName,
   isTemporary,
@@ -48,13 +45,34 @@ export default function ChatWorkspace({
 }: ChatWorkspaceProps) {
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const ollama = useOllama();
-  const notify = useNotify();
   const activeFolder = useFolderStore((state) => state.folders.find((folder) => folder.id === state.activeFolderId));
   const effectiveSystemPrompt = activeFolder?.systemPrompt
     ? `${systemPromptContent}\n${activeFolder.systemPrompt}`
     : systemPromptContent;
-  const { messages, isStreaming, sendMessage, regenerateMessage, stopStreaming, bottomRef, hasMessages } =
-    useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
+  const selectedRuntime = useRuntimeStore((state) => state.selected);
+  const summaries = useConnectionsStore((state) => state.summaries);
+  const loadConnections = useConnectionsStore((state) => state.actions.load);
+  const selectedModelChoices = useMemo<ModelChoice[]>(() => {
+    if (selectedRuntime?.kind !== "chat-model") return [];
+    const connection = summaries.find(
+      (item) => item.connection.id === selectedRuntime.connection_id,
+    )?.connection;
+    if (!connection) return [];
+    return [{
+      model: selectedRuntime.model_id,
+      provider: toLegacyProviderType(connection.provider),
+    }];
+  }, [selectedRuntime, summaries]);
+  const legacyChat = useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
+  const acpChat = useAcpChat();
+  const selectedModels = selectedModelChoices.map((choice) => choice.model);
+  const selectRuntime = useRuntimeStore((state) => state.actions.select);
+  const acpActions = useAcpActivityStore((state) => state.actions);
+  const messages = legacyChat.messages;
+  const isStreaming = acpChat.isAgent ? acpChat.isStreaming : legacyChat.isStreaming;
+  const stopStreaming = acpChat.isAgent ? acpChat.stopStreaming : legacyChat.stopStreaming;
+  const bottomRef = legacyChat.bottomRef;
+  const hasMessages = legacyChat.hasMessages || Boolean(acpChat.activity) || acpChat.history.length > 0;
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const chatKey = activeConversationId ?? NEW_CHAT_DRAFT_KEY;
   const currentAttachments = useChatStore(
@@ -67,21 +85,10 @@ export default function ChatWorkspace({
     clearAttachments,
   } = useChatStore((state) => state.actions);
 
-  const modelUpdateSelectedModel = useModelStore((s) => s.updateSelectedModel);
-  const modelAddSelectedModel = useModelStore((s) => s.addSelectedModel);
-  const modelRemoveSelectedModel = useModelStore((s) => s.removeSelectedModel);
-  const modelActions = useModelStore((s) => s.actions);
-
-  const handleSetDefault = useCallback(
-    (choice: ModelChoice) => {
-      if (!choice.model) return;
-      modelActions.setDefaultModel(
-        modelChoiceId(choice.provider, choice.model, choice.providerConfigId),
-      );
-      notify.success(`${choice.model} set as default`);
-    },
-    [modelActions, notify],
-  );
+  useEffect(() => {
+    const accountId = getCurrentProviderAccountId();
+    if (accountId) void loadConnections(accountId);
+  }, [loadConnections]);
 
   const handleToggleTemporary = useCallback(() => {
     if (isTemporary) {
@@ -111,19 +118,39 @@ export default function ChatWorkspace({
   const ensureConversation = useCallback(async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
     const created = await createConversation("New Chat", false, activeFolder?.id);
+    if (selectedRuntime) {
+      await connectionsClient.setRuntime(created.id, selectedRuntime);
+    }
     return created.id;
-  }, [activeConversationId, activeFolder?.id, createConversation]);
+  }, [activeConversationId, activeFolder?.id, createConversation, selectedRuntime]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    void connectionsClient.getRuntime(activeConversationId).then((runtime) => {
+      if (!runtime) return;
+      const label = runtime.kind === "chat-model"
+        ? runtime.model_id
+        : runtime.kind === "coding-agent"
+          ? runtime.agent_kind === "codex" ? "Codex" : "Claude Code"
+          : "Choose runtime";
+      selectRuntime(runtime, label);
+    });
+  }, [activeConversationId, selectRuntime]);
 
   const handleSend = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed && currentAttachments.length === 0) return;
-      await ensureConversation();
+      const conversationId = await ensureConversation();
       const attachments = await materializeAttachments([
         ...(activeFolder?.contextFiles ?? []),
         ...currentAttachments,
       ]);
-      await sendMessage(trimmed, attachments);
+      if (acpChat.isAgent) {
+        await acpChat.sendMessage(trimmed, attachments, conversationId);
+      } else {
+        await legacyChat.sendMessage(trimmed, attachments);
+      }
       currentAttachments.forEach(releaseImageAttachment);
       clearAttachments(chatKey);
     },
@@ -132,7 +159,8 @@ export default function ChatWorkspace({
       chatKey,
       currentAttachments,
       ensureConversation,
-      sendMessage,
+      acpChat,
+      legacyChat,
       clearAttachments,
     ],
   );
@@ -146,7 +174,7 @@ export default function ChatWorkspace({
 
       const run = async () => {
         await deleteMessagesAfter(activeConversationId, targetMessage.id);
-        regenerateMessage(activeConversationId);
+        legacyChat.regenerateMessage(activeConversationId);
       };
 
       // Regenerating mid-conversation throws away every later message, with
@@ -171,12 +199,33 @@ export default function ChatWorkspace({
       deleteMessagesAfter,
       isStreaming,
       messages,
-      regenerateMessage,
+      legacyChat,
     ],
   );
 
   const activeView = useViewStore((s) => s.activeView);
   const ViewComponent = activeView ? getViewComponent(activeView) : undefined;
+  const activity = acpChat.isAgent ? (
+    <div className="flex flex-col gap-4">
+      {acpChat.history.map((turn, index) => (
+        <AcpActivity
+          key={`${turn.sessionId ?? "turn"}-${index}`}
+          state={turn}
+          onDecision={(requestId, decision) =>
+            void acpActions.answer(turn.conversationId, requestId, decision)}
+          onReauthenticate={onOpenConnections}
+        />
+      ))}
+      {acpChat.activity ? (
+        <AcpActivity
+          state={acpChat.activity}
+          onDecision={(requestId, decision) =>
+            void acpActions.answer(acpChat.activity!.conversationId, requestId, decision)}
+          onReauthenticate={onOpenConnections}
+        />
+      ) : null}
+    </div>
+  ) : undefined;
 
   return (
     // No `h-full` here. As a flex child of the workspace row this already fills
@@ -197,14 +246,8 @@ export default function ChatWorkspace({
         <ViewComponent />
       ) : (
         <>
-          <Header
-        selectedModels={selectedModels}
-        selectedProviders={selectedProviders}
-        selectedModelChoices={selectedModelChoices}
-        onModelChange={modelUpdateSelectedModel}
-        onAddModel={() => modelAddSelectedModel("OllamaLocal", "")}
-        onRemoveModel={modelRemoveSelectedModel}
-        onSetDefault={handleSetDefault}
+      <Header
+        onOpenConnections={onOpenConnections}
         isTemporary={isTemporary}
         onToggleTemporaryChat={handleToggleTemporary}
       />
@@ -215,7 +258,7 @@ export default function ChatWorkspace({
           onSubmit={handleSend}
           onStop={stopStreaming}
           isStreaming={isStreaming}
-          providerOnline={ollama.online}
+          providerOnline={acpChat.isAgent || ollama.online}
           onOpenConnections={onOpenConnections}
           onOpenVoiceMode={openVoiceMode}
         />
@@ -224,15 +267,16 @@ export default function ChatWorkspace({
           key={activeConversationId ?? "no-conv"}
           messages={messages}
           bottomRef={bottomRef}
-          onRegenerate={handleRegenerate}
+          onRegenerate={acpChat.isAgent ? undefined : handleRegenerate}
           isTemporary={isTemporary}
+          activity={activity}
         />
       ) : (
         <EmptyState
           selectedModels={selectedModels}
           userName={userName}
           isTemporary={isTemporary}
-          providerOnline={ollama.online}
+          providerOnline={acpChat.isAgent || ollama.online}
           onOpenConnections={onOpenConnections}
         >
           {voiceModeOpen ? null : (
@@ -279,8 +323,9 @@ export default function ChatWorkspace({
             onSubmit={handleSend}
             onInterrupt={stopStreaming}
             canSubmit={
-              ollama.online &&
-              selectedModelChoices.some((choice) => Boolean(choice.model && choice.provider))
+              acpChat.isAgent ||
+              (ollama.online &&
+                selectedModelChoices.some((choice) => Boolean(choice.model && choice.provider)))
             }
             isResponding={isStreaming}
             messages={messages}

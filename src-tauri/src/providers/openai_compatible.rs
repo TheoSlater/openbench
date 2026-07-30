@@ -1,7 +1,7 @@
 use crate::models::chat::{
     ChatMessage, ModelDetails, StreamMetadata, StreamPayload, ToolCallInfo, ToolDefinition,
 };
-use crate::providers::base::{ChatProvider, ModelCatalog, ProviderStatus, ProviderType};
+use crate::providers::base::{ChatProvider, ModelCatalog, ProviderType};
 use async_stream::stream;
 use async_trait::async_trait;
 use futures::Stream;
@@ -77,13 +77,6 @@ impl OpenAICompatibleProvider {
 
 #[async_trait]
 impl ChatProvider for OpenAICompatibleProvider {
-    async fn health_check(&self) -> ProviderStatus {
-        match self.models().await {
-            Ok(_) => ProviderStatus::Online,
-            Err(_) => ProviderStatus::Offline,
-        }
-    }
-
     async fn chat_completion(
         &self,
         model: String,
@@ -173,10 +166,6 @@ impl ChatProvider for OpenAICompatibleProvider {
     fn get_provider_name(&self) -> String {
         "OpenAI-compatible API".to_string()
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::OpenAICompatible
-    }
 }
 
 #[async_trait]
@@ -194,10 +183,6 @@ impl ModelCatalog for OpenAICompatibleProvider {
                 })
                 .collect()
         })
-    }
-
-    fn get_provider_type(&self) -> ProviderType {
-        ProviderType::OpenAICompatible
     }
 }
 
@@ -263,7 +248,10 @@ fn append_chat_options(body: &mut Map<String, Value>, options: Option<Value>) {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         let effort = if reasoning_enabled { "medium" } else { "low" };
-        body.insert("reasoning_effort".to_string(), Value::String(effort.to_string()));
+        body.insert(
+            "reasoning_effort".to_string(),
+            Value::String(effort.to_string()),
+        );
     }
     if let Some(format) = options.get("format").and_then(openai_response_format) {
         body.insert("response_format".to_string(), format);
@@ -732,12 +720,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn health_check_requires_api_call() {
-        // can't test actual HTTP in unit test, just verify function exists
-        // integration test in e2e covers real API call
-    }
-
     #[test]
     fn injects_resolved_system_prompt_into_openai_messages() {
         let request = build_chat_request(
@@ -930,7 +912,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(payloads.len(), 1);
-        assert_eq!(payloads[0].thinking.as_deref(), Some("checked the constraints"));
+        assert_eq!(
+            payloads[0].thinking.as_deref(),
+            Some("checked the constraints")
+        );
         assert_eq!(payloads[0].content, "Answer");
     }
 

@@ -1,9 +1,7 @@
 use crate::models::chat::{
     ChatMessage, StreamMetadata, StreamPayload, ToolCallInfo, ToolDefinition,
 };
-use crate::providers::base::{
-    ChatProvider, LocalModelManager, ModelCatalog, ProviderStatus, ProviderType,
-};
+use crate::providers::base::{ChatProvider, ModelCatalog, ProviderType};
 use async_trait::async_trait;
 use futures::Stream;
 use ollama_rs::generation::chat::request::ChatMessageRequest;
@@ -18,12 +16,11 @@ use tokio_stream::StreamExt;
 
 pub struct OllamaProvider {
     client: Ollama,
-    provider_type: ProviderType,
     _api_key: Option<String>,
 }
 
 impl OllamaProvider {
-    pub fn new(base_url: String, provider_type: ProviderType, api_key: Option<String>) -> Self {
+    pub fn new(base_url: String, api_key: Option<String>) -> Self {
         let host = if base_url.starts_with("http") {
             base_url
         } else {
@@ -62,7 +59,6 @@ impl OllamaProvider {
 
         Self {
             client,
-            provider_type,
             _api_key: api_key,
         }
     }
@@ -138,29 +134,6 @@ fn with_model_thinking_prompt(
 
 #[async_trait]
 impl ChatProvider for OllamaProvider {
-    async fn health_check(&self) -> ProviderStatus {
-        match self.client.list_local_models().await {
-            Ok(models) => {
-                if cfg!(debug_assertions) {
-                    println!(
-                        "[OllamaProvider] Health check OK: {} models at {}",
-                        models.len(),
-                        self.client.url()
-                    );
-                }
-                ProviderStatus::Online
-            }
-            Err(e) => {
-                eprintln!(
-                    "[OllamaProvider] Health check failed for {}: {}",
-                    self.client.url(),
-                    e
-                );
-                ProviderStatus::Offline
-            }
-        }
-    }
-
     async fn chat_completion(
         &self,
         model: String,
@@ -321,10 +294,6 @@ impl ChatProvider for OllamaProvider {
     fn get_provider_name(&self) -> String {
         "Ollama".to_string()
     }
-
-    fn get_provider_type(&self) -> ProviderType {
-        self.provider_type
-    }
 }
 
 #[async_trait]
@@ -346,48 +315,6 @@ impl ModelCatalog for OllamaProvider {
                     })
                     .collect()
             })
-    }
-
-    fn get_provider_type(&self) -> ProviderType {
-        self.provider_type
-    }
-}
-
-#[async_trait]
-impl LocalModelManager for OllamaProvider {
-    async fn pull_model(
-        &self,
-        model: String,
-    ) -> Result<
-        Pin<
-            Box<dyn Stream<Item = Result<crate::models::chat::PullProgressPayload, String>> + Send>,
-        >,
-        String,
-    > {
-        let stream = self
-            .client
-            .pull_model_stream(model, false)
-            .await
-            .map_err(normalize_ollama_error)?;
-
-        let mapped = stream.map(|result| match result {
-            Ok(response) => Ok(crate::models::chat::PullProgressPayload {
-                status: response.message,
-                digest: response.digest,
-                total: response.total,
-                completed: response.completed,
-            }),
-            Err(e) => Err(normalize_ollama_stream_error(e)),
-        });
-
-        Ok(Box::pin(mapped))
-    }
-
-    async fn delete_model(&self, model: String) -> Result<(), String> {
-        self.client
-            .delete_model(model)
-            .await
-            .map_err(normalize_ollama_error)
     }
 }
 

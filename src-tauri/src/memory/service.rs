@@ -11,10 +11,12 @@ use crate::memory::types::{
     MemoryRecallQuery, MemoryRecord, MemoryScope, MemoryScopeOwner, MemorySearchQuery,
     MemorySettings, MemoryTurnInput, MemoryUpdateInput, ProcessingState,
 };
+use crate::providers::adapter::ProviderAdapter;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct MemoryService {
@@ -23,14 +25,19 @@ pub struct MemoryService {
     sensitive_filter: DeterministicSensitiveDataFilter,
     context_builder: DefaultMemoryContextBuilder,
     extractor: LlmMemoryExtractor,
+    secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
 }
 
 impl MemoryService {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ) -> Self {
         Self {
             repository: SqliteMemoryRepository::new(pool.clone()),
-            extractor: LlmMemoryExtractor::new(pool.clone()),
+            extractor: LlmMemoryExtractor::new(pool.clone(), secret_store.clone()),
             pool,
+            secret_store,
             sensitive_filter: DeterministicSensitiveDataFilter,
             context_builder: DefaultMemoryContextBuilder,
         }
@@ -332,15 +339,10 @@ impl MemoryService {
         let Some(conversation) = self.load_conversation(conversation_id).await? else {
             return Ok(Vec::new());
         };
-        let Some(user) = self
-            .load_message(conversation_id, user_message_id)
-            .await?
-        else {
+        let Some(user) = self.load_message(conversation_id, user_message_id).await? else {
             return Ok(Vec::new());
         };
-        if user.role != "user"
-            || user.content.chars().filter(|c| !c.is_whitespace()).count() < 3
-        {
+        if user.role != "user" || user.content.chars().filter(|c| !c.is_whitespace()).count() < 3 {
             return Ok(Vec::new());
         }
         if self.reject_sensitive_text(&user.content).is_err() {
@@ -464,16 +466,30 @@ impl MemoryService {
         .await?;
 
         let (ok, message) = if !settings.enabled {
-            (true, format!("Storage ready ({count} active memories). Memory is disabled."))
+            (
+                true,
+                format!("Storage ready ({count} active memories). Memory is disabled."),
+            )
         } else if !settings.automatic_extraction {
-            (true, format!("Storage ready ({count} active memories). Automatic extraction is off."))
+            (
+                true,
+                format!("Storage ready ({count} active memories). Automatic extraction is off."),
+            )
         } else {
-            match resolve_extraction_target(&self.pool, &settings, owner_id, None).await {
+            match resolve_extraction_target(
+                &self.pool,
+                self.secret_store.as_ref(),
+                &settings,
+                owner_id,
+                None,
+            )
+            .await
+            {
                 Ok((provider, model)) => (
                     true,
                     format!(
                         "Storage ready ({count} active memories). Extraction uses {} model `{model}`.",
-                        provider.get_provider_name()
+                        provider.chat_provider().get_provider_name()
                     ),
                 ),
                 Err(error) => (

@@ -1,7 +1,5 @@
 use crate::providers::anthropic::AnthropicNativeProvider;
-use crate::providers::base::{
-    ChatProvider, LocalModelManager, ModelCatalog, ProviderConfig, ProviderType,
-};
+use crate::providers::base::{ChatProvider, ModelCatalog, ProviderConfig, ProviderType};
 use crate::providers::gemini::GeminiNativeProvider;
 use crate::providers::ollama::OllamaProvider;
 use crate::providers::openai_compatible::OpenAICompatibleProvider;
@@ -19,7 +17,6 @@ impl ProviderFactory {
         match profile.provider_type {
             ProviderType::OllamaLocal => Some(Box::new(OllamaProvider::new(
                 profile.endpoint,
-                ProviderType::OllamaLocal,
                 profile.api_key,
             ))),
             ProviderType::OpenAICompatible => Some(Box::new(OpenAICompatibleProvider::new(
@@ -47,7 +44,6 @@ impl ProviderFactory {
         match profile.provider_type {
             ProviderType::OllamaLocal => Some(Box::new(OllamaProvider::new(
                 profile.endpoint,
-                ProviderType::OllamaLocal,
                 profile.api_key,
             ))),
             ProviderType::OpenAICompatible => Some(Box::new(OpenAICompatibleProvider::new(
@@ -64,20 +60,5 @@ impl ProviderFactory {
                 profile.api_key,
             ))),
         }
-    }
-
-    pub fn create_local_model_manager(
-        config: ProviderConfig,
-    ) -> Option<Box<dyn LocalModelManager>> {
-        let profile = ProviderProfile::from_config(config);
-        if !profile.enabled || profile.provider_type != ProviderType::OllamaLocal {
-            return None;
-        }
-
-        Some(Box::new(OllamaProvider::new(
-            profile.endpoint,
-            ProviderType::OllamaLocal,
-            profile.api_key,
-        )))
     }
 }

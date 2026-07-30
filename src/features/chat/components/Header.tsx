@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { ModelProvider } from "@/store/modelStore";
 import { useOllama } from "@/features/ollama";
 import { Box } from "@/components/ui/Box";
 import { Typography } from "@/components/ui/Typography";
@@ -13,10 +12,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { CircularProgress } from "@/components/ui/spinner";
-import { LinearProgress } from "@/components/ui/linear-progress";
 import {
-  X,
-  Plus,
   AlertCircle,
   ScrollText,
   Check,
@@ -27,7 +23,6 @@ import { PROMPT_PRESETS, type PromptPresetId } from "@/lib/constants/promptPrese
 import { useSettingsStore } from "@/store/settingsStore";
 import { useChatStore } from "@/store/chatStore";
 import { ModelSelector } from "@/features/chat/components/ModelSelector";
-import type { ModelChoice } from "@/lib/models/model-choice";
 import {
   MemoryPanel,
   setMemoryPanelOpen,
@@ -35,33 +30,18 @@ import {
 } from "@/features/memory/MemoryPanel";
 import { useConversationMemoryCount } from "@/features/memory/useConversationMemoryCount";
 import { showViewportDrawer, useViewportStore } from "@/features/viewport/viewportStore";
+import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { writeDefaultRuntime } from "@/lib/runtime/legacy-default-model";
 
 
 interface HeaderProps {
-  selectedModels: string[];
-  selectedProviders: ModelProvider[];
-  selectedModelChoices: ModelChoice[];
-  onModelChange: (
-    index: number,
-    provider: ModelProvider,
-    model: string,
-    providerConfigId?: number,
-  ) => void;
-  onAddModel: () => void;
-  onRemoveModel: (index: number) => void;
-  onSetDefault: (choice: ModelChoice) => void;
+  onOpenConnections: () => void;
   isTemporary?: boolean;
   onToggleTemporaryChat: () => void;
 }
 
 export const Header = memo(function Header({
-  selectedModels,
-  selectedProviders,
-  selectedModelChoices,
-  onModelChange,
-  onAddModel,
-  onRemoveModel,
-  onSetDefault,
+  onOpenConnections,
   isTemporary,
   onToggleTemporaryChat,
 }: HeaderProps) {
@@ -73,22 +53,13 @@ export const Header = memo(function Header({
     })),
   );
   const ollama = useOllama();
+  const selectedRuntime = useRuntimeStore((state) => state.selected);
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const viewportDrawerOpen = useViewportStore((state) => state.drawerOpen);
   const memoryPanelOpen = useMemoryPanelOpen();
   const { count: memoryCount, refresh: refreshMemoryCount } = useConversationMemoryCount(
     activeConversationId ?? undefined,
   );
-
-  const pullCompleted = ollama.pullProgress?.completed ?? 0;
-  const pullTotal = ollama.pullProgress?.total ?? 0;
-  const hasPullProgress =
-    typeof ollama.pullProgress?.completed === "number" &&
-    typeof ollama.pullProgress?.total === "number" &&
-    pullTotal > 0;
-  const pullProgressPercent = hasPullProgress
-    ? Math.round((pullCompleted / pullTotal) * 100)
-    : undefined;
 
   return (
     <Box
@@ -97,75 +68,13 @@ export const Header = memo(function Header({
     >
       <Box className="min-w-0 flex-1 overflow-hidden">
         <Box className="flex flex-col items-start">
-          {ollama.pullingModel ? (
-            <Box
-              className="w-56"
-            >
-              <Box
-                className="mb-1 flex items-center justify-between gap-2"
-              >
-                <Typography
-                  variant="caption"
-                >
-                  Pulling {ollama.pullingModel}...
-                </Typography>
-                <Typography variant="caption">
-                  {hasPullProgress
-                    ? `${pullProgressPercent}%`
-                    : (ollama.pullProgress?.status ?? "Starting...")}
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant={hasPullProgress ? "determinate" : "indeterminate"}
-                value={pullProgressPercent}
-              />
-            </Box>
-          ) : (
-            <>
+          <>
               <Box
                 className="flex min-w-0 items-center gap-2"
               >
-                {selectedModels.length === 0 ? (
-                  <ModelSelector
-                    model=""
-                    provider="OllamaLocal"
-                    onChange={(option) =>
-                      onModelChange(0, option.provider_type, option.name, option.provider_config_id)
-                    }
-                  />
-                ) : null}
-                {selectedModels.map((selectedModel, index) => (
-                  <Box
-                    key={`${selectedModel}-${index}`}
-                    className="flex min-w-0 items-center gap-1"
-                  >
-                    <ModelSelector
-                      model={selectedModel}
-                      provider={selectedProviders[index] ?? "OllamaLocal"}
-                      providerConfigId={selectedModelChoices[index]?.providerConfigId}
-                      onChange={(option) =>
-                        onModelChange(index, option.provider_type, option.name, option.provider_config_id)
-                      }
-                    />
-                    {selectedModels.length > 1 && (
-                      <IconButton
-                        aria-label={`Remove ${selectedModel || "empty"} model selector`}
-                        size="small"
-                        onClick={() => onRemoveModel(index)}
-                      >
-                        <X size={14} />
-                      </IconButton>
-                    )}
-                  </Box>
-                ))}
-                <IconButton
-                  aria-label="Add model selector"
-                  onClick={onAddModel}
-                  size="small"
-                  className="size-7 rounded-full"
-                >
-                  <Plus size={16} />
-                </IconButton>
+                <ModelSelector
+                  onManageConnections={onOpenConnections}
+                />
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -216,22 +125,13 @@ export const Header = memo(function Header({
               </Box>
               <button
                 type="button"
-                disabled={!selectedModels[0]}
+                disabled={!selectedRuntime}
                 className="mt-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-70"
-                onClick={() =>
-                  selectedModels[0] &&
-                  onSetDefault(
-                    selectedModelChoices[0] ?? {
-                      provider: selectedProviders[0] ?? "OllamaLocal",
-                      model: selectedModels[0],
-                    },
-                  )
-                }
+                onClick={() => selectedRuntime && writeDefaultRuntime(selectedRuntime)}
               >
                 Set as default
               </button>
             </>
-          )}
         </Box>
       </Box>
 

@@ -11,7 +11,7 @@ use crate::memory::types::{
 use crate::AppState;
 
 fn service(state: &tauri::State<'_, AppState>) -> MemoryService {
-    MemoryService::new(state.db.clone())
+    MemoryService::new(state.db.clone(), state.secret_store.clone())
 }
 
 fn map_auth_err(error: AuthError) -> String {

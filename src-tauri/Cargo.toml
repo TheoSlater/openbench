@@ -1,5 +1,6 @@
 [package]
 name = "polyui"
+default-run = "polyui"
 version = "0.22.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -52,14 +53,23 @@ tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-supertonic = "0.3"
 ort = { version = "2.0.0-rc.12", features = ["load-dynamic"] }
-windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading"] }
 raw-window-handle = "0.6"
 dirs = "6"
+ts-rs = "12"
+keyring = "4.1"
 whisper-rs = "0.16"
 cpal = "0.15"
 hound = "3.5"
 portable-pty = "0.9"
+agent-client-protocol = { version = "=2.0.0", features = ["unstable_auth_methods"] }
+tokio-util = { version = "0.7.19", features = ["rt"] }
+async-process = "2.5.0"
+async-io = "2.6.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
 
+[target."cfg(unix)".dependencies]
+libc = "0.2.189"
+rustix = { version = "1", features = ["process"] }

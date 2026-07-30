@@ -20,17 +20,18 @@ const titleStore: TitleStore = {
   renameConversation: (id, title, source) => useChatStore.getState().actions.renameConversation(id, title, source),
 };
 import {
-  streamEventBus,
+  TauriEventBus,
   type ChunkPayload,
   type ThinkingPayload,
   type WebSearchPayload,
-} from "@/lib/chat/event-bus";
+} from "@/lib/chat/stream-client";
 import { StreamSession } from "@/lib/chat/stream-session";
 import { getRepository } from "@/lib/repositories";
 import { getWebSearchConfig } from "@/features/web-search/useWebSearchConfig";
 import { getCurrentProviderAccountId } from "@/features/providers";
 import { notifyMemoryUpdated } from "@/features/memory/useConversationMemoryCount";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import type { ModelChoice } from "@/lib/models/model-choice";
 
 function validModelChoices(choices: ModelChoice[]): ModelChoice[] {
@@ -117,6 +118,7 @@ export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", vo
   const [isStreaming, setIsStreaming] = useState(false);
 
   const sessionRef = useRef(new StreamSession());
+  const eventBusRef = useRef(new TauriEventBus());
   const cancelRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeConversationIdRef = useRef(activeConversationId);
@@ -260,13 +262,14 @@ export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", vo
   });
 
   useEffect(() => {
-    streamEventBus.subscribe({
+    const eventBus = eventBusRef.current;
+    void eventBus.subscribe({
       onChunk: (p) => handleChunkRef.current(p),
       onThinking: (p) => handleThinkingRef.current(p),
       onWebSearch: (p) => handleWebSearchRef.current(p),
     });
     return () => {
-      streamEventBus.unsubscribe();
+      void eventBus.unsubscribe();
     };
   }, []);
 
@@ -301,7 +304,7 @@ export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", vo
         : systemPrompt;
       const system = buildSystemPrompt(voicePrompt, Boolean(activeWebSearchConfig), webSearchAI);
 
-      for (const { model, provider, providerConfigId } of models) {
+      for (const { model, provider } of models) {
         const rid = crypto.randomUUID();
         const mid = crypto.randomUUID();
         sessionRef.current.register({ requestId: rid, messageId: mid, conversationId });
@@ -320,6 +323,7 @@ export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", vo
 
         (async () => {
           try {
+            const runtime = useRuntimeStore.getState().selected;
             await invoke("chat_stream", {
               requestId: rid,
               conversationId,
@@ -328,8 +332,7 @@ export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", vo
               systemPrompt: system,
               webSearchConfig: activeWebSearchConfig ?? null,
               reasoningEnabled: !voiceModeRef.current,
-              providerType: provider,
-              providerConfigId: providerConfigId ?? null,
+              connectionId: runtime?.kind === "chat-model" ? runtime.connection_id : null,
               accountId: getCurrentProviderAccountId(),
               token: getSessionToken(),
             });

@@ -7,11 +7,9 @@ import {
   useState,
   useEffect,
 } from "react";
-import { useModelStore } from "@/store/modelStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import "@/features/settings";
 import { getPresetContent } from "@/lib/constants/promptPresets";
-import { useOllama } from "@/features/ollama";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPanel } from "@/components/Layout/ChatPanel";
@@ -34,7 +32,6 @@ import { CommandPalette } from "@/features/command-palette/CommandPalette";
 import { useRegisteredCommandPaletteActions } from "@/features/command-palette/actionRegistry";
 import { useSettingsCommands } from "@/features/command-palette/settingsRegistry";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { useAutoSelectModel } from "@/hooks/useAutoSelectModel";
 import { useChatActionHandlers } from "@/hooks/useChatActionHandlers";
 import { useCommandPaletteItems } from "@/hooks/useCommandPaletteItems";
 import ChatWorkspace from "@/features/chat/components/ChatWorkspace";
@@ -79,23 +76,6 @@ function App() {
   );
   const stopStreamingRef = useRef<(() => void) | null>(null);
   const notify = useNotify();
-  const {
-    selectedModels,
-    selectedProviders,
-    selectedModelChoices,
-    setSelectedModel,
-    defaultModel,
-  } = useModelStore(
-    useShallow((state) => ({
-      selectedModels: state.selectedModels,
-      selectedProviders: state.selectedProviders,
-      selectedModelChoices: state.selectedModelChoices,
-      setSelectedModel: state.setSelectedModel,
-      defaultModel: state.defaultModel,
-    })),
-  );
-
-  const ollama = useOllama();
   const { user, isAuthenticated, isAuthLoading, isGuest } = useAuthStore(
     useShallow((state) => ({
       user: state.user,
@@ -149,17 +129,6 @@ function App() {
   useEffect(() => {
     if (isAuthGateOpen) setIsCommandPaletteOpen(false);
   }, [isAuthGateOpen]);
-
-  useAutoSelectModel({
-    online: ollama.online,
-    models: ollama.models,
-    externalModelsLoaded: ollama.externalModelsLoaded,
-    externalModelsLoading: ollama.externalModelsLoading,
-    loadExternalModels: ollama.actions.loadExternalModels,
-    selectedModelsLength: selectedModels.length,
-    defaultModel,
-    setSelectedModel,
-  });
 
   const { selectedPromptPreset, general } = useSettingsStore(
     useShallow((s) => ({
@@ -316,9 +285,6 @@ function App() {
         <ChatPanel backgroundImage={activeFolderBackground}>
           <main className="relative flex min-w-0 flex-1 flex-row overflow-hidden">
             <ChatWorkspace
-              selectedModels={selectedModels}
-              selectedProviders={selectedProviders}
-              selectedModelChoices={selectedModelChoices}
               systemPromptContent={systemPromptContent}
               userName={user?.fullName || user?.email}
               isTemporary={isTemporary}

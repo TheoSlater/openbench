@@ -71,3 +71,13 @@ Rust emits typed Tauri events (`chat-chunk`, `chat-thinking`, `web-search-event`
   # PR feat/your-thing → main
   ```
 - Each PR carries only its feature branch commits. Keep `main` clean.
+
+
+## Naming style:
+
+- Prefer concise, human-written identifiers.
+- Function names should usually be 2–5 words.
+- Avoid describing the entire implementation or test case in the name.
+- The function body should explain behavior; the name only identifies intent.
+- Prefer `parse_strict_version` over `strict_versions_require_three_plain_numeric_components`.
+- Prefer `loads_config` over `loads_configuration_file_from_default_search_paths`.

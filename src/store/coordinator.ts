@@ -7,7 +7,6 @@ import { setTtsSettings, setTtsLoadNotifier, useTtsStore, type TtsLoadProgress }
 import { useNotificationStore } from "./notificationStore";
 import { setUpdateInstallSimulation } from "./updateStore";
 import { getRepository } from "@/lib/repositories";
-import { useProviderStore } from "@/features/providers";
 
 // Cross-store effects live here. Stores own local state only.
 let initialized = false;
@@ -19,12 +18,6 @@ type AuthSnapshot = ReturnType<typeof useAuthStore.getState>;
 
 function accountIdFromAuth(state: AuthSnapshot) {
   return state.user?.id || state.guestId || null;
-}
-
-async function refreshProviders() {
-  await useProviderStore.getState().actions.refresh().catch((err) => {
-    console.warn("[coordinator] Provider refresh failed:", err);
-  });
 }
 
 // Voice engine (Supertonic) load → one persistent loading toast that tracks
@@ -112,7 +105,6 @@ export function initStoreCoordinator() {
               .transferConversations(prevGuestId, newUserId)
               .catch((err) => console.warn("[coordinator] Conversation transfer failed:", err));
           }
-          await refreshProviders();
           await useChatStore.getState().actions.loadConversations();
           await useFolderStore.getState().actions.loadFolders();
         } finally {
@@ -151,7 +143,6 @@ export function initStoreCoordinator() {
 
   if (initialAccountId) {
     void (async () => {
-      await refreshProviders();
       await useChatStore.getState().actions.loadConversations();
       await useFolderStore.getState().actions.loadFolders();
     })();
