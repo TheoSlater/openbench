@@ -1,8 +1,5 @@
-mod acp;
 mod ai_sidecar;
 mod auth;
-mod claude;
-mod codex;
 mod commands;
 mod connections;
 mod db;
@@ -10,20 +7,13 @@ mod error;
 mod memory;
 mod mobile_pairing;
 mod models;
-mod providers;
 pub mod pty;
 mod runtime;
 mod startup_log;
-mod stream_emitter;
-mod title_generator;
-mod tool_loop;
 mod updater;
-mod web_search;
 mod whisper_state;
 mod window_state_recovery;
 
-use crate::commands::chat_commands::{chat, chat_stream, generate_chat_title};
-use crate::commands::config_commands::cancel_chat;
 use crate::commands::db_commands::execute_sql;
 use crate::commands::dictation_commands::{
     download_whisper_model, get_whisper_models_status, native_dictation_audio_level,
@@ -51,21 +41,12 @@ use tokio::sync::Mutex;
 /// `RunEvent::ExitRequested` has no `AppState`, and the exit path hard-exits
 /// without unwinding, so the host has to be reachable without going through
 /// managed state.
-static ACP_HOST_FOR_EXIT: std::sync::OnceLock<Arc<crate::acp::host::AcpHost>> =
-    std::sync::OnceLock::new();
 static AI_SIDECAR_FOR_EXIT: std::sync::OnceLock<Arc<crate::ai_sidecar::AiSidecar>> =
     std::sync::OnceLock::new();
 
 pub struct AppState {
     pub db: SqlitePool,
-    /// Owns every running coding-agent process.
-    pub acp: Arc<crate::acp::host::AcpHost>,
     pub ai: Arc<crate::ai_sidecar::AiSidecar>,
-    /// Cached Codex detection, so rendering the settings page never scans.
-    pub codex: crate::commands::codex_commands::CodexCache,
-    /// Cached Claude detection and negotiated setup data.
-    pub claude: crate::commands::claude_commands::ClaudeCache,
-    pub chat_requests: providers::adapter::ChatRequestRegistry,
     pub last_update_check: Mutex<Option<Instant>>,
     pub update_download_path: Mutex<Option<PathBuf>>,
     /// OS keychain. The database only ever holds a reference into this.
@@ -184,18 +165,9 @@ pub fn run() {
             AI_SIDECAR_FOR_EXIT
                 .set(ai.clone())
                 .unwrap_or_else(|_| log::warn!("AI sidecar was registered twice"));
-            crate::acp::lifecycle::sweep_pid_receipts();
-            let acp = crate::acp::host::AcpHost::new();
-            ACP_HOST_FOR_EXIT
-                .set(acp.clone())
-                .unwrap_or_else(|_| log::warn!("ACP host was registered twice"));
             app.manage(AppState {
                 db: db.clone(),
-                acp,
                 ai,
-                codex: crate::commands::codex_commands::CodexCache::default(),
-                claude: crate::commands::claude_commands::ClaudeCache::default(),
-                chat_requests: providers::adapter::ChatRequestRegistry::default(),
                 last_update_check: Mutex::new(None),
                 update_download_path: Mutex::new(None),
                 secret_store: secret_store.clone(),
@@ -260,10 +232,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            chat_stream,
-            chat,
-            generate_chat_title,
-            cancel_chat,
             auth::auth_signup,
             auth::auth_login,
             auth::auth_logout,
@@ -286,25 +254,6 @@ pub fn run() {
             commands::connection_commands::get_conversation_runtime,
             commands::connection_commands::set_conversation_runtime,
             commands::connection_commands::list_recent_runtimes,
-            commands::adapter_install_commands::adapter_install_plan,
-            commands::adapter_install_commands::install_adapter,
-            commands::codex_commands::codex_status,
-            commands::codex_commands::codex_revalidate,
-            commands::codex_commands::codex_refresh_detection,
-            commands::codex_commands::codex_verify,
-            commands::codex_commands::codex_authenticate,
-            commands::codex_commands::codex_cancel_authenticate,
-            commands::claude_commands::claude_status,
-            commands::claude_commands::claude_revalidate,
-            commands::claude_commands::claude_refresh_detection,
-            commands::claude_commands::claude_verify,
-            commands::claude_commands::claude_authenticate,
-            commands::claude_commands::claude_cancel_authenticate,
-            commands::acp_commands::acp_start_session,
-            commands::acp_commands::acp_prompt,
-            commands::acp_commands::acp_cancel_turn,
-            commands::acp_commands::acp_stop_session,
-            commands::acp_commands::acp_answer_permission,
             commands::ai_runtime_commands::ai_runtime_start,
             commands::ai_runtime_commands::ai_runtime_cancel,
             commands::ai_runtime_commands::ai_runtime_approval,
@@ -312,6 +261,7 @@ pub fn run() {
             commands::ai_runtime_commands::ai_runtime_generate,
             commands::ai_runtime_commands::web_search_credential_status,
             commands::ai_runtime_commands::set_web_search_credential,
+            commands::agent_commands::agent_cli_status,
             commands::memory_commands::memory_get_settings,
             commands::memory_commands::memory_update_settings,
             commands::memory_commands::memory_test_connection,
@@ -382,10 +332,6 @@ pub fn run() {
             // runs no destructors, so `OwnedChild::drop` never fires here — this
             // is the only thing standing between quitting the app and leaving an
             // orphaned agent (and, via the job object, its whole tree) behind.
-            if let Some(acp) = ACP_HOST_FOR_EXIT.get() {
-                startup_log::log_phase("exit requested; stopping agent processes");
-                tauri::async_runtime::block_on(acp.shutdown());
-            }
             if let Some(ai) = AI_SIDECAR_FOR_EXIT.get() {
                 startup_log::log_phase("exit requested; stopping AI sidecar");
                 tauri::async_runtime::block_on(ai.shutdown());

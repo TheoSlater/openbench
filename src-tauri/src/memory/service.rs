@@ -11,7 +11,6 @@ use crate::memory::types::{
     MemoryRecallQuery, MemoryRecord, MemoryScope, MemoryScopeOwner, MemorySearchQuery,
     MemorySettings, MemoryTurnInput, MemoryUpdateInput, ProcessingState,
 };
-use crate::providers::adapter::ProviderAdapter;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,10 +31,11 @@ impl MemoryService {
     pub fn new(
         pool: SqlitePool,
         secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+        ai: Arc<crate::ai_sidecar::AiSidecar>,
     ) -> Self {
         Self {
             repository: SqliteMemoryRepository::new(pool.clone()),
-            extractor: LlmMemoryExtractor::new(pool.clone(), secret_store.clone()),
+            extractor: LlmMemoryExtractor::new(pool.clone(), secret_store.clone(), ai),
             pool,
             secret_store,
             sensitive_filter: DeterministicSensitiveDataFilter,
@@ -478,18 +478,17 @@ impl MemoryService {
         } else {
             match resolve_extraction_target(
                 &self.pool,
-                self.secret_store.as_ref(),
                 &settings,
                 owner_id,
                 None,
             )
             .await
             {
-                Ok((provider, model)) => (
+                Ok((connection, model)) => (
                     true,
                     format!(
                         "Storage ready ({count} active memories). Extraction uses {} model `{model}`.",
-                        provider.chat_provider().get_provider_name()
+                        connection.provider.as_str()
                     ),
                 ),
                 Err(error) => (

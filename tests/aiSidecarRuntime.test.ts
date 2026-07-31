@@ -107,6 +107,29 @@ describe("AI sidecar runtime", () => {
     expect(chunks.filter((record) => record.requestId === "req-b")).toHaveLength(4);
   });
 
+  it("collects mobile text inside the JavaScript runtime", async () => {
+    const records: RuntimeRecord[] = [];
+    const server = new RuntimeServer({
+      write: (record) => records.push(record),
+      streamChat: async () => new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "text-delta", id: "t", delta: "one" });
+          controller.enqueue({ type: "text-delta", id: "t", delta: " two" });
+          controller.close();
+        },
+      }),
+    });
+
+    await server.handle({ ...command(), collectText: true });
+    await vi.waitFor(() => expect(server.activeRequestCount).toBe(0));
+
+    expect(records).toContainEqual({
+      type: "chunk",
+      requestId: "req-1",
+      chunk: { type: "data-runtime-result", data: { text: "one two" } },
+    });
+  });
+
   it("routes cancellation to only the selected request", async () => {
     const aborted: string[] = [];
     const server = new RuntimeServer({

@@ -15,7 +15,7 @@ const options: RuntimeOption[] = [
     family: "coding-agent",
     group: "Coding agents",
     title: "Codex",
-    connection: "ACP adapter",
+    connection: "Local CLI",
     available: false,
     runtime: null,
   },

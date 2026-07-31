@@ -14,13 +14,13 @@ export type AgentConfig = {
 export const CODEX_AGENT: AgentConfig = {
   kind: "codex",
   displayName: "Codex",
-  installDocsUrl: "https://github.com/agentclientprotocol/codex-acp#installation",
+  installDocsUrl: "https://developers.openai.com/codex/cli",
 };
 
 export const CLAUDE_AGENT: AgentConfig = {
   kind: "claude-code",
   displayName: "Claude Code",
-  installDocsUrl: "https://github.com/agentclientprotocol/claude-agent-acp",
+  installDocsUrl: "https://docs.anthropic.com/en/docs/claude-code/setup",
 };
 
 export const CARD_STATUS = {

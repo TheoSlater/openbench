@@ -1,6 +1,5 @@
 import { loggedInvoke, getSessionToken } from "@/lib/utils/utils";
 import type { ChatMessage } from "@/types/chat";
-import { getCurrentProviderAccountId } from "@/features/providers";
 import { useChatStore } from "@/store/chatStore";
 import { connectionsClient } from "@/features/connections/client";
 
@@ -10,15 +9,6 @@ export interface TitleStore {
   setTitleGenerationStatus(conversationId: string, status: "generating" | "done" | "failed"): void;
   renameConversation(id: string, title: string, source: "generated"): Promise<void>;
 }
-
-type BackendChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-  attachments?: {
-    type: string;
-    content?: string;
-  }[];
-};
 
 type GenerateTitleArgs = {
   conversationId: string;
@@ -235,14 +225,18 @@ async function generateAndApplyTitle(
   let title: string | null = null;
   try {
     const runtime = await connectionsClient.getRuntime(conversationId);
-    title = await loggedInvoke<string | null>("generate_chat_title", {
-      model,
-      messages: titleMessages.map(toBackendMessage),
-      userName,
-      connectionId: runtime?.kind === "chat-model" ? runtime.connection_id : null,
-      accountId: getCurrentProviderAccountId(),
+    if (runtime?.kind !== "chat-model") throw new Error("Chat model unavailable");
+    const result = await loggedInvoke<{ text: string }>("ai_runtime_generate", {
+      requestId: crypto.randomUUID(),
+      connectionId: runtime.connection_id,
+      modelId: runtime.model_id || model,
+      prompt: titleMessages
+        .map((message) => `${message.role === "assistant" ? "Assistant" : userName ?? "User"}: ${message.content}`)
+        .join("\n"),
+      instructions: "Generate a concise 2-5 word chat title without emoji. Return only the title.",
       token: getSessionToken(),
     });
+    title = result.text;
   } catch (err) {
     console.warn("Title generation invoke failed", err);
   }
@@ -270,15 +264,4 @@ async function generateAndApplyTitle(
   }
 
   pendingTitleGenerations.delete(conversationId);
-}
-
-function toBackendMessage(message: ChatMessage): BackendChatMessage {
-  return {
-    role: message.role,
-    content: message.content,
-    attachments: message.attachments?.map((attachment) => ({
-      type: attachment.type,
-      content: attachment.content,
-    })),
-  };
 }

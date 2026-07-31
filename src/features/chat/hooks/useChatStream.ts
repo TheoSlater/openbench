@@ -201,7 +201,7 @@ export function useChatStream(
         installation_id: job.agent.installationId,
         agent_kind: job.agent.kind,
         workspace_id: job.agent.workspaceId,
-        acp_session_id: entity.agentSessionId,
+        agent_session_id: entity.agentSessionId,
       };
       await connectionsClient.setRuntime(job.conversationId, runtime);
       useRuntimeStore.getState().actions.select(
@@ -299,7 +299,7 @@ export function useChatStream(
           workspaceId: runtime.workspace_id,
           installationId: runtime.installation_id,
           accessMode: "workspace-write",
-          sessionId: runtime.acp_session_id ?? undefined,
+          sessionId: runtime.agent_session_id ?? undefined,
         } : undefined,
         model,
         provider,

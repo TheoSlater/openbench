@@ -6,17 +6,11 @@ use crate::memory::types::{
     MemoryCategory, MemoryListQuery, MemoryOperation, MemoryOperationKind, MemoryScope,
     MemorySettings, MemoryTurnInput,
 };
-use crate::models::chat::ChatMessage;
-use crate::providers::adapter::{ConnectionProviderAdapter, ProviderAdapter};
-use crate::providers::base::ChatProvider;
-use crate::title_generator::strip_thinking_blocks;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio_stream::StreamExt;
 
 #[async_trait]
 pub trait MemoryExtractor: Send + Sync {
@@ -28,7 +22,6 @@ const MAX_TURN_CHARS: usize = 4000;
 const MAX_CONTEXT_MESSAGE_CHARS: usize = 500;
 const MAX_CONTEXT_MESSAGES: i64 = 10;
 const MAX_EXISTING_MEMORIES: i64 = 50;
-const EXTRACTION_TIMEOUT: Duration = Duration::from_secs(90);
 
 const EXTRACTION_SYSTEM_PROMPT: &str = r#"You extract factual memories from conversations. Extract clear, standalone facts about the user.
 Return a JSON object: {"memories": [...]}. Each entry has: value (string), summary (string, one line), category, confidence (0-1), importance (0-1), canonical_key (string or null).
@@ -45,20 +38,31 @@ Rules:
 - Set importance based on: identity facts > preferences > other facts > topics.
 - Return {"memories": []} when the turn contains nothing worth remembering."#;
 
+fn strip_thinking_blocks(content: &str) -> String {
+    content
+        .split("</think>")
+        .last()
+        .unwrap_or(content)
+        .trim()
+        .to_string()
+}
+
 /// LLM-backed extractor. Resolves provider/model from memory settings
 /// (falling back to the active chat provider) and asks it for JSON memories.
 #[derive(Clone)]
 pub struct LlmMemoryExtractor {
     pool: SqlitePool,
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ai: Arc<crate::ai_sidecar::AiSidecar>,
 }
 
 impl LlmMemoryExtractor {
     pub fn new(
         pool: SqlitePool,
         secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+        ai: Arc<crate::ai_sidecar::AiSidecar>,
     ) -> Self {
-        Self { pool, secret_store }
+        Self { pool, secret_store, ai }
     }
 
     async fn recent_context(
@@ -107,57 +111,28 @@ impl LlmMemoryExtractor {
 
     async fn run_completion(
         &self,
-        provider: &dyn ChatProvider,
+        connection: &crate::connections::Connection,
         model: &str,
         prompt: String,
     ) -> Result<String, MemoryError> {
-        let messages = vec![ChatMessage {
-            role: "user".to_string(),
-            content: prompt,
-            attachments: None,
-            tool_calls: None,
-            tool_call_id: None,
-        }];
-
-        let mut last_error = MemoryError::StructuredOutputFailure("no response".to_string());
-        for options in extraction_options() {
-            let completion = provider.chat_completion(
-                model.to_string(),
-                messages.clone(),
-                Some(EXTRACTION_SYSTEM_PROMPT.to_string()),
-                Some(options),
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let result = self.ai.request(&request_id, serde_json::json!({
+            "type": "generate",
+            "requestId": request_id,
+            "connection": crate::commands::ai_runtime_commands::sidecar_connection(
+                self.secret_store.as_ref(),
+                connection,
+                Some(model),
                 None,
-            );
-            let mut stream = match tokio::time::timeout(EXTRACTION_TIMEOUT, completion).await {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(error)) => {
-                    last_error = MemoryError::ProviderUnavailable(error);
-                    continue;
-                }
-                Err(_) => return Err(MemoryError::Timeout),
-            };
-
-            let collect = async {
-                let mut raw = String::new();
-                while let Some(result) = stream.next().await {
-                    let chunk = result?;
-                    raw.push_str(&chunk.content);
-                    if chunk.done {
-                        break;
-                    }
-                }
-                Ok::<String, String>(raw)
-            };
-            match tokio::time::timeout(EXTRACTION_TIMEOUT, collect).await {
-                Ok(Ok(raw)) if !raw.trim().is_empty() => return Ok(raw),
-                Ok(Ok(_)) => {
-                    last_error = MemoryError::StructuredOutputFailure("empty response".to_string());
-                }
-                Ok(Err(error)) => last_error = MemoryError::StructuredOutputFailure(error),
-                Err(_) => return Err(MemoryError::Timeout),
-            }
-        }
-        Err(last_error)
+            ).map_err(MemoryError::ProviderUnavailable)?,
+            "prompt": prompt,
+            "instructions": EXTRACTION_SYSTEM_PROMPT,
+        })).await.map_err(MemoryError::ProviderUnavailable)?;
+        result.get("text")
+            .and_then(serde_json::Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| MemoryError::StructuredOutputFailure("empty response".to_string()))
     }
 }
 
@@ -174,9 +149,8 @@ impl MemoryExtractor for LlmMemoryExtractor {
 
         let repository = SqliteMemoryRepository::new(self.pool.clone());
         let settings = repository.get_settings(&input.owner_id).await?;
-        let (provider, model) = resolve_extraction_target(
+        let (connection, model) = resolve_extraction_target(
             &self.pool,
-            self.secret_store.as_ref(),
             &settings,
             &input.owner_id,
             input.chat_model.as_deref(),
@@ -188,7 +162,7 @@ impl MemoryExtractor for LlmMemoryExtractor {
         let prompt = build_extraction_prompt(&input, &context, &existing);
 
         let raw = self
-            .run_completion(provider.chat_provider(), &model, prompt)
+            .run_completion(&connection, &model, prompt)
             .await?;
         let entries = parse_extracted_memories(&raw);
         Ok(convert_extracted_memories(entries, &input, &existing))
@@ -198,11 +172,10 @@ impl MemoryExtractor for LlmMemoryExtractor {
 /// Shared by extraction and the settings "test connection" button.
 pub async fn resolve_extraction_target(
     pool: &SqlitePool,
-    secret_store: &dyn crate::connections::secrets::SecretStore,
     settings: &MemorySettings,
     owner_id: &str,
     chat_model: Option<&str>,
-) -> Result<(ConnectionProviderAdapter, String), MemoryError> {
+) -> Result<(crate::connections::Connection, String), MemoryError> {
     let connections = crate::connections::repository::list_connections(pool, owner_id)
         .await
         .map_err(MemoryError::ProviderUnavailable)?;
@@ -245,45 +218,7 @@ pub async fn resolve_extraction_target(
                 .into(),
         )),
     };
-    let adapter = ConnectionProviderAdapter::new(connection, secret_store)
-        .map_err(|error| MemoryError::ProviderUnavailable(error.message))?;
-    Ok((adapter, model))
-}
-
-fn extraction_options() -> [Value; 2] {
-    // num_predict caps Ollama, max_tokens caps OpenAI-compatible providers —
-    // without it OpenRouter bills the model's full context as max_tokens.
-    let base = serde_json::json!({
-        "temperature": 0.0,
-        "num_predict": 1200,
-        "max_tokens": 1200,
-    });
-    let mut structured = base.clone();
-    structured["format"] = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "memories": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "value": { "type": "string" },
-                        "summary": { "type": "string" },
-                        "category": { "type": "string" },
-                        "confidence": { "type": "number" },
-                        "importance": { "type": "number" },
-                        "canonical_key": { "type": ["string", "null"] }
-                    },
-                    "required": ["value", "summary", "category", "confidence", "importance"]
-                }
-            }
-        },
-        "required": ["memories"],
-        "additionalProperties": false
-    });
-    let mut json = base;
-    json["format"] = serde_json::json!("json");
-    [structured, json]
+    Ok((connection, model))
 }
 
 fn truncate_chars(value: &str, limit: usize) -> String {

@@ -2,8 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PromptPresetId } from "@/lib/constants/promptPresets";
 import type { WebSearchSettings } from "@/features/web-search/types";
-import type { CodexSettings } from "@/generated/bindings/CodexSettings";
-import type { ClaudeSettings } from "@/generated/bindings/ClaudeSettings";
 import { startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
 import { createSafeJsonStorage } from "./persistStorage";
 
@@ -74,20 +72,12 @@ type SettingsState = {
   tts: TtsSettings;
   dictation: DictationSettings;
   performance: PerformanceSettings;
-  codex: CodexSettings;
-  codexWorkspace: string;
-  claude: ClaudeSettings;
-  claudeWorkspace: string;
   selectedPromptPreset: PromptPresetId;
   actions: {
     updateGeneral: (update: Partial<GeneralSettings>) => void;
     updateTts: (update: Partial<TtsSettings>) => void;
     updateDictation: (update: Partial<DictationSettings>) => void;
     updatePerformance: (update: Partial<PerformanceSettings>) => void;
-    updateCodex: (update: Partial<CodexSettings>) => void;
-    setCodexWorkspace: (workspace: string) => void;
-    updateClaude: (update: Partial<ClaudeSettings>) => void;
-    setClaudeWorkspace: (workspace: string) => void;
     setPromptPreset: (id: PromptPresetId) => void;
   };
 };
@@ -108,7 +98,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 28;
+const SETTINGS_VERSION = 29;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -153,16 +143,6 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
     tts: { ...defaultTts },
     dictation: { ...defaultDictation },
     performance: { ...defaultPerformance },
-    codex: {
-      adapter_override: null,
-      codex_path: null,
-      no_browser: false,
-    },
-    codexWorkspace: "",
-    claude: {
-      adapter_override: null,
-    },
-    claudeWorkspace: "",
     selectedPromptPreset: "default" as PromptPresetId,
   };
 }
@@ -195,10 +175,6 @@ export function mergeSettingsWithDefaults(
     },
     dictation: { ...current.dictation, ...p.dictation },
     performance: { ...current.performance, ...p.performance },
-    codex: { ...current.codex, ...p.codex },
-    codexWorkspace: p.codexWorkspace ?? current.codexWorkspace,
-    claude: { ...current.claude, ...p.claude },
-    claudeWorkspace: p.claudeWorkspace ?? current.claudeWorkspace,
     actions: current.actions,
   };
 }
@@ -227,14 +203,6 @@ export const useSettingsStore = create<SettingsState>()(
 
         updatePerformance: (update) =>
           set((s) => ({ performance: { ...s.performance, ...update } })),
-
-        updateCodex: (update) =>
-          set((s) => ({ codex: { ...s.codex, ...update } })),
-
-        setCodexWorkspace: (codexWorkspace) => set({ codexWorkspace }),
-        updateClaude: (update) =>
-          set((s) => ({ claude: { ...s.claude, ...update } })),
-        setClaudeWorkspace: (claudeWorkspace) => set({ claudeWorkspace }),
 
         setPromptPreset: (id) => set({ selectedPromptPreset: id }),
       },
@@ -336,6 +304,12 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 28 && state?.general?.webSearch) {
           delete state.general.webSearch.apiKeys;
         }
+        if (version < 29) {
+          delete state.codex;
+          delete state.codexWorkspace;
+          delete state.claude;
+          delete state.claudeWorkspace;
+        }
         startupPhase("settings migration complete");
         return state as SettingsState;
       },
@@ -354,10 +328,6 @@ export const useSettingsStore = create<SettingsState>()(
         tts,
         dictation,
         performance,
-        codex,
-        codexWorkspace,
-        claude,
-        claudeWorkspace,
         selectedPromptPreset,
       }) =>
         ({
@@ -365,10 +335,6 @@ export const useSettingsStore = create<SettingsState>()(
           tts,
           dictation,
           performance,
-          codex,
-          codexWorkspace,
-          claude,
-          claudeWorkspace,
           selectedPromptPreset,
         }) as SettingsState,
     },

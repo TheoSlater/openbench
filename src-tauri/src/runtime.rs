@@ -75,16 +75,15 @@ pub enum RuntimeRef {
         connection_id: String,
         model_id: String,
     },
-    /// An external ACP runtime. The agent owns the loop.
+    /// A local coding-agent runtime. The agent owns the loop.
     ///
-    /// `acp_session_id` is the adapter's own session id, absent until the
-    /// agent has handed one back.
+    /// The provider session id is absent until the agent has handed one back.
     CodingAgent {
         installation_id: String,
         agent_kind: AgentKind,
         workspace_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        acp_session_id: Option<String>,
+        agent_session_id: Option<String>,
     },
     /// Migrated from pre-rework data that no longer resolves. Displayed as a
     /// prompt to pick a runtime, never silently treated as a default.
@@ -164,7 +163,8 @@ impl RuntimeRef {
     pub fn from_columns(kind: &str, payload: &str) -> Result<Self, String> {
         let expected =
             RuntimeKind::parse(kind).ok_or_else(|| format!("unknown runtime kind: {kind}"))?;
-        let parsed: RuntimeRef = serde_json::from_str(payload)
+        let compatible = payload.replace("\"acp_session_id\":", "\"agent_session_id\":");
+        let parsed: RuntimeRef = serde_json::from_str(&compatible)
             .map_err(|error| format!("invalid runtime ref: {error}"))?;
         if parsed.kind() != expected {
             return Err(format!(
@@ -193,7 +193,7 @@ mod tests {
             installation_id: "inst-1".into(),
             agent_kind: AgentKind::Codex,
             workspace_id: "ws-1".into(),
-            acp_session_id: None,
+            agent_session_id: None,
         }
     }
 
@@ -212,7 +212,7 @@ mod tests {
                 installation_id: "inst-1".into(),
                 agent_kind: AgentKind::ClaudeCode,
                 workspace_id: "ws-1".into(),
-                acp_session_id: Some("sess-9".into()),
+                agent_session_id: Some("sess-9".into()),
             },
             RuntimeRef::Unresolved {
                 reason: UnresolvedReason::NoModel,
@@ -249,10 +249,19 @@ mod tests {
     }
 
     #[test]
-    fn acp_session_id_is_omitted_when_absent() {
+    fn agent_session_id_is_omitted_when_absent() {
         let json = agent().to_column().unwrap();
-        assert!(!json.contains("acp_session_id"), "{json}");
+        assert!(!json.contains("agent_session_id"), "{json}");
         assert!(json.contains("\"kind\":\"coding-agent\""), "{json}");
+    }
+
+    #[test]
+    fn reads_legacy_agent_session_key() {
+        let payload = r#"{"kind":"coding-agent","installation_id":"i","agent_kind":"codex","workspace_id":"w","acp_session_id":"s"}"#;
+        assert!(matches!(
+            RuntimeRef::from_columns("coding-agent", payload).unwrap(),
+            RuntimeRef::CodingAgent { agent_session_id: Some(id), .. } if id == "s"
+        ));
     }
 
     #[test]

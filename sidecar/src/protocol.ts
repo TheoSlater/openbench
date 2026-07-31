@@ -38,6 +38,7 @@ const chatSchema = z.object({
     secret: optional(z.string()),
     baseUrl: optional(z.string().url()),
   })),
+  collectText: optional(z.boolean()),
 });
 
 const agentSchema = z.object({

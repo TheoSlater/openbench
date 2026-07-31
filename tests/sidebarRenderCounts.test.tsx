@@ -235,7 +235,7 @@ describe("sidebar render counts", () => {
     });
     reset();
 
-    // 60 token batches, exactly as StreamAccumulator flushes them.
+    // 60 streamed update batches.
     await act(async () => {
       for (let i = 0; i < 60; i++) {
         useChatStore.getState().actions.patchStreamingMessages({

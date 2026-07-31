@@ -160,12 +160,6 @@ async function initializeDeferredStartupWork() {
   void migrateDefaultRuntime();
   startupPhase("legacy default model migration queued");
 
-  const [{ codexRevalidate }, { claudeRevalidate }] = await Promise.all([
-    import("@/features/codex/codexClient"),
-    import("@/features/claude/claudeClient"),
-  ]);
-  void Promise.allSettled([codexRevalidate(), claudeRevalidate()]);
-
   startupPhase("idle manager init start");
   const { idleManager, registerDefaultIdleHandlers } = await import("@/lib/idle");
   idleManager.start();

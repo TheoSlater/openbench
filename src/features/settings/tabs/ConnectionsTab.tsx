@@ -11,18 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  claudeAuthenticate,
-  claudeCancelAuthenticate,
-  claudeStatus,
-  claudeVerify,
-} from "@/features/claude/claudeClient";
-import {
-  codexAuthenticate,
-  codexCancelAuthenticate,
-  codexStatus,
-  codexVerify,
-} from "@/features/codex/codexClient";
 import { CodingAgentSetup } from "@/features/coding-agents/CodingAgentSetup";
 import { CLAUDE_AGENT, CODEX_AGENT } from "@/features/coding-agents/setupCopy";
 import { connectionsClient } from "@/features/connections/client";
@@ -35,7 +23,6 @@ import type { ConnectionModel } from "@/generated/bindings/ConnectionModel";
 import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";
 import type { Provider } from "@/generated/bindings/Provider";
 import { useNotify } from "@/hooks/useNotify";
-import { useSettingsStore } from "@/store/settingsStore";
 
 const PROVIDERS: Array<{ provider: Provider; label: string; endpoint: string }> = [
   { provider: "openai", label: "OpenAI", endpoint: "https://api.openai.com/v1" },
@@ -354,12 +341,6 @@ export function ConnectionsTab() {
       actions: state.actions,
     })),
   );
-  const settings = useSettingsStore(
-    useShallow((state) => ({
-      codex: state.codex,
-      claude: state.claude,
-    })),
-  );
   const [adding, setAdding] = useState<Connection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const grouped = useMemo(() => groupConnections(summaries), [summaries]);
@@ -389,26 +370,16 @@ export function ConnectionsTab() {
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-base font-semibold">Coding agents</h2>
-          <p className="text-sm text-muted-foreground">External ACP runtimes own tools, files, and terminal work.</p>
+          <p className="text-sm text-muted-foreground">Local CLI agents use your existing sign-in and workspace permissions.</p>
         </div>
         <div className="grid gap-3 xl:grid-cols-2">
           <CodingAgentSetup
             agent={CODEX_AGENT}
             logo="⬡"
-            settings={settings.codex}
-            status={codexStatus}
-            verify={codexVerify}
-            authenticate={codexAuthenticate}
-            cancelAuthenticate={codexCancelAuthenticate}
           />
           <CodingAgentSetup
             agent={CLAUDE_AGENT}
             logo="✳"
-            settings={settings.claude}
-            status={claudeStatus}
-            verify={claudeVerify}
-            authenticate={claudeAuthenticate}
-            cancelAuthenticate={claudeCancelAuthenticate}
           />
         </div>
       </section>

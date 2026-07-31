@@ -151,14 +151,21 @@ export class RuntimeServer {
       try {
         const stream = await this.runChat(command, controller.signal);
         const reader = stream.getReader();
+        let text = "";
         while (true) {
           const next = await reader.read();
           if (next.done) break;
+          if (command.collectText && next.value.type === "text-delta") text += next.value.delta;
           this.deps.write(
             { type: "chunk", requestId: command.requestId, chunk: next.value },
             secrets.filter((secret): secret is string => Boolean(secret)),
           );
         }
+        if (command.collectText) this.deps.write({
+          type: "chunk",
+          requestId: command.requestId,
+          chunk: { type: "data-runtime-result", data: { text } },
+        });
       } catch (error) {
         this.deps.write({
           type: "error",

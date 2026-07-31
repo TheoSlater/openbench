@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
 
 type Pending = oneshot::Sender<Result<serde_json::Value, String>>;
 
@@ -24,10 +24,12 @@ pub struct AiSidecar {
     state: Arc<Mutex<State>>,
     pending: Arc<Mutex<HashMap<String, Pending>>>,
     active: Arc<Mutex<HashSet<String>>>,
+    events: broadcast::Sender<AiRuntimeEvent>,
 }
 
 impl AiSidecar {
     pub fn new(app: &AppHandle) -> Result<Arc<Self>, String> {
+        let (events, _) = broadcast::channel(256);
         Ok(Arc::new(Self {
             app: app.clone(),
             executable: resolve_executable(app)?,
@@ -37,6 +39,7 @@ impl AiSidecar {
             })),
             pending: Arc::new(Mutex::new(HashMap::new())),
             active: Arc::new(Mutex::new(HashSet::new())),
+            events,
         }))
     }
 
@@ -98,6 +101,10 @@ impl AiSidecar {
         }
     }
 
+    pub fn subscribe(&self) -> broadcast::Receiver<AiRuntimeEvent> {
+        self.events.subscribe()
+    }
+
     async fn send(&self, command: serde_json::Value) -> Result<(), String> {
         let mut state = self.state.lock().await;
         if state.process.is_none() {
@@ -123,6 +130,7 @@ impl AiSidecar {
         let shared_state = self.state.clone();
         let pending = self.pending.clone();
         let active = self.active.clone();
+        let events = self.events.clone();
         tauri::async_runtime::spawn(async move {
             let mut line = String::new();
             loop {
@@ -130,7 +138,7 @@ impl AiSidecar {
                 match stdout.read_line(&mut line).await {
                     Ok(0) | Err(_) => break,
                     Ok(_) => match serde_json::from_str::<SidecarRecord>(line.trim_end()) {
-                        Ok(record) => route_record(&app, &pending, &active, record).await,
+                        Ok(record) => route_record(&app, &pending, &active, &events, record).await,
                         Err(error) => log::error!("invalid AI runtime envelope: {error}"),
                     },
                 }
@@ -139,7 +147,7 @@ impl AiSidecar {
             if state.generation == generation {
                 state.process.take();
                 drop(state);
-                fail_all(&app, &pending, &active, "AI runtime stopped unexpectedly").await;
+                fail_all(&app, &pending, &active, &events, "AI runtime stopped unexpectedly").await;
             }
         });
         Ok(())
@@ -150,19 +158,24 @@ async fn route_record(
     app: &AppHandle,
     pending: &Mutex<HashMap<String, Pending>>,
     active: &Mutex<HashSet<String>>,
+    events: &broadcast::Sender<AiRuntimeEvent>,
     record: SidecarRecord,
 ) {
     match record {
         SidecarRecord::Ready => {}
         SidecarRecord::Chunk { request_id, chunk } => {
+            let event = AiRuntimeEvent::Chunk { request_id, chunk };
+            let _ = events.send(event.clone());
             let _ = app.emit(
                 "ai-runtime-event",
-                AiRuntimeEvent::Chunk { request_id, chunk },
+                event,
             );
         }
         SidecarRecord::Done { request_id } => {
             active.lock().await.remove(&request_id);
-            let _ = app.emit("ai-runtime-event", AiRuntimeEvent::Done { request_id });
+            let event = AiRuntimeEvent::Done { request_id };
+            let _ = events.send(event.clone());
+            let _ = app.emit("ai-runtime-event", event);
         }
         SidecarRecord::Result { request_id, result } => {
             if let Some(sender) = pending.lock().await.remove(&request_id) {
@@ -174,13 +187,9 @@ async fn route_record(
                 let _ = sender.send(Err(error));
             } else {
                 active.lock().await.remove(&request_id);
-                let _ = app.emit(
-                    "ai-runtime-event",
-                    AiRuntimeEvent::Error {
-                        request_id,
-                        error,
-                    },
-                );
+                let event = AiRuntimeEvent::Error { request_id, error };
+                let _ = events.send(event.clone());
+                let _ = app.emit("ai-runtime-event", event);
             }
         }
         SidecarRecord::Log { level, message } => {
@@ -197,6 +206,7 @@ async fn fail_all(
     app: &AppHandle,
     pending: &Mutex<HashMap<String, Pending>>,
     active: &Mutex<HashSet<String>>,
+    events: &broadcast::Sender<AiRuntimeEvent>,
     message: &str,
 ) {
     for (_, sender) in pending.lock().await.drain() {
@@ -204,13 +214,12 @@ async fn fail_all(
     }
     let request_ids: Vec<String> = active.lock().await.drain().collect();
     for request_id in request_ids {
-        let _ = app.emit(
-            "ai-runtime-event",
-            AiRuntimeEvent::Error {
-                request_id,
-                error: message.to_string(),
-            },
-        );
+        let event = AiRuntimeEvent::Error {
+            request_id,
+            error: message.to_string(),
+        };
+        let _ = events.send(event.clone());
+        let _ = app.emit("ai-runtime-event", event);
     }
 }
 

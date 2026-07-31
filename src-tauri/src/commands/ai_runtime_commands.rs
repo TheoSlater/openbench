@@ -42,15 +42,14 @@ async fn connection(
     Ok(connection)
 }
 
-fn secret(
-    state: &AppState,
+pub(crate) fn secret(
+    secret_store: &dyn crate::connections::secrets::SecretStore,
     reference: Option<&SecretRef>,
 ) -> Result<Option<String>, String> {
     let Some(reference) = reference else {
         return Ok(None);
     };
-    state
-        .secret_store
+    secret_store
         .get(reference)
         .map(|value| Some(value.expose().to_string()))
         .or_else(|error| match error {
@@ -66,8 +65,8 @@ fn headers(raw: Option<&str>) -> Result<Option<BTreeMap<String, String>>, String
     .transpose()
 }
 
-fn sidecar_connection(
-    state: &AppState,
+pub(crate) fn sidecar_connection(
+    secret_store: &dyn crate::connections::secrets::SecretStore,
     connection: &crate::connections::Connection,
     model_id: Option<&str>,
     secret_override: Option<&str>,
@@ -80,7 +79,7 @@ fn sidecar_connection(
         "headers": headers(connection.extra_headers.as_deref())?,
         "secret": match secret_override {
             Some(value) => Some(value.to_string()),
-            None => secret(state, connection.secret_ref.as_ref())?,
+            None => secret(secret_store, connection.secret_ref.as_ref())?,
         },
     }))
 }
@@ -98,7 +97,7 @@ pub(crate) async fn discover_models(
             serde_json::json!({
                 "type": "list-models",
                 "requestId": request_id,
-                "connection": sidecar_connection(state, connection, None, secret_override)?,
+                "connection": sidecar_connection(state.secret_store.as_ref(), connection, None, secret_override)?,
             }),
         )
         .await
@@ -143,14 +142,14 @@ pub async fn ai_runtime_start(
         let configured = connection(&state, connection_id, token.as_deref()).await?;
         serde_json::json!({
             "type": "chat",
-            "connection": sidecar_connection(&state, &configured, Some(model_id), None)?,
+            "connection": sidecar_connection(state.secret_store.as_ref(), &configured, Some(model_id), None)?,
         })
     };
     let web_search = if let Some(provider) = request.web_search_provider.as_deref() {
         let secret_ref = SecretRef::for_web_search(provider);
         Some(serde_json::json!({
             "provider": provider,
-            "secret": secret(&state, Some(&secret_ref))?,
+            "secret": secret(state.secret_store.as_ref(), Some(&secret_ref))?,
         }))
     } else {
         None
@@ -210,7 +209,7 @@ pub async fn ai_runtime_models(
             serde_json::json!({
                 "type": "list-models",
                 "requestId": request_id,
-                "connection": sidecar_connection(&state, &configured, None, None)?,
+                "connection": sidecar_connection(state.secret_store.as_ref(), &configured, None, None)?,
             }),
         )
         .await
@@ -234,7 +233,7 @@ pub async fn ai_runtime_generate(
             serde_json::json!({
                 "type": "generate",
                 "requestId": request_id,
-                "connection": sidecar_connection(&state, &configured, Some(&model_id), None)?,
+                "connection": sidecar_connection(state.secret_store.as_ref(), &configured, Some(&model_id), None)?,
                 "prompt": prompt,
                 "instructions": instructions,
             }),

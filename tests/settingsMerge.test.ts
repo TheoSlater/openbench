@@ -50,10 +50,6 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.general.terminalEmulator).toBe("native");
     expect(merged.tts.supertonic.speed).toBe(defaults.tts.supertonic.speed);
     expect(merged.performance).toEqual(defaults.performance);
-    expect(merged.codex).toEqual(defaults.codex);
-    expect(merged.codexWorkspace).toBe("");
-    expect(merged.claude).toEqual(defaults.claude);
-    expect(merged.claudeWorkspace).toBe("");
     expect(merged.actions).toBe(defaults.actions);
   });
 
@@ -70,13 +66,5 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
     expect(defaults.general.terminalEmulator).toBe("native");
-    expect(defaults.codex).toEqual({
-      adapter_override: null,
-      codex_path: null,
-      no_browser: false,
-    });
-    expect(defaults.codexWorkspace).toBe("");
-    expect(defaults.claude).toEqual({ adapter_override: null });
-    expect(defaults.claudeWorkspace).toBe("");
   });
 });
