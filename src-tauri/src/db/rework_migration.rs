@@ -145,6 +145,7 @@ fn display_name_for(provider: Provider, base_url: Option<&str>) -> String {
         Provider::Ollama => "Ollama",
         Provider::Lmstudio => "LM Studio",
         Provider::OpenaiCompatible => "OpenAI-compatible",
+        Provider::VercelGateway => "Vercel AI Gateway",
     };
     match base_url {
         Some(url) => format!("{label} ({url})"),

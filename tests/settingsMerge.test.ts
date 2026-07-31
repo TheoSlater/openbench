@@ -44,7 +44,7 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.tts.supertonic.voiceName).toBe("F2");
     // Fields absent from the persisted blob come from defaults.
     expect(merged.dictation.vadSensitivity).toBe(defaults.dictation.vadSensitivity);
-    expect(merged.general.webSearch.apiKeys).toEqual(defaults.general.webSearch.apiKeys);
+    expect(merged.general.webSearch).toEqual(defaults.general.webSearch);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
     expect(merged.general.terminalEmulator).toBe("native");

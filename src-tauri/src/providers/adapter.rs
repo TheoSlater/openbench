@@ -367,7 +367,8 @@ fn legacy_config(connection: &Connection, secret: Option<&Secret>) -> ProviderCo
         Provider::Openai
         | Provider::Openrouter
         | Provider::Lmstudio
-        | Provider::OpenaiCompatible => ProviderType::OpenAICompatible,
+        | Provider::OpenaiCompatible
+        | Provider::VercelGateway => ProviderType::OpenAICompatible,
     };
     ProviderConfig {
         id: 0,

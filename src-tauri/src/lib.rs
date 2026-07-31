@@ -310,6 +310,8 @@ pub fn run() {
             commands::ai_runtime_commands::ai_runtime_approval,
             commands::ai_runtime_commands::ai_runtime_models,
             commands::ai_runtime_commands::ai_runtime_generate,
+            commands::ai_runtime_commands::web_search_credential_status,
+            commands::ai_runtime_commands::set_web_search_credential,
             commands::memory_commands::memory_get_settings,
             commands::memory_commands::memory_update_settings,
             commands::memory_commands::memory_test_connection,

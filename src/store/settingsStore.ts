@@ -108,7 +108,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 27;
+const SETTINGS_VERSION = 28;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -130,10 +130,7 @@ export const defaultPerformance: PerformanceSettings = {
 };
 
 function createDefaultWebSearchSettings(): WebSearchSettings {
-  return {
-    provider: "local",
-    apiKeys: { local: "", exa: "", ollama: "", tavily: "" },
-  };
+  return { provider: "local" };
 }
 
 function defaultSettingsState(): Omit<SettingsState, "actions"> {
@@ -188,10 +185,6 @@ export function mergeSettingsWithDefaults(
       webSearch: {
         ...current.general.webSearch,
         ...p.general?.webSearch,
-        apiKeys: {
-          ...current.general.webSearch.apiKeys,
-          ...p.general?.webSearch?.apiKeys,
-        },
       },
     },
     tts: {
@@ -270,16 +263,8 @@ export const useSettingsStore = create<SettingsState>()(
           delete state.account;
         }
         if (version < 6 && state?.general) {
-          const webSearch = createDefaultWebSearchSettings();
-          webSearch.apiKeys.exa = state.general.exaApiKey ?? "";
-          state.general.webSearch = webSearch;
+          state.general.webSearch = createDefaultWebSearchSettings();
           delete state.general.exaApiKey;
-        }
-        if (version < 7 && state?.general?.webSearch) {
-          state.general.webSearch.apiKeys = {
-            ...state.general.webSearch.apiKeys,
-            ollama: "",
-          };
         }
         if (version < 9) {
           state.performance = { ...defaultPerformance, ...state.performance };
@@ -307,10 +292,6 @@ export const useSettingsStore = create<SettingsState>()(
             ...createDefaultWebSearchSettings(),
             ...state.general.webSearch,
             provider: state.general.webSearch?.provider ?? "local",
-            apiKeys: {
-              ...createDefaultWebSearchSettings().apiKeys,
-              ...(state.general.webSearch?.apiKeys ?? {}),
-            },
           };
         }
         if (version < 16) {
@@ -351,6 +332,9 @@ export const useSettingsStore = create<SettingsState>()(
           state.general.terminalEmulator = migrateTerminalEmulatorV27(
             state.general.terminalEmulator,
           );
+        }
+        if (version < 28 && state?.general?.webSearch) {
+          delete state.general.webSearch.apiKeys;
         }
         startupPhase("settings migration complete");
         return state as SettingsState;

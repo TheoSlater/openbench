@@ -4,7 +4,7 @@ import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";
 export function groupConnections(connections: ConnectionSummary[]) {
   return {
     cloud: connections.filter((item) =>
-      ["openai", "anthropic", "gemini", "openrouter"].includes(
+      ["openai", "anthropic", "gemini", "openrouter", "vercel-gateway"].includes(
         item.connection.provider,
       )
     ),

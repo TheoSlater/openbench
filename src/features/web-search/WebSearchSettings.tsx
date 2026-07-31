@@ -1,4 +1,7 @@
+import { useRef, useState } from "react";
 import { Link } from "@/components/ui/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -8,17 +11,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Stack } from "@/components/ui/Stack";
-import { TextField } from "@/components/ui/text-field";
 import { Typography } from "@/components/ui/Typography";
 import { SettingCard, selectClassName } from "@/features/settings/SettingComponents";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useNotify } from "@/hooks/useNotify";
 import { webSearchProviderRegistry } from "./registry";
 import type { WebSearchProviderId } from "./types";
-import { useWebSearchConfig } from "./useWebSearchConfig";
+import { useWebSearchConfig, useWebSearchCredential } from "./useWebSearchConfig";
 
 export function WebSearchSettings() {
   const updateGeneral = useSettingsStore((state) => state.actions.updateGeneral);
-  const { apiKey, provider, webSearch } = useWebSearchConfig();
+  const { provider, webSearch } = useWebSearchConfig();
+  const { configured, save } = useWebSearchCredential(provider.id);
+  const credentialRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const notify = useNotify();
+
+  const saveCredential = async () => {
+    setSaving(true);
+    try {
+      await save(credentialRef.current?.value ?? "");
+      if (credentialRef.current) credentialRef.current.value = "";
+      notify.success("Web search credential saved");
+    } catch (error) {
+      notify.error("Could not save credential", String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Stack spacing={0}>
@@ -59,25 +79,15 @@ export function WebSearchSettings() {
           description="Stored locally on this device. Sent only to selected search provider."
         >
           <Stack spacing={0.75}>
-            <TextField
-              value={apiKey}
-              onChange={(event) => {
-                updateGeneral({
-                  webSearch: {
-                    ...webSearch,
-                    apiKeys: {
-                      ...webSearch.apiKeys,
-                      [provider.id]: event.target.value,
-                    },
-                  },
-                });
-              }}
-              placeholder={provider.apiKeyPlaceholder}
+            <Input
+              ref={credentialRef}
+              placeholder={configured ? "Saved in system keychain" : provider.apiKeyPlaceholder}
               type="password"
               autoComplete="off"
-              fullWidth
-              size="small"
             />
+            <Button size="sm" onClick={() => void saveCredential()} disabled={saving}>
+              {saving ? "Saving…" : "Save key"}
+            </Button>
             <Typography>
               Need key?{" "}
               <Link href={provider.dashboardUrl} target="_blank" rel="noreferrer">

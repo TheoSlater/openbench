@@ -1,6 +1,5 @@
 import { Globe } from "lucide-react";
 import React from "react";
-import { getWebSearchWarning } from "@/features/web-search/useWebSearchConfig";
 import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 
@@ -37,7 +36,6 @@ export const featureRegistry: FeatureDef[] = [
     getIsActive: () =>
       useChatStore.getState().activeFeatureIds.includes("web_search"),
     toggle: () => useChatStore.getState().actions.toggleFeature("web_search"),
-    getWarning: getWebSearchWarning,
   },
 ];
 

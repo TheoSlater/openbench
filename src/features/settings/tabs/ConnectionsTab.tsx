@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,6 +42,7 @@ const PROVIDERS: Array<{ provider: Provider; label: string; endpoint: string }> 
   { provider: "anthropic", label: "Anthropic", endpoint: "https://api.anthropic.com/v1" },
   { provider: "gemini", label: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta" },
   { provider: "openrouter", label: "OpenRouter", endpoint: "https://openrouter.ai/api/v1" },
+  { provider: "vercel-gateway", label: "Vercel AI Gateway", endpoint: "https://ai-gateway.vercel.sh/v4/ai" },
   { provider: "ollama", label: "Ollama", endpoint: "http://127.0.0.1:11434" },
   { provider: "lmstudio", label: "LM Studio", endpoint: "http://127.0.0.1:1234/v1" },
   { provider: "openai-compatible", label: "Custom endpoint", endpoint: "" },
@@ -64,7 +65,7 @@ function ConnectionEditor({
   persisted?: boolean;
 }) {
   const [connection, setConnection] = useState(initial);
-  const [credential, setCredential] = useState("");
+  const credentialRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [models, setModels] = useState<ConnectionModel[]>([]);
   const [modelId, setModelId] = useState("");
@@ -74,7 +75,7 @@ function ConnectionEditor({
   useEffect(() => {
     if (open) {
       setConnection(initial);
-      setCredential("");
+      if (credentialRef.current) credentialRef.current.value = "";
       setModelId("");
       if (persisted) {
         void connectionsClient.models(initial.id).then(setModels).catch(() => setModels([]));
@@ -85,7 +86,9 @@ function ConnectionEditor({
   const save = async () => {
     setSaving(true);
     try {
+      const credential = credentialRef.current?.value ?? "";
       await connectionsClient.save(connection, credential);
+      if (credentialRef.current) credentialRef.current.value = "";
       await onSaved();
       onOpenChange(false);
       notify.success("Connection saved");
@@ -151,9 +154,8 @@ function ConnectionEditor({
                 id="connection-key"
                 type="password"
                 autoComplete="off"
-                value={credential}
+                ref={credentialRef}
                 placeholder={connection.secret_ref ? "Leave blank to keep existing key" : "Required"}
-                onChange={(event) => setCredential(event.target.value)}
               />
             </div>
           ) : null}
@@ -466,7 +468,7 @@ export function ConnectionsTab() {
             <DialogDescription>Choose where Poly should run chat models.</DialogDescription>
           </DialogHeader>
           {[
-            ["Cloud", PROVIDERS.filter((item) => ["openai", "anthropic", "gemini", "openrouter"].includes(item.provider))],
+            ["Cloud", PROVIDERS.filter((item) => ["openai", "anthropic", "gemini", "openrouter", "vercel-gateway"].includes(item.provider))],
             ["Local", PROVIDERS.filter((item) => ["ollama", "lmstudio"].includes(item.provider))],
             ["Custom", PROVIDERS.filter((item) => item.provider === "openai-compatible")],
           ].map(([title, providers]) => (

@@ -1,5 +1,5 @@
 use crate::connections::repository;
-use crate::connections::secrets::{SecretError, SecretRef};
+use crate::connections::secrets::{Secret, SecretError, SecretRef};
 use crate::AppState;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -43,7 +43,7 @@ async fn connection(
 }
 
 fn secret(
-    state: &tauri::State<'_, AppState>,
+    state: &AppState,
     reference: Option<&SecretRef>,
 ) -> Result<Option<String>, String> {
     let Some(reference) = reference else {
@@ -67,9 +67,10 @@ fn headers(raw: Option<&str>) -> Result<Option<BTreeMap<String, String>>, String
 }
 
 fn sidecar_connection(
-    state: &tauri::State<'_, AppState>,
+    state: &AppState,
     connection: &crate::connections::Connection,
     model_id: Option<&str>,
+    secret_override: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "id": connection.id,
@@ -77,8 +78,30 @@ fn sidecar_connection(
         "modelId": model_id,
         "baseUrl": connection.effective_base_url(),
         "headers": headers(connection.extra_headers.as_deref())?,
-        "secret": secret(state, connection.secret_ref.as_ref())?,
+        "secret": match secret_override {
+            Some(value) => Some(value.to_string()),
+            None => secret(state, connection.secret_ref.as_ref())?,
+        },
     }))
+}
+
+pub(crate) async fn discover_models(
+    state: &AppState,
+    connection: &crate::connections::Connection,
+    secret_override: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    state
+        .ai
+        .request(
+            &request_id,
+            serde_json::json!({
+                "type": "list-models",
+                "requestId": request_id,
+                "connection": sidecar_connection(state, connection, None, secret_override)?,
+            }),
+        )
+        .await
 }
 
 #[tauri::command]
@@ -120,7 +143,7 @@ pub async fn ai_runtime_start(
         let configured = connection(&state, connection_id, token.as_deref()).await?;
         serde_json::json!({
             "type": "chat",
-            "connection": sidecar_connection(&state, &configured, Some(model_id))?,
+            "connection": sidecar_connection(&state, &configured, Some(model_id), None)?,
         })
     };
     let web_search = if let Some(provider) = request.web_search_provider.as_deref() {
@@ -187,7 +210,7 @@ pub async fn ai_runtime_models(
             serde_json::json!({
                 "type": "list-models",
                 "requestId": request_id,
-                "connection": sidecar_connection(&state, &configured, None)?,
+                "connection": sidecar_connection(&state, &configured, None, None)?,
             }),
         )
         .await
@@ -211,12 +234,46 @@ pub async fn ai_runtime_generate(
             serde_json::json!({
                 "type": "generate",
                 "requestId": request_id,
-                "connection": sidecar_connection(&state, &configured, Some(&model_id))?,
+                "connection": sidecar_connection(&state, &configured, Some(&model_id), None)?,
                 "prompt": prompt,
                 "instructions": instructions,
             }),
         )
         .await
+}
+
+fn web_search_ref(provider: &str) -> Result<SecretRef, String> {
+    matches!(provider, "exa" | "ollama" | "tavily")
+        .then(|| SecretRef::for_web_search(provider))
+        .ok_or_else(|| "Unknown web search provider".to_string())
+}
+
+#[tauri::command]
+pub fn web_search_credential_status(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+) -> Result<bool, String> {
+    match state.secret_store.get(&web_search_ref(&provider)?) {
+        Ok(secret) => Ok(!secret.is_empty()),
+        Err(SecretError::NotFound) => Ok(false),
+        Err(SecretError::Unavailable(detail)) => {
+            Err(format!("Credential store unavailable: {detail}"))
+        }
+    }
+}
+
+#[tauri::command]
+pub fn set_web_search_credential(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+    credential: Option<String>,
+) -> Result<(), String> {
+    let reference = web_search_ref(&provider)?;
+    match credential.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+        Some(value) => state.secret_store.set(&reference, &Secret::new(value)),
+        None => state.secret_store.delete(&reference),
+    }
+    .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

@@ -36,6 +36,7 @@ pub enum Provider {
     Lmstudio,
     /// Any other endpoint speaking the OpenAI chat-completions shape.
     OpenaiCompatible,
+    VercelGateway,
 }
 
 impl Provider {
@@ -49,6 +50,7 @@ impl Provider {
             Provider::Ollama => "ollama",
             Provider::Lmstudio => "lmstudio",
             Provider::OpenaiCompatible => "openai-compatible",
+            Provider::VercelGateway => "vercel-gateway",
         }
     }
 
@@ -62,6 +64,7 @@ impl Provider {
             "ollama" => Some(Provider::Ollama),
             "lmstudio" => Some(Provider::Lmstudio),
             "openai-compatible" => Some(Provider::OpenaiCompatible),
+            "vercel-gateway" => Some(Provider::VercelGateway),
             _ => None,
         }
     }
@@ -77,6 +80,7 @@ impl Provider {
             Provider::Ollama => "http://127.0.0.1:11434",
             Provider::Lmstudio => "http://127.0.0.1:1234/v1",
             Provider::OpenaiCompatible => "https://api.openai.com/v1",
+            Provider::VercelGateway => "https://ai-gateway.vercel.sh/v4/ai",
         }
     }
 
@@ -85,6 +89,13 @@ impl Provider {
     pub fn needs_credential(self) -> bool {
         !matches!(self, Provider::Ollama | Provider::Lmstudio)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ConnectionValidation {
+    pub ready: bool,
+    pub message: String,
 }
 
 /// One configured endpoint plus credential.
@@ -398,6 +409,7 @@ mod tests {
             Provider::Ollama,
             Provider::Lmstudio,
             Provider::OpenaiCompatible,
+            Provider::VercelGateway,
         ] {
             assert_eq!(Provider::parse(provider.as_str()), Some(provider));
             assert!(!provider.default_base_url().is_empty());

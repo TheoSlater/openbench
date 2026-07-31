@@ -92,8 +92,16 @@ async function listJsonModels(
   if (connection.secret) headers.set("authorization", `Bearer ${connection.secret}`);
   const response = await providerFetch(url, { headers });
   if (!response.ok) throw new Error(`Model discovery failed (${response.status})`);
-  const body = await response.json() as { data?: ModelRow[]; models?: Array<{ name: string; displayName?: string }> };
-  if (Array.isArray(body.data)) return body.data;
+  const body = await response.json() as {
+    data?: Array<ModelRow & { display_name?: string }>;
+    models?: Array<{ name: string; displayName?: string }>;
+  };
+  if (Array.isArray(body.data)) {
+    return body.data.map(({ display_name, ...model }) => ({
+      ...model,
+      name: model.name ?? display_name,
+    }));
+  }
   if (Array.isArray(body.models)) {
     return body.models.map((model) => ({
       id: model.name.replace(/^models\//, ""),
@@ -121,7 +129,15 @@ export async function listModels(
   if (connection.provider === "anthropic") {
     return listJsonModels(
       `${stripSlash(connection.baseUrl ?? "https://api.anthropic.com/v1")}/models`,
-      connection,
+      {
+        ...connection,
+        secret: undefined,
+        headers: {
+          ...connection.headers,
+          ...(connection.secret ? { "x-api-key": connection.secret } : {}),
+          "anthropic-version": "2023-06-01",
+        },
+      },
       providerFetch,
     );
   }
@@ -136,8 +152,5 @@ export async function listModels(
       },
     }, providerFetch);
   }
-  const base = connection.provider === "ollama"
-    ? compatibleBase(connection)
-    : compatibleBase(connection);
-  return listJsonModels(`${base}/models`, connection, providerFetch);
+  return listJsonModels(`${compatibleBase(connection)}/models`, connection, providerFetch);
 }
