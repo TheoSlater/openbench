@@ -104,7 +104,10 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
             webSearch TEXT,
             status TEXT,
             errorMessage TEXT,
-            memoryUpdates TEXT
+            memoryUpdates TEXT,
+            runtimeParts TEXT,
+            usage TEXT,
+            finishReason TEXT
         )",
     )
     .execute(pool)
@@ -187,6 +190,23 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
+    }
+
+    for column in ["runtimeParts", "usage", "finishReason"] {
+        let exists = sqlx::query(&format!(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = '{column}'"
+        ))
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .get::<i64, _>(0)
+            > 0;
+        if !exists {
+            sqlx::query(&format!("ALTER TABLE messages ADD COLUMN {column} TEXT"))
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversationId)")

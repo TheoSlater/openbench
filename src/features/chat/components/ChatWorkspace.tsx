@@ -238,6 +238,7 @@ export default function ChatWorkspace({
     <Box
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
+      {legacyChat.runtime}
       {/* Full voice mode is opaque over the workspace — skip rendering the
           chat UI behind it so streaming markdown re-renders don't starve the
           orb animation. Compact voice mode shows the chat, with the voice bar

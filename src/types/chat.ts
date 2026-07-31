@@ -1,4 +1,5 @@
 import type { ModelProvider } from "@/store/modelStore";
+import type { UIMessage } from "ai";
 
 export type Role = "user" | "assistant";
 
@@ -69,6 +70,15 @@ export interface ChatMessage {
   status?: "queued" | "streaming" | "complete" | "error" | "aborted";
   errorMessage?: string;
   webSearch?: WebSearchEvent;
+  /** Structured AI SDK parts not duplicated by content/thinking/attachments. */
+  runtimeParts?: Array<UIMessage["parts"][number]>;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    reasoningTokens?: number;
+  };
+  finishReason?: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
   /** Summaries of memories saved from this turn. In-memory only, not persisted. */
   memoryUpdates?: string[];
 }
