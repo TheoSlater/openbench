@@ -99,7 +99,7 @@ export function WebSearchSettings() {
       ) : (
         <SettingCard
           title="Local search"
-          description="Uses bundled Rust HTML providers. No API key or sidecar required."
+          description="Uses local DuckDuckGo search. No API key required."
         />
       )}
     </Stack>

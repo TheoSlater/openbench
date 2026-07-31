@@ -1388,7 +1388,7 @@ async fn installations_and_workspaces_round_trip() {
         account_id: "acct".into(),
         agent_kind: crate::runtime::AgentKind::ClaudeCode,
         display_name: "Claude Code".into(),
-        executable_path: Some("/usr/local/bin/claude-agent-acp".into()),
+        executable_path: Some("/usr/local/bin/claude".into()),
         path_source: crate::connections::PathSource::PathLookup,
         launch_args: vec!["--cli".into()],
         detected_versions: Some(r#"{"adapter":"0.63.0","node":"22.14.0"}"#.into()),

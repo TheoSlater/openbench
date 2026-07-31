@@ -1,47 +1,50 @@
-# Domain Language
+# PolyUI domain and runtime context
 
-## Core Concepts
+## Core concepts
 
-- **Conversation** — persistent chat session, collection of UserMessages and AssistantMessages
-- **Message** — single turn in a conversation. Role: `user`, `assistant`, or `tool`
-- **Stream** — real-time token-by-token delivery of assistant response via Tauri events
-- **Tool Loop** — iterative cycle: model generates stream → tool call detected → tool executed → result fed back → model generates next stream
-- **Multi-Model Stream** — sending same user message to N models simultaneously; each gets own `request_id`
-- **Title Generation** — auto-naming conversation after first assistant response using LLM call
+- **Conversation** — SQLite-backed chat containing user and assistant messages.
+- **Message** — one persisted turn. Text, reasoning, attachments, citations, AI SDK runtime parts, usage, finish state, and agent session metadata live on this entity.
+- **Connection** — provider kind, endpoint, and model catalog reference. Database rows contain keychain references, never credentials.
+- **Runtime** — either a direct/Gateway chat model or a local Claude Code/Codex coding agent.
+- **Request** — one isolated stream identified by `requestId`. Multi-model chat starts independent requests.
+- **Sidecar** — bundled Bun executable owning all AI SDK generation, streaming, tools, provider normalization, and coding-agent protocol handling.
 
-## Architecture Nouns
+## Runtime flow
 
-- **Event Bus** — typed pub/sub over Tauri events (`chat-chunk`, `chat-thinking`, `web-search-event`)
-- **Stream Accumulator** — pure content accumulation logic (no React), batches token updates via rAF
-- **Stream Client** — typed wrapper around Tauri event listeners; single stable subscription per hook lifetime
-- **Provider** — abstraction over an LLM backend (currently only OllamaLocal). Implements `LLMProvider` trait
-- **Tool Loop** — orchestrates streaming + tool calling + web search in a loop until no tool call
-- **Stream Emitter** — trait for emitting stream events (Tauri impl + test spy)
-- **Web Search Client** — trait for search backends (Exa impl + mock for tests)
-- **Repository** — data access seam for conversations/messages (SQLite impl + in-memory impl for fallback + tests)
-- **Store Coordinator** — one-directional effect: subscribes to auth changes, dispatches to chat store
-
-## Module Map (Rust)
-
-```
-error.rs           — AppError enum (Db, Provider, Network, Parse, Cancelled, Message)
-stream_emitter.rs  — StreamEmitter trait + TauriStreamEmitter + TestStreamEmitter
-tool_loop.rs       — ToolLoop struct + ThinkingTagParser (extracted from chat_commands)
-web_search.rs      — WebSearchClient trait + ExaWebSearchClient + MockWebSearchClient
+```text
+React UI
+  -> @ai-sdk/react useChat
+  -> TauriChatTransport
+  -> Rust authorization/keychain/supervisor
+  -> private JSONL stdin/stdout
+  -> Bun sidecar
+  -> Vercel AI SDK providers/tools or local Claude Code/Codex
 ```
 
-## Module Map (TypeScript)
+Rust does not construct provider requests, parse provider streams, run model tool loops, accumulate chat tokens, or translate coding-agent protocols. Rust retains Tauri lifecycle, SQLite coordination, OS keychain access, mobile framing, and sidecar process-tree cleanup.
 
-```
-lib/chat/stream-client.ts      — EventBus interface + TauriEventBus
-lib/chat/stream-accumulator.ts — StreamAccumulator (pure, no React)
-lib/chat/event-bus.ts          — backward-compat re-exports
-store/coordinator.ts           — auth → chat one-directional effect
+## Module map
+
+```text
+sidecar/src/providers.ts          provider registry + model discovery
+sidecar/src/runtime.ts            AI SDK streamText/tool-loop entry
+sidecar/src/web-search.ts         schema-validated AI SDK search tool
+sidecar/src/agents.ts             Claude Code/Codex AI SDK providers
+sidecar/src/server.ts             strict request-scoped JSONL dispatcher
+src/lib/ai/transport.ts           AI SDK ChatTransport over one Tauri listener
+src/lib/ai/messages.ts            sole Message <-> UIMessage mapping boundary
+src/features/chat/runtime/        headless @ai-sdk/react sessions
+src-tauri/src/ai_sidecar/         supervision and opaque record routing
 ```
 
 ## Conventions
 
-- Rust commands are thin adapters; domain logic lives in pure functions or trait impls
-- Zustand stores MUST NOT import each other. Cross-store data flow goes through coordinator effects
-- Frontend repository has a `setRepository()` injection seam for tests
-- `execute_sql` command gated behind `dev-sql-console` feature flag; disabled by default
+- SQLite remains sole conversation source of truth. Do not add another chat database.
+- Provider and web-search secrets stay in OS keychain. Frontend sends connection IDs only.
+- Store structured AI SDK parts in `runtimeParts`; do not duplicate text/reasoning in a second representation.
+- Zustand stores must not import each other. Cross-store effects go through coordinators or imperative reads at action boundaries.
+- Use `useShallow` for grouped selectors. Keep one global runtime listener and request-scoped fan-out.
+- Coding agents default to read-only. Workspace writes need explicit mode selection and each dangerous operation needs approval.
+- `execute_sql` remains gated behind `dev-sql-console` and disabled by default.
+
+See [AI SDK runtime architecture](docs/ai-sdk-runtime.md) for lifecycle, security, packaging, and smoke tests.

@@ -36,10 +36,10 @@ use std::time::Instant;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
-/// The ACP host, reachable from the exit handler.
+/// The AI SDK sidecar supervisor, reachable from the exit handler.
 ///
 /// `RunEvent::ExitRequested` has no `AppState`, and the exit path hard-exits
-/// without unwinding, so the host has to be reachable without going through
+/// without unwinding, so the supervisor must be reachable without going through
 /// managed state.
 static AI_SIDECAR_FOR_EXIT: std::sync::OnceLock<Arc<crate::ai_sidecar::AiSidecar>> =
     std::sync::OnceLock::new();

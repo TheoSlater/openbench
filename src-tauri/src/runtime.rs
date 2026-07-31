@@ -1,8 +1,8 @@
 //! The top-level runtime reference carried by every conversation.
 //!
 //! Poly UI has two runtime families that do not share an interface:
-//! chat models (direct BYOK APIs, Poly UI owns the loop) and coding agents
-//! (external ACP runtimes that own their own loop). A conversation belongs to
+//! chat models (direct BYOK APIs or Gateway) and local coding agents
+//! (Claude Code or Codex). A conversation belongs to
 //! exactly one, decided at creation.
 //!
 //! The discriminant is stored in its own column (`conversations.runtime_kind`)

@@ -8,10 +8,8 @@
 //! No struct in this module holds secret material. Credentials live in the OS
 //! keychain and the database stores only a [`secrets::SecretRef`].
 
-// This is the storage layer for the runtime rework. Checkpoint 2 lands the
-// types, schema, and migration; the ACP host (3), the adapters (4, 5), the
-// provider layer (6), and the UI (7) are its callers. Until then several
-// accessors are exercised only by tests, which does not count as use.
+// Persisted compatibility types remain readable while active generation and
+// discovery run through the AI SDK sidecar.
 #![allow(dead_code)]
 
 pub mod repository;
