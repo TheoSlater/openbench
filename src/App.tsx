@@ -43,6 +43,7 @@ import { getDevComponentGalleryAction } from "@/features/dev/componentGalleryAct
 import { useViewportStore } from "@/features/viewport/viewportStore";
 import { listen } from "@tauri-apps/api/event";
 import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
+import { useMobileRelayBridge } from "@/lib/mobile/relay-bridge";
 
 const AuthModalLazy = lazy(() =>
   import("@/features/auth/AuthModal").then((module) => ({
@@ -65,6 +66,7 @@ const ViewportDrawerLazy = lazy(() =>
   })),
 );
 function App() {
+  useMobileRelayBridge();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] =
     useState<SettingsTab>("general");

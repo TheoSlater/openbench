@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Typography } from "@/components/ui/Typography";
 import { useSettingsStore } from "@/store/settingsStore";
 import { SettingRow, SettingsSection } from "../SettingsShell";
+import { relayPairingPayload } from "@/lib/mobile/relay-bridge";
 
 type MobilePairingInfo = {
   url: string;
@@ -22,6 +23,7 @@ export function MobileTab() {
   const [pairing, setPairing] = useState<MobilePairingInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const relayUrl = import.meta.env.VITE_POLY_RELAY_URL as string | undefined;
   const { experimentalFeatures, mobileWebAccess, actions } = useSettingsStore(
     useShallow((state) => ({
       experimentalFeatures: state.general.experimentalFeatures,
@@ -135,11 +137,15 @@ export function MobileTab() {
           {pairing ? (
             <Stack spacing={3}>
               <div className="w-fit rounded-xl border border-border/60 bg-white p-3 dark:bg-white">
-                <QRCodeSVG value={pairing.url} size={184} marginSize={1} />
+                <QRCodeSVG
+                  value={relayUrl ? relayPairingPayload(pairing, relayUrl) : pairing.url}
+                  size={184}
+                  marginSize={1}
+                />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  {pairing.url}
+                  {relayUrl ? "Remote relay pairing enabled." : pairing.url}
                 </code>
                 <Button type="button" variant="outline" size="sm" onClick={copyUrl} startIcon={<Copy />}>
                   Copy
