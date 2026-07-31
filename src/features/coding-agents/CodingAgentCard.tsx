@@ -5,13 +5,12 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipLabel as Tooltip } from "@/components/ui/tooltip-label";
 import { Typography } from "@/components/ui/Typography";
-import type { PrimaryAction } from "@/generated/bindings/PrimaryAction";
 import { cardStatus } from "@/features/connections/status";
 import { CARD_STATUS, type AgentConfig } from "./setupCopy";
 
 /** The only two fields the card needs, agent-agnostic by construction. */
 export type CardStatus = {
-  primaryAction: PrimaryAction;
+  primaryAction: "none" | "setup" | "sign-in" | "retry";
   state: string;
   diagnostic?: string;
 };

@@ -1,4 +1,4 @@
-import type { Role, Attachment, WebSearchEvent } from "@/types/chat";
+import type { Role, Attachment, WebSearchEvent, Message } from "@/types/chat";
 
 export interface MessageProps {
   role: Role;
@@ -18,4 +18,5 @@ export interface MessageProps {
   webSearch?: WebSearchEvent;
   isLastMessage?: boolean;
   memoryUpdates?: string[];
+  runtimeParts?: Message["runtimeParts"];
 }

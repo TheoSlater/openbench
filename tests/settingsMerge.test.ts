@@ -44,16 +44,12 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.tts.supertonic.voiceName).toBe("F2");
     // Fields absent from the persisted blob come from defaults.
     expect(merged.dictation.vadSensitivity).toBe(defaults.dictation.vadSensitivity);
-    expect(merged.general.webSearch.apiKeys).toEqual(defaults.general.webSearch.apiKeys);
+    expect(merged.general.webSearch).toEqual(defaults.general.webSearch);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
     expect(merged.general.terminalEmulator).toBe("native");
     expect(merged.tts.supertonic.speed).toBe(defaults.tts.supertonic.speed);
     expect(merged.performance).toEqual(defaults.performance);
-    expect(merged.codex).toEqual(defaults.codex);
-    expect(merged.codexWorkspace).toBe("");
-    expect(merged.claude).toEqual(defaults.claude);
-    expect(merged.claudeWorkspace).toBe("");
     expect(merged.actions).toBe(defaults.actions);
   });
 
@@ -69,14 +65,6 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.mobileWebAccess).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
-    expect(defaults.general.terminalEmulator).toBe("browser");
-    expect(defaults.codex).toEqual({
-      adapter_override: null,
-      codex_path: null,
-      no_browser: false,
-    });
-    expect(defaults.codexWorkspace).toBe("");
-    expect(defaults.claude).toEqual({ adapter_override: null });
-    expect(defaults.claudeWorkspace).toBe("");
+    expect(defaults.general.terminalEmulator).toBe("native");
   });
 });

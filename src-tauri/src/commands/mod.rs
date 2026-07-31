@@ -1,9 +1,5 @@
-pub mod acp_commands;
-pub mod adapter_install_commands;
-pub mod chat_commands;
-pub mod claude_commands;
-pub mod codex_commands;
-pub mod config_commands;
+pub mod agent_commands;
+pub mod ai_runtime_commands;
 pub mod connection_commands;
 pub mod db_commands;
 pub mod dictation_commands;

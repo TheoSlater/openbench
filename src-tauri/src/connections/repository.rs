@@ -372,12 +372,6 @@ pub async fn refresh_discovered_models(
         return Err("model refresh contained a different connection id".into());
     }
 
-    let previous: std::collections::HashMap<_, _> = list_models(pool, connection_id)
-        .await?
-        .into_iter()
-        .filter(|model| model.discovery_source == DiscoverySource::Remote)
-        .map(|model| (model.remote_id, model.enabled))
-        .collect();
     let mut tx = pool.begin().await.map_err(|error| error.to_string())?;
     sqlx::query(
         "UPDATE connection_models SET enabled = 0
@@ -388,8 +382,7 @@ pub async fn refresh_discovered_models(
     .await
     .map_err(|error| error.to_string())?;
 
-    for (index, model) in models.iter().enumerate() {
-        let enabled = previous.get(&model.remote_id).copied().unwrap_or(index < 8);
+    for model in models {
         sqlx::query(
             r"
             INSERT INTO connection_models
@@ -410,7 +403,7 @@ pub async fn refresh_discovered_models(
         .bind(&model.remote_id)
         .bind(&model.display_name)
         .bind(&model.capabilities)
-        .bind(i64::from(enabled))
+        .bind(1_i64)
         .bind(serde_json::to_string(&model.aliases).unwrap_or_else(|_| "[]".into()))
         .bind(&model.metadata)
         .bind(&model.last_seen_at)
@@ -432,25 +425,6 @@ pub async fn list_models(pool: &SqlitePool, connection_id: &str) -> Result<Vec<C
     .map_err(|error| error.to_string())?;
 
     rows.iter().map(model_from_row).collect()
-}
-
-pub async fn set_model_enabled(
-    pool: &SqlitePool,
-    connection_id: &str,
-    remote_id: &str,
-    enabled: bool,
-) -> Result<()> {
-    sqlx::query(
-        "UPDATE connection_models SET enabled = ?1
-         WHERE connection_id = ?2 AND remote_id = ?3",
-    )
-    .bind(i64::from(enabled))
-    .bind(connection_id)
-    .bind(remote_id)
-    .execute(pool)
-    .await
-    .map(|_| ())
-    .map_err(|error| error.to_string())
 }
 
 /// Whether a connection offers a model under its remote id or any alias.
@@ -762,7 +736,7 @@ mod provider_refresh_tests {
     }
 
     #[tokio::test]
-    async fn discovery_enables_only_a_small_default_selection() {
+    async fn discovery_enables_every_current_model() {
         let pool = model_pool().await;
         let models: Vec<_> = (0..20)
             .map(|index| model(&format!("model-{index:02}"), DiscoverySource::Remote))
@@ -774,6 +748,6 @@ mod provider_refresh_tests {
 
         let rows = list_models(&pool, "connection-1").await.unwrap();
         assert_eq!(rows.len(), 20);
-        assert_eq!(rows.iter().filter(|model| model.enabled).count(), 8);
+        assert_eq!(rows.iter().filter(|model| model.enabled).count(), 20);
     }
 }

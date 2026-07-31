@@ -1,8 +1,4 @@
 use crate::models::chat::ChatMessage;
-use crate::providers::adapter::{
-    AdapterChatRequest, ChatEventSink, ChatRuntimeEvent, ConnectionProviderAdapter, ProviderAdapter,
-};
-use crate::providers::base::ProviderType;
 use crate::AppState;
 use serde::Deserialize;
 use serde::Serialize;
@@ -73,6 +69,7 @@ pub async fn mobile_pairing_start(
         token,
         app_state.db.clone(),
         app_state.secret_store.clone(),
+        app_state.ai.clone(),
         app_handle,
         stop_rx,
     ));
@@ -163,6 +160,7 @@ async fn run_pairing_server(
     token: String,
     db: sqlx::SqlitePool,
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -177,6 +175,7 @@ async fn run_pairing_server(
                 let limiter = Arc::clone(&limiter);
                 let db = db.clone();
                 let secret_store = secret_store.clone();
+                let ai = ai.clone();
                 let app_handle = app_handle.clone();
                 tokio::spawn(async move {
                     let _ = handle_connection(
@@ -185,6 +184,7 @@ async fn run_pairing_server(
                         limiter,
                         db,
                         secret_store,
+                        ai,
                         app_handle,
                     )
                     .await;
@@ -200,7 +200,7 @@ struct BrowserChatRequest {
     messages: Vec<ChatMessage>,
     conversation_id: Option<String>,
     is_temporary: Option<bool>,
-    provider_type: Option<ProviderType>,
+    provider_type: Option<String>,
     provider_config_id: Option<i64>,
     connection_id: Option<String>,
 }
@@ -219,7 +219,7 @@ struct BrowserMessageRequest {
     role: String,
     content: String,
     model: Option<String>,
-    provider: Option<ProviderType>,
+    provider: Option<String>,
     is_temporary: Option<bool>,
 }
 
@@ -229,6 +229,7 @@ async fn handle_connection(
     limiter: Arc<std::sync::Mutex<AuthRateLimiter>>,
     db: sqlx::SqlitePool,
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
 ) -> std::io::Result<()> {
     let mut buffer = [0_u8; 65_536];
@@ -257,12 +258,13 @@ async fn handle_connection(
             token,
             db,
             secret_store,
+            ai,
             app_handle,
         )
         .await;
     }
     let response =
-        response_for_request(method, path, body, token, db, secret_store, app_handle).await;
+        response_for_request(method, path, body, token, db, secret_store, ai, app_handle).await;
     stream.write_all(&response).await
 }
 
@@ -273,6 +275,7 @@ async fn handle_chat_stream_response(
     token: &str,
     db: sqlx::SqlitePool,
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
 ) -> std::io::Result<()> {
     if !token_matches(path, token) {
@@ -297,8 +300,8 @@ async fn handle_chat_stream_response(
             return Ok(());
         }
     };
-    let (provider_type, cancellation, mut events, task) =
-        match start_mobile_chat(&db, secret_store.as_ref(), &request).await {
+    let (provider_type, request_id, mut events) =
+        match start_mobile_chat(&db, secret_store.as_ref(), &ai, &request).await {
             Ok(started) => started,
             Err(error) => {
                 write_sse(
@@ -312,10 +315,20 @@ async fn handle_chat_stream_response(
         };
 
     let mut content = String::new();
-    while let Some(event) = events.recv().await {
+    loop {
+        let event = match events.recv().await {
+            Ok(event) => event,
+            Err(_) => {
+                let _ = ai.cancel(&request_id).await;
+                break;
+            }
+        };
         match event {
-            ChatRuntimeEvent::MessageDelta { delta, .. } => {
-                content.push_str(&delta);
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "text-delta" => {
+                let delta = chunk["delta"].as_str().unwrap_or_default();
                 if let Err(error) = write_sse(
                     &mut stream,
                     "chunk",
@@ -323,12 +336,15 @@ async fn handle_chat_stream_response(
                 )
                 .await
                 {
-                    cancellation.cancel();
-                    let _ = task.await;
+                    let _ = ai.cancel(&request_id).await;
                     return Err(error);
                 }
             }
-            ChatRuntimeEvent::ReasoningDelta { delta, .. } => {
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "reasoning-delta" => {
+                let delta = chunk["delta"].as_str().unwrap_or_default();
                 if let Err(error) = write_sse(
                     &mut stream,
                     "reasoning",
@@ -336,23 +352,35 @@ async fn handle_chat_stream_response(
                 )
                 .await
                 {
-                    cancellation.cancel();
-                    let _ = task.await;
+                    let _ = ai.cancel(&request_id).await;
                     return Err(error);
                 }
             }
-            ChatRuntimeEvent::Failed { error, .. } => {
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "data-runtime-result" => {
+                content = chunk["data"]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+            }
+            crate::ai_sidecar::AiRuntimeEvent::Error {
+                request_id: id,
+                error,
+            } if id == request_id => {
                 write_sse(
                     &mut stream,
                     "error",
-                    &serde_json::json!({ "error": error.message }).to_string(),
+                    &serde_json::json!({ "error": error }).to_string(),
                 )
                 .await?;
+                break;
             }
+            crate::ai_sidecar::AiRuntimeEvent::Done { request_id: id } if id == request_id => break,
             _ => {}
         }
     }
-    let _ = task.await;
 
     let assistant_id = Uuid::new_v4().to_string();
     if !request.is_temporary.unwrap_or(false) {
@@ -363,7 +391,7 @@ async fn handle_chat_stream_response(
                 role: "assistant".to_string(),
                 content: content.clone(),
                 model: Some(request.model),
-                provider: Some(provider_type),
+                provider: Some(provider_type.clone()),
                 is_temporary: Some(false),
             };
             let _ = insert_message(&db, &message).await;
@@ -379,24 +407,20 @@ async fn handle_chat_stream_response(
     .await
 }
 
-type MobileChatTask = tokio::task::JoinHandle<
-    Result<crate::tool_loop::ToolLoopResult, crate::providers::adapter::ChatRuntimeError>,
->;
-
 async fn start_mobile_chat(
     db: &sqlx::SqlitePool,
     secret_store: &dyn crate::connections::secrets::SecretStore,
+    ai: &crate::ai_sidecar::AiSidecar,
     request: &BrowserChatRequest,
 ) -> Result<
     (
-        ProviderType,
-        tokio_util::sync::CancellationToken,
-        tokio::sync::mpsc::Receiver<ChatRuntimeEvent>,
-        MobileChatTask,
+        String,
+        String,
+        tokio::sync::broadcast::Receiver<crate::ai_sidecar::AiRuntimeEvent>,
     ),
     String,
 > {
-    let _ = (request.provider_type, request.provider_config_id);
+    let _ = (&request.provider_type, request.provider_config_id);
     let (connection, model) = if let Some(connection_id) = request.connection_id.as_deref() {
         (
             crate::connections::repository::get_connection(db, connection_id)
@@ -421,31 +445,39 @@ async fn start_mobile_chat(
         resolve_unique_mobile_connection(db, &request.model).await?
     };
 
-    let provider_type = legacy_provider_type(connection.provider);
-    let adapter =
-        ConnectionProviderAdapter::new(connection, secret_store).map_err(|error| error.message)?;
-    let cancellation = tokio_util::sync::CancellationToken::new();
-    let (sink, receiver) = ChatEventSink::channel();
-    let task_cancellation = cancellation.clone();
+    let provider_type = legacy_provider_type(&connection.provider).to_string();
     let request_id = Uuid::new_v4().to_string();
-    let messages = request.messages.clone();
-    let task = tokio::spawn(async move {
-        adapter
-            .stream_chat(
-                AdapterChatRequest {
-                    request_id,
-                    model,
-                    messages,
-                    system_prompt: None,
-                    reasoning_enabled: true,
-                    web_search: None,
-                },
-                task_cancellation,
-                sink,
-            )
-            .await
-    });
-    Ok((provider_type, cancellation, receiver, task))
+    let events = ai.subscribe();
+    let messages = request
+        .messages
+        .iter()
+        .map(|message| {
+            serde_json::json!({
+                "id": Uuid::new_v4().to_string(),
+                "role": message.role,
+                "parts": [{ "type": "text", "text": message.content }],
+            })
+        })
+        .collect::<Vec<_>>();
+    ai.start_stream(
+        &request_id,
+        serde_json::json!({
+            "type": "chat",
+            "requestId": request_id,
+            "conversationId": request.conversation_id,
+            "connection": crate::commands::ai_runtime_commands::sidecar_connection(
+                secret_store,
+                &connection,
+                Some(&model),
+                None,
+            )?,
+            "messages": messages,
+            "reasoning": "medium",
+            "collectText": true,
+        }),
+    )
+    .await?;
+    Ok((provider_type, request_id, events))
 }
 
 async fn resolve_unique_mobile_connection(
@@ -469,12 +501,12 @@ async fn resolve_unique_mobile_connection(
     }
 }
 
-fn legacy_provider_type(provider: crate::connections::Provider) -> ProviderType {
+fn legacy_provider_type(provider: &crate::connections::Provider) -> &'static str {
     match provider {
-        crate::connections::Provider::Anthropic => ProviderType::AnthropicNative,
-        crate::connections::Provider::Gemini => ProviderType::GeminiNative,
-        crate::connections::Provider::Ollama => ProviderType::OllamaLocal,
-        _ => ProviderType::OpenAICompatible,
+        crate::connections::Provider::Anthropic => "AnthropicNative",
+        crate::connections::Provider::Gemini => "GeminiNative",
+        crate::connections::Provider::Ollama => "OllamaLocal",
+        _ => "OpenAICompatible",
     }
 }
 
@@ -491,6 +523,7 @@ async fn response_for_request(
     token: &str,
     db: sqlx::SqlitePool,
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
+    ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
 ) -> Vec<u8> {
     if let Some(response) = response_for_static_path(method, path, token) {
@@ -510,7 +543,7 @@ async fn response_for_request(
             Ok(connections) => {
                 let mut choices = Vec::new();
                 for connection in connections {
-                    let provider_type = legacy_provider_type(connection.provider);
+                    let provider_type = legacy_provider_type(&connection.provider);
                     for model in crate::connections::repository::list_models(&db, &connection.id)
                         .await
                         .unwrap_or_default()
@@ -617,23 +650,38 @@ async fn response_for_request(
                 )
             }
         };
-        let body = match start_mobile_chat(&db, secret_store.as_ref(), &request).await {
-            Ok((provider_type, _cancellation, mut events, task)) => {
+        let body = match start_mobile_chat(&db, secret_store.as_ref(), &ai, &request).await {
+            Ok((provider_type, request_id, mut events)) => {
                 let mut content = String::new();
                 let mut failure = None;
-                while let Some(event) = events.recv().await {
+                while let Ok(event) = events.recv().await {
                     match event {
-                        ChatRuntimeEvent::MessageDelta { delta, .. } => content.push_str(&delta),
-                        ChatRuntimeEvent::Failed { error, .. } => failure = Some(error.message),
+                        crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                            request_id: id,
+                            chunk,
+                        } if id == request_id && chunk["type"] == "data-runtime-result" => {
+                            content = chunk["data"]["text"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
+                        }
+                        crate::ai_sidecar::AiRuntimeEvent::Error {
+                            request_id: id,
+                            error,
+                        } if id == request_id => {
+                            failure = Some(error);
+                            break;
+                        }
+                        crate::ai_sidecar::AiRuntimeEvent::Done { request_id: id }
+                            if id == request_id =>
+                        {
+                            break
+                        }
                         _ => {}
                     }
                 }
-                let task_result = task.await;
                 if let Some(error) = failure {
                     serde_json::json!({ "ok": false, "error": error }).to_string()
-                } else if task_result.is_err() {
-                    serde_json::json!({ "ok": false, "error": "Chat task stopped unexpectedly." })
-                        .to_string()
                 } else {
                     if !request.is_temporary.unwrap_or(false) {
                         if let Some(conversation_id) = request.conversation_id.as_deref() {
@@ -643,7 +691,7 @@ async fn response_for_request(
                                 role: "assistant".to_string(),
                                 content: content.clone(),
                                 model: Some(request.model.clone()),
-                                provider: Some(provider_type),
+                                provider: Some(provider_type.clone()),
                                 is_temporary: Some(false),
                             };
                             let _ = insert_message(&db, &message).await;
@@ -787,7 +835,7 @@ async fn list_messages(
                     "content": row.get::<String, _>("content"),
                     "createdAt": row.get::<String, _>("createdAt"),
                     "model": row.try_get::<String, _>("model").ok(),
-                    "provider": row.try_get::<ProviderType, _>("provider").ok(),
+                    "provider": row.try_get::<String, _>("provider").ok(),
                     "status": row.try_get::<String, _>("status").ok(),
                     "errorMessage": row.try_get::<String, _>("errorMessage").ok(),
                 })
@@ -814,7 +862,7 @@ async fn insert_message(
         .bind(&message.role)
         .bind(&message.content)
         .bind(&message.model)
-        .bind(message.provider)
+        .bind(message.provider.clone())
         .execute(db)
         .await
         .map_err(|error| error.to_string())?;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,18 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  claudeAuthenticate,
-  claudeCancelAuthenticate,
-  claudeStatus,
-  claudeVerify,
-} from "@/features/claude/claudeClient";
-import {
-  codexAuthenticate,
-  codexCancelAuthenticate,
-  codexStatus,
-  codexVerify,
-} from "@/features/codex/codexClient";
 import { CodingAgentSetup } from "@/features/coding-agents/CodingAgentSetup";
 import { CLAUDE_AGENT, CODEX_AGENT } from "@/features/coding-agents/setupCopy";
 import { connectionsClient } from "@/features/connections/client";
@@ -35,13 +23,13 @@ import type { ConnectionModel } from "@/generated/bindings/ConnectionModel";
 import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";
 import type { Provider } from "@/generated/bindings/Provider";
 import { useNotify } from "@/hooks/useNotify";
-import { useSettingsStore } from "@/store/settingsStore";
 
 const PROVIDERS: Array<{ provider: Provider; label: string; endpoint: string }> = [
   { provider: "openai", label: "OpenAI", endpoint: "https://api.openai.com/v1" },
   { provider: "anthropic", label: "Anthropic", endpoint: "https://api.anthropic.com/v1" },
   { provider: "gemini", label: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta" },
   { provider: "openrouter", label: "OpenRouter", endpoint: "https://openrouter.ai/api/v1" },
+  { provider: "vercel-gateway", label: "Vercel AI Gateway", endpoint: "https://ai-gateway.vercel.sh/v4/ai" },
   { provider: "ollama", label: "Ollama", endpoint: "http://127.0.0.1:11434" },
   { provider: "lmstudio", label: "LM Studio", endpoint: "http://127.0.0.1:1234/v1" },
   { provider: "openai-compatible", label: "Custom endpoint", endpoint: "" },
@@ -64,7 +52,7 @@ function ConnectionEditor({
   persisted?: boolean;
 }) {
   const [connection, setConnection] = useState(initial);
-  const [credential, setCredential] = useState("");
+  const credentialRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [models, setModels] = useState<ConnectionModel[]>([]);
   const [modelId, setModelId] = useState("");
@@ -74,7 +62,7 @@ function ConnectionEditor({
   useEffect(() => {
     if (open) {
       setConnection(initial);
-      setCredential("");
+      if (credentialRef.current) credentialRef.current.value = "";
       setModelId("");
       if (persisted) {
         void connectionsClient.models(initial.id).then(setModels).catch(() => setModels([]));
@@ -85,7 +73,9 @@ function ConnectionEditor({
   const save = async () => {
     setSaving(true);
     try {
+      const credential = credentialRef.current?.value ?? "";
       await connectionsClient.save(connection, credential);
+      if (credentialRef.current) credentialRef.current.value = "";
       await onSaved();
       onOpenChange(false);
       notify.success("Connection saved");
@@ -151,9 +141,8 @@ function ConnectionEditor({
                 id="connection-key"
                 type="password"
                 autoComplete="off"
-                value={credential}
+                ref={credentialRef}
                 placeholder={connection.secret_ref ? "Leave blank to keep existing key" : "Required"}
-                onChange={(event) => setCredential(event.target.value)}
               />
             </div>
           ) : null}
@@ -182,20 +171,8 @@ function ConnectionEditor({
               <div className="max-h-28 overflow-y-auto rounded-md border p-2 text-xs text-muted-foreground">
                 {models.length
                   ? models.map((model) => (
-                    <div key={model.remote_id} className="flex items-center justify-between gap-3 py-1">
+                    <div key={model.remote_id} className="py-1">
                       <span className="truncate">{model.display_name ?? model.remote_id}</span>
-                      <Switch
-                        aria-label={`Enable ${model.display_name ?? model.remote_id}`}
-                        checked={model.enabled}
-                        onCheckedChange={(enabled) => {
-                          setModels((current) => current.map((item) => (
-                            item.remote_id === model.remote_id ? { ...item, enabled } : item
-                          )));
-                          void connectionsClient
-                            .setModelEnabled(initial.id, model.remote_id, enabled)
-                            .catch((error) => notify.error("Model update failed", String(error)));
-                        }}
-                      />
                     </div>
                   ))
                   : "No configured models."}
@@ -282,7 +259,7 @@ function ProviderConnectionCard({
       </CardHeader>
       <CardContent className="flex items-end justify-between gap-4">
         <div className="min-w-0 text-xs text-muted-foreground">
-          <div>{summary.available_model_count} available · {summary.enabled_model_count} enabled</div>
+          <div>{summary.available_model_count} models available</div>
           {health.last_validated_at ? (
             <div className="truncate">
               Validated {new Date(health.last_validated_at).toLocaleString()}
@@ -352,12 +329,6 @@ export function ConnectionsTab() {
       actions: state.actions,
     })),
   );
-  const settings = useSettingsStore(
-    useShallow((state) => ({
-      codex: state.codex,
-      claude: state.claude,
-    })),
-  );
   const [adding, setAdding] = useState<Connection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const grouped = useMemo(() => groupConnections(summaries), [summaries]);
@@ -387,26 +358,16 @@ export function ConnectionsTab() {
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-base font-semibold">Coding agents</h2>
-          <p className="text-sm text-muted-foreground">External ACP runtimes own tools, files, and terminal work.</p>
+          <p className="text-sm text-muted-foreground">Local CLI agents use your existing sign-in and workspace permissions.</p>
         </div>
         <div className="grid gap-3 xl:grid-cols-2">
           <CodingAgentSetup
             agent={CODEX_AGENT}
             logo="⬡"
-            settings={settings.codex}
-            status={codexStatus}
-            verify={codexVerify}
-            authenticate={codexAuthenticate}
-            cancelAuthenticate={codexCancelAuthenticate}
           />
           <CodingAgentSetup
             agent={CLAUDE_AGENT}
             logo="✳"
-            settings={settings.claude}
-            status={claudeStatus}
-            verify={claudeVerify}
-            authenticate={claudeAuthenticate}
-            cancelAuthenticate={claudeCancelAuthenticate}
           />
         </div>
       </section>
@@ -466,7 +427,7 @@ export function ConnectionsTab() {
             <DialogDescription>Choose where Poly should run chat models.</DialogDescription>
           </DialogHeader>
           {[
-            ["Cloud", PROVIDERS.filter((item) => ["openai", "anthropic", "gemini", "openrouter"].includes(item.provider))],
+            ["Cloud", PROVIDERS.filter((item) => ["openai", "anthropic", "gemini", "openrouter", "vercel-gateway"].includes(item.provider))],
             ["Local", PROVIDERS.filter((item) => ["ollama", "lmstudio"].includes(item.provider))],
             ["Custom", PROVIDERS.filter((item) => item.provider === "openai-compatible")],
           ].map(([title, providers]) => (

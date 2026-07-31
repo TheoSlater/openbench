@@ -6,4 +6,4 @@
  * This is deliberately not the old `ProviderType`: it names a wire protocol
  * and vendor, not a row.
  */
-export type Provider = "openai" | "anthropic" | "gemini" | "openrouter" | "ollama" | "lmstudio" | "openai-compatible";
+export type Provider = "openai" | "anthropic" | "gemini" | "openrouter" | "ollama" | "lmstudio" | "openai-compatible" | "vercel-gateway";

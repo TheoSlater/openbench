@@ -66,3 +66,28 @@ export function writeDefaultRuntime(
 ) {
   storage.setItem(DEFAULT_RUNTIME_KEY, JSON.stringify(runtime));
 }
+
+/** Whether the given runtime is the stored default. */
+export function isDefaultRuntime(
+  runtime: RuntimeRef,
+  storage: Pick<Storage, "getItem"> = localStorage,
+): boolean {
+  const current = readDefaultRuntime(storage);
+  if (!current) return false;
+  switch (runtime.kind) {
+    case "chat-model":
+      return (
+        current.kind === "chat-model" &&
+        current.connection_id === runtime.connection_id &&
+        current.model_id === runtime.model_id
+      );
+    case "coding-agent":
+      return (
+        current.kind === "coding-agent" &&
+        current.installation_id === runtime.installation_id &&
+        current.workspace_id === runtime.workspace_id
+      );
+    default:
+      return current.kind === "unresolved" && current.reason === runtime.reason;
+  }
+}

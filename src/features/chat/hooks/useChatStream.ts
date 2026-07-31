@@ -1,96 +1,77 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useShallow } from "zustand/react/shallow";
-import type { Attachment, Message } from "@/types/chat";
+import type { Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 import { sanitizeOutput } from "@/lib/chat/sanitize";
-import { loggedInvoke, getSessionToken } from "@/lib/utils/utils";
+import { getSessionToken } from "@/lib/utils/utils";
 import { useNotify } from "@/hooks/useNotify";
-import { useOllamaStore } from "@/features/ollama/monitor";
 import { buildSystemPrompt } from "@/lib/chat/prompts";
 import { VOICE_SYSTEM_PROMPT_SUFFIX } from "@/lib/constants/promptPresets";
 import { isFeatureAIActive } from "@/lib/featureRegistry";
 import { defaultPreprocessor } from "@/lib/chat/message-preprocessor";
 import { triggerTitleGeneration, type TitleStore } from "@/lib/chat/title-generation";
-
-const titleStore: TitleStore = {
-  findConversation: (id) => useChatStore.getState().conversations.find((c) => c.id === id),
-  getConversationMessages: (cid) => useChatStore.getState().messages.filter((m) => m.conversationId === cid),
-  setTitleGenerationStatus: (id, status) => useChatStore.getState().actions.setTitleGenerationStatus?.(id, status),
-  renameConversation: (id, title, source) => useChatStore.getState().actions.renameConversation(id, title, source),
-};
-import {
-  TauriEventBus,
-  type ChunkPayload,
-  type ThinkingPayload,
-  type WebSearchPayload,
-} from "@/lib/chat/stream-client";
-import { StreamSession } from "@/lib/chat/stream-session";
 import { getRepository } from "@/lib/repositories";
-import { getWebSearchConfig } from "@/features/web-search/useWebSearchConfig";
 import { getCurrentProviderAccountId } from "@/features/providers";
 import { notifyMemoryUpdated } from "@/features/memory/useConversationMemoryCount";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import type { ModelChoice } from "@/lib/models/model-choice";
+import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
+import { ChatRuntime, type ChatJob } from "@/features/chat/runtime/ChatRuntime";
+import { connectionsClient } from "@/features/connections/client";
+
+const titleStore: TitleStore = {
+  findConversation: (id) => useChatStore.getState().conversations.find((c) => c.id === id),
+  getConversationMessages: (id) => useChatStore.getState().messages.filter((m) => m.conversationId === id),
+  setTitleGenerationStatus: (id, status) =>
+    useChatStore.getState().actions.setTitleGenerationStatus?.(id, status),
+  renameConversation: (id, title, source) =>
+    useChatStore.getState().actions.renameConversation(id, title, source),
+};
+
+const pendingMemoryUpdates = new Map<string, string[]>();
 
 function validModelChoices(choices: ModelChoice[]): ModelChoice[] {
   return choices.filter((item) => Boolean(item.model && item.provider));
 }
 
-// Summaries extracted from the current turn's user message, waiting to be
-// attached to the assistant message(s) when they complete. Keyed by conversation.
-const pendingMemoryUpdates = new Map<string, string[]>();
-
-/**
- * Runs in parallel with the response stream: extracts memories from the
- * just-sent user message and shows the "Memory updated" disclosure as soon
- * as extraction lands — usually while the model is still responding.
- */
 async function extractUserMessageMemory(
   conversationId: string,
   userMessageId: string,
   chatModel?: string,
 ) {
   pendingMemoryUpdates.delete(conversationId);
-  const memoryBeta = useSettingsStore.getState().general.memoryBeta;
-  if (!memoryBeta) {
-    console.info("[Memory] skipped: memoryBeta is false");
-    return;
-  }
+  if (!useSettingsStore.getState().general.memoryBeta) return;
   const ownerId = getCurrentProviderAccountId();
-  if (!ownerId) {
-    console.warn("[Memory] skipped: ownerId is empty");
-    return;
-  }
-
-  console.info(`[Memory] extracting for conversation=${conversationId}, message=${userMessageId}, owner=${ownerId}`);
+  if (!ownerId) return;
   try {
     const summaries = await invoke<string[]>("memory_extract_user_message", {
       ownerId,
       conversationId,
       userMessageId,
-      // ponytail: first model only; multi-model turns extract once with it
       chatModel: chatModel ?? null,
       token: getSessionToken(),
     });
-    console.info(`[Memory] extracted ${summaries.length} summaries`, summaries);
-    if (summaries.length === 0) return;
+    if (!summaries.length) return;
     pendingMemoryUpdates.set(conversationId, summaries);
     notifyMemoryUpdated();
-
-    // Show live on any assistant message already streaming for this turn.
     const { streamingMessages, actions } = useChatStore.getState();
-    let attached = false;
-    for (const message of Object.values(streamingMessages)) {
-      if (message.conversationId === conversationId) {
+    const active = Object.values(streamingMessages).filter(
+      (message) => message.conversationId === conversationId,
+    );
+    if (active.length) {
+      for (const message of active) {
         actions.patchStreamingMessage(message.id, { memoryUpdates: summaries });
-        attached = true;
       }
-    }
-    // Fast replies finish before extraction does — the turn is already
-    // settled, so stamp the persisted assistant message instead.
-    if (!attached) {
+    } else {
       actions.attachMemoryUpdates(conversationId, userMessageId, summaries);
     }
   } catch (error) {
@@ -98,407 +79,348 @@ async function extractUserMessageMemory(
   }
 }
 
-export function useChatStream(modelChoices: ModelChoice[], systemPrompt = "", voiceMode = false) {
-  const voiceModeRef = useRef(voiceMode);
-  voiceModeRef.current = voiceMode;
+type Timing = {
+  startedAt: number;
+  reasoningStartedAt?: number;
+  reasoningEndedAt?: number;
+};
+
+export function useChatStream(
+  modelChoices: ModelChoice[],
+  systemPrompt = "",
+  voiceMode = false,
+) {
   const { messages, activeConversationId } = useChatStore(
-    useShallow((s) => ({
-      messages: s.messages,
-      activeConversationId: s.activeConversationId,
-    }))
+    useShallow((state) => ({
+      messages: state.messages,
+      activeConversationId: state.activeConversationId,
+    })),
   );
-
-  const addMessage = useChatStore((s) => s.actions.addMessage);
-  const setStreamingConversationId = useChatStore((s) => s.actions.setStreamingConversationId);
-  const setStreamingMessage = useChatStore((s) => s.actions.setStreamingMessage);
-  const patchStreamingMessage = useChatStore((s) => s.actions.patchStreamingMessage);
-  const clearQueue = useChatStore((s) => s.actions.clearQueue);
+  const addMessage = useChatStore((state) => state.actions.addMessage);
+  const setStreamingConversationId = useChatStore(
+    (state) => state.actions.setStreamingConversationId,
+  );
+  const setStreamingMessage = useChatStore((state) => state.actions.setStreamingMessage);
+  const patchStreamingMessage = useChatStore(
+    (state) => state.actions.patchStreamingMessage,
+  );
+  const clearQueue = useChatStore((state) => state.actions.clearQueue);
   const notify = useNotify();
-
-  const [isStreaming, setIsStreaming] = useState(false);
-
-  const sessionRef = useRef(new StreamSession());
-  const eventBusRef = useRef(new TauriEventBus());
-  const cancelRef = useRef(false);
+  const [jobs, setJobs] = useState<ChatJob[]>([]);
+  const jobsRef = useRef(jobs);
+  const settled = useRef(new Set<string>());
+  const timings = useRef(new Map<string, Timing>());
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeConversationIdRef = useRef(activeConversationId);
   const processingQueueRef = useRef(false);
   const modelChoicesRef = useRef(modelChoices);
-  useEffect(() => { modelChoicesRef.current = modelChoices; }, [modelChoices]);
+  const voiceModeRef = useRef(voiceMode);
+  const processNextInQueueRef = useRef<
+    ((conversationId?: string) => Promise<void>) | undefined
+  >(undefined);
 
-  const handleChunkRef = useRef<(p: ChunkPayload) => void>(() => {});
-  const handleThinkingRef = useRef<(p: ThinkingPayload) => void>(() => {});
-  const handleWebSearchRef = useRef<(p: WebSearchPayload) => void>(() => {});
-
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
-
-  // Wire accumulator flush → store
   useEffect(() => {
-    const session = sessionRef.current;
-    session.onFlush((updates) => {
-      const storeUpdates: Record<string, Partial<Message>> = {};
-      for (const [messageId, content] of Object.entries(updates)) {
-        if (content) {
-          storeUpdates[messageId] = { content, status: "streaming" };
-        }
-      }
-      if (Object.keys(storeUpdates).length > 0) {
-        useChatStore.getState().actions.patchStreamingMessages(storeUpdates);
-      }
-    });
-  }, []);
+    modelChoicesRef.current = modelChoices;
+  }, [modelChoices]);
+  voiceModeRef.current = voiceMode;
 
-  const resetStreamState = useCallback(() => {
-    const { streamingMessages: current } = useChatStore.getState();
-    sessionRef.current.allMessageIds().forEach((mid) => {
-      if (current[mid]) setStreamingMessage(mid, null);
+  const finishJob = useCallback((job: ChatJob) => {
+    setJobs((current) => {
+      const next = current.filter((item) => item.requestId !== job.requestId);
+      if (!next.length) {
+        setStreamingConversationId(null);
+        pendingMemoryUpdates.delete(job.conversationId);
+        queueMicrotask(() => {
+          void processNextInQueueRef.current?.(job.conversationId);
+        });
+      }
+      return next;
     });
-    sessionRef.current.reset();
-  }, [setStreamingMessage]);
-
-  const settlePending = useCallback((requestId?: string) => {
-    if (requestId) sessionRef.current.finish(requestId);
-    if (sessionRef.current.isComplete()) {
-      setIsStreaming(false);
-      setStreamingConversationId(null);
-    }
   }, [setStreamingConversationId]);
 
-  const handleChunk = useCallback(
-    async (payload: ChunkPayload) => {
-      if (cancelRef.current) return;
-      const completed = sessionRef.current.applyChunk(payload);
-      if (!completed) return;
-
-      const { streamingMessages: current } = useChatStore.getState();
-      const existing = current[completed.messageId];
-      if (!existing) return;
-
-      const completedModel = existing.model ?? "";
-      const completedProvider = existing.provider ?? "OllamaLocal";
-      const finalizedWebSearch =
-        existing.webSearch && existing.webSearch.status === "searching"
-          ? { ...existing.webSearch, status: "complete" as const }
-          : existing.webSearch;
-
-      if (completed.error) {
-        await addMessage({
-          id: completed.messageId,
-          conversationId: completed.conversationId,
-          role: "assistant",
-          content: sanitizeOutput(completed.content || ""),
-          thinking: completed.thinking,
-          model: completedModel || "unknown",
-          provider: completedProvider,
-          status: "error",
-          errorMessage: completed.error,
-          webSearch: finalizedWebSearch,
-        });
-      } else {
-        await addMessage({
-          id: completed.messageId,
-          conversationId: completed.conversationId,
-          role: "assistant",
-          content: sanitizeOutput(completed.content || ""),
-          thinking: completed.thinking,
-          thinkingDuration: sessionRef.current.thinkingDuration(completed.requestId),
-          isThinking: false,
-          createdAt: new Date().toISOString(),
-          model: completedModel || "unknown",
-          provider: completedProvider,
-          status: "complete",
-          webSearch: finalizedWebSearch,
-          memoryUpdates:
-            existing.memoryUpdates ?? pendingMemoryUpdates.get(completed.conversationId),
-        });
-      }
-
-      setStreamingMessage(completed.messageId, null);
-      settlePending(completed.requestId);
-
-      if (sessionRef.current.isComplete()) {
-        // Turn is over — drop pending memories so a later regenerate doesn't re-attach them
-        pendingMemoryUpdates.delete(completed.conversationId);
-        if (completedModel && !completed.error) triggerTitleGeneration(titleStore, completed.conversationId);
-        processNextInQueueRef.current?.(completed.conversationId);
-      }
-    },
-    [addMessage, settlePending, setStreamingMessage],
-  );
-
-  const handleThinking = useCallback(
-    (payload: ThinkingPayload) => {
-      if (cancelRef.current) return;
-      const update = sessionRef.current.applyThinking(payload);
-      if (!update) return;
-      patchStreamingMessage(update.messageId, update.patch);
-    },
-    [patchStreamingMessage],
-  );
-
-  const handleWebSearch = useCallback(
-    (payload: WebSearchPayload) => {
-      if (cancelRef.current) return;
-      const messageId = sessionRef.current.messageIdForRequest(payload.request_id);
-      if (!messageId) return;
-      const existing = useChatStore.getState().streamingMessages[messageId];
-      const update = sessionRef.current.applyWebSearch(payload, existing);
-      if (!update) return;
-
-      patchStreamingMessage(update.messageId, {
-        webSearch: update.webSearch,
-        status: "streaming",
-      });
-    },
-    [patchStreamingMessage],
-  );
-
-  useEffect(() => {
-    handleChunkRef.current = handleChunk;
-    handleThinkingRef.current = handleThinking;
-    handleWebSearchRef.current = handleWebSearch;
-  });
-
-  useEffect(() => {
-    const eventBus = eventBusRef.current;
-    void eventBus.subscribe({
-      onChunk: (p) => handleChunkRef.current(p),
-      onThinking: (p) => handleThinkingRef.current(p),
-      onWebSearch: (p) => handleWebSearchRef.current(p),
+  const handleUpdate = useCallback((job: ChatJob, message: PolyUIMessage) => {
+    if (settled.current.has(job.requestId)) return;
+    const entity = fromUIMessage(message, {
+      conversationId: job.conversationId,
+      model: job.model,
+      provider: job.provider,
     });
-    return () => {
-      void eventBus.unsubscribe();
-    };
-  }, []);
+    const timing = timings.current.get(job.requestId);
+    if (timing && entity.thinking && !timing.reasoningStartedAt) {
+      timing.reasoningStartedAt = Date.now();
+    }
+    if (timing?.reasoningStartedAt && entity.content && !timing.reasoningEndedAt) {
+      timing.reasoningEndedAt = Date.now();
+    }
+    patchStreamingMessage(job.messageId, {
+      ...entity,
+      id: job.messageId,
+      status: "streaming",
+      isStreaming: true,
+      isThinking: Boolean(entity.thinking && !entity.content),
+    });
+  }, [patchStreamingMessage]);
 
-  const startStream = useCallback(
-    async (conversationId: string, models: ModelChoice[]) => {
-      if (!conversationId || !models.length) return;
+  const handleFinish = useCallback(async (
+    job: ChatJob,
+    message: PolyUIMessage,
+    state: { aborted: boolean; failed: boolean },
+  ) => {
+    if (settled.current.has(job.requestId)) return;
+    settled.current.add(job.requestId);
+    const current = useChatStore.getState().streamingMessages[job.messageId];
+    const entity = fromUIMessage(message, {
+      conversationId: job.conversationId,
+      model: job.model,
+      provider: job.provider,
+    });
+    const timing = timings.current.get(job.requestId);
+    const reasoningDuration = timing?.reasoningStartedAt
+      ? ((timing.reasoningEndedAt ?? Date.now()) - timing.reasoningStartedAt) / 1000
+      : undefined;
+    await addMessage({
+      ...entity,
+      id: job.messageId,
+      content: sanitizeOutput(entity.content),
+      thinkingDuration: reasoningDuration,
+      isThinking: false,
+      isStreaming: false,
+      status: state.aborted ? "aborted" : state.failed ? "error" : "complete",
+      memoryUpdates:
+        current?.memoryUpdates ?? pendingMemoryUpdates.get(job.conversationId),
+    });
+    if (job.agent && entity.agentSessionId) {
+      const runtime = {
+        kind: "coding-agent" as const,
+        installation_id: job.agent.installationId,
+        agent_kind: job.agent.kind,
+        workspace_id: job.agent.workspaceId,
+        agent_session_id: entity.agentSessionId,
+      };
+      await connectionsClient.setRuntime(job.conversationId, runtime);
+      useRuntimeStore.getState().actions.select(
+        runtime,
+        job.agent.kind === "codex" ? "Codex" : "Claude Code",
+      );
+    }
+    setStreamingMessage(job.messageId, null);
+    timings.current.delete(job.requestId);
+    finishJob(job);
+    if (!state.aborted && !state.failed) {
+      triggerTitleGeneration(titleStore, job.conversationId);
+    }
+  }, [addMessage, finishJob, setStreamingMessage]);
 
-      // Store only holds the active conversation's messages. Queued sends can
-      // target a background conversation — load its history from the repository
-      // (temporary chats aren't persisted, but they're only usable while active).
-      const { messages: storeMessages, activeConversationId: activeId } = useChatStore.getState();
-      const source =
-        conversationId === activeId
-          ? storeMessages.filter((m) => m.conversationId === conversationId)
-          : await getRepository().getMessages(conversationId, 50, 0);
-      const history = source.map((m) => ({
-          role: m.role,
-          content: m.content,
-          attachments: m.attachments ?? [],
-        }));
+  const handleError = useCallback(async (job: ChatJob, error: Error) => {
+    if (settled.current.has(job.requestId)) return;
+    settled.current.add(job.requestId);
+    const current = useChatStore.getState().streamingMessages[job.messageId];
+    await addMessage({
+      id: job.messageId,
+      conversationId: job.conversationId,
+      role: "assistant",
+      content: sanitizeOutput(current?.content ?? ""),
+      thinking: current?.thinking,
+      runtimeParts: current?.runtimeParts,
+      model: job.model,
+      provider: job.provider,
+      status: "error",
+      errorMessage: error.message,
+    });
+    setStreamingMessage(job.messageId, null);
+    timings.current.delete(job.requestId);
+    finishJob(job);
+    notify.error(`Chat error (${job.model})`, error.message);
+  }, [addMessage, finishJob, notify, setStreamingMessage]);
 
-      setIsStreaming(true);
-      setStreamingConversationId(conversationId);
-      resetStreamState();
-      sessionRef.current.start(models.length);
+  const startStream = useCallback(async (
+    conversationId: string,
+    models: ModelChoice[],
+  ) => {
+    if (!conversationId) return;
+    const runtime = useRuntimeStore.getState().selected;
+    if (!runtime || runtime.kind === "unresolved") {
+      notify.error("Chat unavailable", "Choose a model connection first");
+      return;
+    }
+    if (runtime.kind === "chat-model" && !models.length) return;
+    const store = useChatStore.getState();
+    const source = conversationId === store.activeConversationId
+      ? store.messages.filter((message) => message.conversationId === conversationId)
+      : await getRepository().getMessages(conversationId, 50, 0);
+    const uiMessages = source.map(toUIMessage);
+    if (!uiMessages.length || uiMessages[uiMessages.length - 1]?.role !== "user") return;
 
-      const webSearchConfig = getWebSearchConfig();
-      const webSearchAI = isFeatureAIActive("web_search");
-      const activeWebSearchConfig = webSearchAI ? webSearchConfig : undefined;
-      const voicePrompt = voiceModeRef.current
-        ? `${systemPrompt}\n\n${VOICE_SYSTEM_PROMPT_SUFFIX}`
-        : systemPrompt;
-      const system = buildSystemPrompt(voicePrompt, Boolean(activeWebSearchConfig), webSearchAI);
-
-      for (const { model, provider } of models) {
-        const rid = crypto.randomUUID();
-        const mid = crypto.randomUUID();
-        sessionRef.current.register({ requestId: rid, messageId: mid, conversationId });
-
-        setStreamingMessage(mid, {
-          id: mid,
-          conversationId,
-          role: "assistant",
-          content: "",
-          model,
-          provider,
-          createdAt: new Date().toISOString(),
-          status: "streaming",
-          isStreaming: true,
-        });
-
-        (async () => {
-          try {
-            const runtime = useRuntimeStore.getState().selected;
-            await invoke("chat_stream", {
-              requestId: rid,
-              conversationId,
-              model,
-              messages: history,
-              systemPrompt: system,
-              webSearchConfig: activeWebSearchConfig ?? null,
-              reasoningEnabled: !voiceModeRef.current,
-              connectionId: runtime?.kind === "chat-model" ? runtime.connection_id : null,
-              accountId: getCurrentProviderAccountId(),
-              token: getSessionToken(),
-            });
-          } catch (err) {
-            const errMsg = typeof err === "string" ? err : (err as Error).message || "Unknown error";
-            if (useChatStore.getState().streamingMessages[mid]) {
-              await addMessage({
-                id: mid,
-                conversationId,
-                role: "assistant",
-                content: "",
-                model,
-                provider,
-                status: "error",
-                errorMessage: errMsg,
-              });
-              setStreamingMessage(mid, null);
-            }
-            settlePending(rid);
-            notify.error(`Chat error (${model})`, errMsg);
-            if (sessionRef.current.isComplete()) {
-              processNextInQueueRef.current?.(conversationId);
-            }
-          }
-        })();
-      }
-    },
-    [systemPrompt, resetStreamState, settlePending, setStreamingMessage, addMessage, notify],
-  );
+    const webSearchEnabled = isFeatureAIActive("web_search");
+    const webSearch = useSettingsStore.getState().general.webSearch;
+    const voicePrompt = voiceModeRef.current
+      ? `${systemPrompt}\n\n${VOICE_SYSTEM_PROMPT_SUFFIX}`
+      : systemPrompt;
+    const instructions = buildSystemPrompt(
+      voicePrompt,
+      webSearchEnabled,
+      webSearchEnabled,
+    );
+    const targets = runtime.kind === "coding-agent"
+      ? [{
+        model: runtime.agent_kind === "codex" ? "Codex" : "Claude Code",
+        provider: undefined,
+      }]
+      : models;
+    const created = targets.map(({ model, provider }): ChatJob => {
+      const requestId = crypto.randomUUID();
+      const messageId = crypto.randomUUID();
+      settled.current.delete(requestId);
+      timings.current.set(requestId, { startedAt: Date.now() });
+      setStreamingMessage(messageId, {
+        id: messageId,
+        conversationId,
+        role: "assistant",
+        content: "",
+        model,
+        provider,
+        createdAt: new Date().toISOString(),
+        status: "streaming",
+        isStreaming: true,
+      });
+      return {
+        requestId,
+        messageId,
+        conversationId,
+        connectionId: runtime.kind === "chat-model" ? runtime.connection_id : undefined,
+        agent: runtime.kind === "coding-agent" ? {
+          kind: runtime.agent_kind,
+          workspaceId: runtime.workspace_id,
+          installationId: runtime.installation_id,
+          accessMode: useRuntimeStore.getState().accessMode,
+          sessionId: runtime.agent_session_id ?? undefined,
+        } : undefined,
+        model,
+        provider,
+        messages: uiMessages,
+        instructions,
+        reasoning: voiceModeRef.current ? "none" : undefined,
+        webSearchProvider:
+          runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
+        token: getSessionToken,
+      };
+    });
+    setStreamingConversationId(conversationId);
+    setJobs((current) => [...current, ...created]);
+  }, [notify, setStreamingConversationId, setStreamingMessage, systemPrompt]);
 
   const processNextInQueue = useCallback(async (completedConversationId?: string) => {
     if (processingQueueRef.current) return;
     const conversationId = completedConversationId ?? activeConversationIdRef.current;
     if (!conversationId) return;
-
-    // Prefer the completed conversation's queue, but fall back to any queued
-    // message — otherwise sends queued from another conversation starve.
     const store = useChatStore.getState();
     const next = store.actions.getNextQueued(conversationId) ?? store.messageQueue[0];
     if (!next) return;
-
     processingQueueRef.current = true;
     try {
       const models = validModelChoices(modelChoicesRef.current);
-      if (!models.length) return;
-
-      useChatStore.getState().actions.dequeueMessage(next.id);
-      cancelRef.current = false;
-      const userMessageId = crypto.randomUUID();
-      await addMessage({
-        id: userMessageId,
+      const runtime = useRuntimeStore.getState().selected;
+      if (!models.length && runtime?.kind !== "coding-agent") return;
+      store.actions.dequeueMessage(next.id);
+      const user = await addMessage({
+        id: crypto.randomUUID(),
         conversationId: next.conversationId,
         role: "user",
         content: next.content,
         attachments: next.attachments,
       });
-      void extractUserMessageMemory(next.conversationId, userMessageId, models[0]?.model);
-
+      void extractUserMessageMemory(next.conversationId, user.id, models[0]?.model);
       await startStream(next.conversationId, models);
-    } catch (err) {
-      console.error("processNextInQueue failed — message may be lost", err);
     } finally {
       processingQueueRef.current = false;
     }
   }, [addMessage, startStream]);
+  processNextInQueueRef.current = processNextInQueue;
 
-  const processNextInQueueRef = useRef<(conversationId?: string) => Promise<void>>(processNextInQueue);
-  useEffect(() => { processNextInQueueRef.current = processNextInQueue; });
-
-  const sendMessage = useCallback(
-    async (content: string, attachments?: Attachment[]) => {
-      const models = validModelChoices(modelChoices);
-      if ((!content.trim() && !attachments?.length) || !models.length) return;
-
-      const { state } = useOllamaStore.getState();
-      if (state !== "online") {
-        notify.warn("Cannot send message", "No LLM provider is currently online");
-        return;
-      }
-
-      const conversationId = useChatStore.getState().activeConversationId ?? activeConversationId;
-      if (!conversationId) return;
-
-      const processed = defaultPreprocessor.preprocess(content.trim());
-
-      if (isStreaming) {
-        useChatStore.getState().actions.enqueueMessage({
-          id: crypto.randomUUID(),
-          conversationId,
-          content: processed,
-          attachments,
-        });
-        return;
-      }
-
-      cancelRef.current = false;
-      const userMessageId = crypto.randomUUID();
-      await addMessage({
-        id: userMessageId,
+  const sendMessage = useCallback(async (
+    content: string,
+    attachments?: Attachment[],
+  ) => {
+    const models = validModelChoices(modelChoices);
+    const runtime = useRuntimeStore.getState().selected;
+    if (
+      (!content.trim() && !attachments?.length) ||
+      (!models.length && runtime?.kind !== "coding-agent")
+    ) return;
+    const conversationId =
+      useChatStore.getState().activeConversationId ?? activeConversationId;
+    if (!conversationId) return;
+    const processed = defaultPreprocessor.preprocess(content.trim());
+    if (jobsRef.current.length) {
+      useChatStore.getState().actions.enqueueMessage({
+        id: crypto.randomUUID(),
         conversationId,
-        role: "user",
         content: processed,
         attachments,
       });
-      void extractUserMessageMemory(conversationId, userMessageId, models[0]?.model);
-
-      await startStream(conversationId, models);
-    },
-    [modelChoices, isStreaming, activeConversationId, addMessage, startStream],
-  );
+      return;
+    }
+    const user = await addMessage({
+      id: crypto.randomUUID(),
+      conversationId,
+      role: "user",
+      content: processed,
+      attachments,
+    });
+    void extractUserMessageMemory(conversationId, user.id, models[0]?.model);
+    await startStream(conversationId, models);
+  }, [activeConversationId, addMessage, modelChoices, notify, startStream]);
 
   const stopStreaming = useCallback(async () => {
-    if (!isStreaming) return;
-    cancelRef.current = true;
-    sessionRef.current.cancel();
-
-    try {
-      await loggedInvoke("cancel_chat");
-    } catch (err) {
-      console.error(err);
-    }
-
-    const { streamingMessages: snapshot } = useChatStore.getState();
-    for (const [mid, msg] of Object.entries(snapshot)) {
-      const rid = sessionRef.current.requestIdForMessage(mid);
-      await addMessage({
-        ...msg,
-        content: sanitizeOutput(msg.content || ""),
-        isThinking: false,
-        isStreaming: false,
-        thinkingDuration: sessionRef.current.thinkingDuration(rid),
-        status: "aborted",
-      });
-      setStreamingMessage(mid, null);
-    }
-
+    if (!jobsRef.current.length) return;
+    setJobs((current) => current.map((job) => ({ ...job, cancelled: true })));
     clearQueue();
-    resetStreamState();
-    setIsStreaming(false);
-    setStreamingConversationId(null);
-  }, [isStreaming, addMessage, clearQueue, resetStreamState, setStreamingConversationId, setStreamingMessage]);
+  }, [clearQueue]);
 
-  const regenerateMessage = useCallback(
-    (conversationId: string) => {
-      const models = validModelChoices(modelChoices);
-      if (isStreaming || !models.length || !conversationId) return;
-      void startStream(conversationId, models);
-    },
-    [modelChoices, isStreaming, startStream],
-  );
+  const regenerateMessage = useCallback((conversationId: string) => {
+    const models = validModelChoices(modelChoices);
+    const runtime = useRuntimeStore.getState().selected;
+    if (
+      jobsRef.current.length ||
+      (!models.length && runtime?.kind !== "coding-agent") ||
+      !conversationId
+    ) return;
+    void startStream(conversationId, models);
+  }, [modelChoices, startStream]);
 
-  const messageQueue = useChatStore((s) => s.messageQueue);
+  const messageQueue = useChatStore((state) => state.messageQueue);
   const queuedCount = useMemo(
-    () => messageQueue.filter((m) => m.conversationId === activeConversationId).length,
-    [messageQueue, activeConversationId],
+    () => messageQueue.filter(
+      (message) => message.conversationId === activeConversationId,
+    ).length,
+    [activeConversationId, messageQueue],
+  );
+  const runtime = useMemo(
+    () => createElement(ChatRuntime, {
+      jobs,
+      onUpdate: handleUpdate,
+      onFinish: handleFinish,
+      onError: handleError,
+    }),
+    [handleError, handleFinish, handleUpdate, jobs],
   );
 
   return {
     messages,
-    isStreaming,
+    isStreaming: jobs.length > 0,
     sendMessage,
     regenerateMessage,
     stopStreaming,
     bottomRef,
-    hasMessages: messages.length > 0 || isStreaming,
+    hasMessages: messages.length > 0 || jobs.length > 0,
     queuedCount,
     processNextInQueue,
+    runtime,
   };
 }

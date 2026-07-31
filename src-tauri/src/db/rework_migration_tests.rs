@@ -1060,7 +1060,7 @@ async fn runtime_family_cannot_change_in_place() {
         installation_id: "inst".into(),
         agent_kind: crate::runtime::AgentKind::Codex,
         workspace_id: "ws".into(),
-        acp_session_id: None,
+        agent_session_id: None,
     };
     let error = repository::set_conversation_runtime(&pool, "conv", &agent)
         .await
@@ -1125,7 +1125,7 @@ async fn an_unresolved_conversation_can_be_answered() {
         installation_id: "inst".into(),
         agent_kind: crate::runtime::AgentKind::ClaudeCode,
         workspace_id: "ws".into(),
-        acp_session_id: Some("s-1".into()),
+        agent_session_id: Some("s-1".into()),
     };
     repository::set_conversation_runtime(&pool, "conv", &answered)
         .await
@@ -1322,7 +1322,7 @@ async fn runtime_reference_round_trips_through_the_database() {
             installation_id: "inst-1".into(),
             agent_kind: crate::runtime::AgentKind::Codex,
             workspace_id: "ws-1".into(),
-            acp_session_id: Some("sess-1".into()),
+            agent_session_id: Some("sess-1".into()),
         },
         RuntimeRef::Unresolved {
             reason: UnresolvedReason::NoModel,
@@ -1388,7 +1388,7 @@ async fn installations_and_workspaces_round_trip() {
         account_id: "acct".into(),
         agent_kind: crate::runtime::AgentKind::ClaudeCode,
         display_name: "Claude Code".into(),
-        executable_path: Some("/usr/local/bin/claude-agent-acp".into()),
+        executable_path: Some("/usr/local/bin/claude".into()),
         path_source: crate::connections::PathSource::PathLookup,
         launch_args: vec!["--cli".into()],
         detected_versions: Some(r#"{"adapter":"0.63.0","node":"22.14.0"}"#.into()),

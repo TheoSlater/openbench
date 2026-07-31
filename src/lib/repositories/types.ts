@@ -34,7 +34,28 @@ export function mapRowToConversation(row: { id: string; title: string; createdAt
   };
 }
 
-export function mapRowToMessage(row: { id: string; conversationId: string; role: "user" | "assistant"; content: string; createdAt: string; attachments?: string; model?: string; provider?: Message["provider"]; thinking?: string; thinkingDuration?: number; webSearch?: string; status?: Message["status"]; errorMessage?: string; memoryUpdates?: string }): Message {
+export type MessageRow = {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  attachments?: string;
+  model?: string;
+  provider?: Message["provider"];
+  thinking?: string;
+  thinkingDuration?: number;
+  webSearch?: string;
+  status?: Message["status"];
+  errorMessage?: string;
+  memoryUpdates?: string;
+  runtimeParts?: string;
+  usage?: string;
+  finishReason?: Message["finishReason"];
+  agentSessionId?: string;
+};
+
+export function mapRowToMessage(row: MessageRow): Message {
   return {
     id: row.id,
     conversationId: row.conversationId,
@@ -50,5 +71,9 @@ export function mapRowToMessage(row: { id: string; conversationId: string; role:
     status: row.status,
     errorMessage: row.errorMessage,
     memoryUpdates: row.memoryUpdates ? JSON.parse(row.memoryUpdates) : undefined,
+    runtimeParts: row.runtimeParts ? JSON.parse(row.runtimeParts) : undefined,
+    usage: row.usage ? JSON.parse(row.usage) : undefined,
+    finishReason: row.finishReason,
+    agentSessionId: row.agentSessionId,
   };
 }

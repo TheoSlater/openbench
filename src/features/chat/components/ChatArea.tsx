@@ -134,6 +134,7 @@ const TurnItem = memo(function TurnItem({
                 onRegenerate={onRegenerate}
                 webSearch={msg.webSearch}
                 memoryUpdates={msg.memoryUpdates}
+                runtimeParts={msg.runtimeParts}
                 isLastMessage={isNewest && idx === allAssistantMessages.length - 1}
               />
             </Box>

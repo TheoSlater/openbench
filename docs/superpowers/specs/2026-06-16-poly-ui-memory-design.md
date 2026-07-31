@@ -157,7 +157,7 @@ Phase 1:
 Later phases:
 
 - `src-tauri/src/commands/chat_commands.rs`
-- `src-tauri/src/tool_loop.rs` if context injection needs helper contract changes
-- `src/hooks/useChatStream.ts` only to submit stable completed-turn ids after persistence
+- AI SDK sidecar runtime if context injection needs helper contract changes
+- `src/features/chat/hooks/useChatStream.ts` only to submit stable completed-turn ids after persistence
 - Settings and memory UI files under `src/components/Settings/` and `src/features/memory/`
 - Docs under `docs/memory.md`

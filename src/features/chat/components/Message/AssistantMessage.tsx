@@ -36,6 +36,7 @@ import {
 import { MemoryMenuItems } from "./MemoryMenuItems";
 import { MarkdownProse } from "./MarkdownProse";
 import { useSettingsStore } from "@/store/settingsStore";
+import { AgentParts } from "./AgentParts";
 
 export function AssistantMessage(props: MessageProps) {
   const {
@@ -54,6 +55,7 @@ export function AssistantMessage(props: MessageProps) {
     webSearch,
     isLastMessage,
     memoryUpdates,
+    runtimeParts,
   } = props;
 
   const { copied, handleCopy } = useCopyMessage(content);
@@ -154,6 +156,8 @@ export function AssistantMessage(props: MessageProps) {
           processedThinking={processedThinking}
           status={status}
         />
+
+        <AgentParts parts={runtimeParts} />
 
         {webSearch && (
           <Box>

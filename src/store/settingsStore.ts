@@ -2,8 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PromptPresetId } from "@/lib/constants/promptPresets";
 import type { WebSearchSettings } from "@/features/web-search/types";
-import type { CodexSettings } from "@/generated/bindings/CodexSettings";
-import type { ClaudeSettings } from "@/generated/bindings/ClaudeSettings";
 import { startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
 import { createSafeJsonStorage } from "./persistStorage";
 
@@ -74,20 +72,12 @@ type SettingsState = {
   tts: TtsSettings;
   dictation: DictationSettings;
   performance: PerformanceSettings;
-  codex: CodexSettings;
-  codexWorkspace: string;
-  claude: ClaudeSettings;
-  claudeWorkspace: string;
   selectedPromptPreset: PromptPresetId;
   actions: {
     updateGeneral: (update: Partial<GeneralSettings>) => void;
     updateTts: (update: Partial<TtsSettings>) => void;
     updateDictation: (update: Partial<DictationSettings>) => void;
     updatePerformance: (update: Partial<PerformanceSettings>) => void;
-    updateCodex: (update: Partial<CodexSettings>) => void;
-    setCodexWorkspace: (workspace: string) => void;
-    updateClaude: (update: Partial<ClaudeSettings>) => void;
-    setClaudeWorkspace: (workspace: string) => void;
     setPromptPreset: (id: PromptPresetId) => void;
   };
 };
@@ -108,7 +98,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 27;
+const SETTINGS_VERSION = 29;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -130,10 +120,7 @@ export const defaultPerformance: PerformanceSettings = {
 };
 
 function createDefaultWebSearchSettings(): WebSearchSettings {
-  return {
-    provider: "local",
-    apiKeys: { local: "", exa: "", ollama: "", tavily: "" },
-  };
+  return { provider: "local" };
 }
 
 function defaultSettingsState(): Omit<SettingsState, "actions"> {
@@ -156,16 +143,6 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
     tts: { ...defaultTts },
     dictation: { ...defaultDictation },
     performance: { ...defaultPerformance },
-    codex: {
-      adapter_override: null,
-      codex_path: null,
-      no_browser: false,
-    },
-    codexWorkspace: "",
-    claude: {
-      adapter_override: null,
-    },
-    claudeWorkspace: "",
     selectedPromptPreset: "default" as PromptPresetId,
   };
 }
@@ -188,10 +165,6 @@ export function mergeSettingsWithDefaults(
       webSearch: {
         ...current.general.webSearch,
         ...p.general?.webSearch,
-        apiKeys: {
-          ...current.general.webSearch.apiKeys,
-          ...p.general?.webSearch?.apiKeys,
-        },
       },
     },
     tts: {
@@ -202,10 +175,6 @@ export function mergeSettingsWithDefaults(
     },
     dictation: { ...current.dictation, ...p.dictation },
     performance: { ...current.performance, ...p.performance },
-    codex: { ...current.codex, ...p.codex },
-    codexWorkspace: p.codexWorkspace ?? current.codexWorkspace,
-    claude: { ...current.claude, ...p.claude },
-    claudeWorkspace: p.claudeWorkspace ?? current.claudeWorkspace,
     actions: current.actions,
   };
 }
@@ -235,14 +204,6 @@ export const useSettingsStore = create<SettingsState>()(
         updatePerformance: (update) =>
           set((s) => ({ performance: { ...s.performance, ...update } })),
 
-        updateCodex: (update) =>
-          set((s) => ({ codex: { ...s.codex, ...update } })),
-
-        setCodexWorkspace: (codexWorkspace) => set({ codexWorkspace }),
-        updateClaude: (update) =>
-          set((s) => ({ claude: { ...s.claude, ...update } })),
-        setClaudeWorkspace: (claudeWorkspace) => set({ claudeWorkspace }),
-
         setPromptPreset: (id) => set({ selectedPromptPreset: id }),
       },
     }),
@@ -270,16 +231,8 @@ export const useSettingsStore = create<SettingsState>()(
           delete state.account;
         }
         if (version < 6 && state?.general) {
-          const webSearch = createDefaultWebSearchSettings();
-          webSearch.apiKeys.exa = state.general.exaApiKey ?? "";
-          state.general.webSearch = webSearch;
+          state.general.webSearch = createDefaultWebSearchSettings();
           delete state.general.exaApiKey;
-        }
-        if (version < 7 && state?.general?.webSearch) {
-          state.general.webSearch.apiKeys = {
-            ...state.general.webSearch.apiKeys,
-            ollama: "",
-          };
         }
         if (version < 9) {
           state.performance = { ...defaultPerformance, ...state.performance };
@@ -307,10 +260,6 @@ export const useSettingsStore = create<SettingsState>()(
             ...createDefaultWebSearchSettings(),
             ...state.general.webSearch,
             provider: state.general.webSearch?.provider ?? "local",
-            apiKeys: {
-              ...createDefaultWebSearchSettings().apiKeys,
-              ...(state.general.webSearch?.apiKeys ?? {}),
-            },
           };
         }
         if (version < 16) {
@@ -352,6 +301,15 @@ export const useSettingsStore = create<SettingsState>()(
             state.general.terminalEmulator,
           );
         }
+        if (version < 28 && state?.general?.webSearch) {
+          delete state.general.webSearch.apiKeys;
+        }
+        if (version < 29) {
+          delete state.codex;
+          delete state.codexWorkspace;
+          delete state.claude;
+          delete state.claudeWorkspace;
+        }
         startupPhase("settings migration complete");
         return state as SettingsState;
       },
@@ -370,10 +328,6 @@ export const useSettingsStore = create<SettingsState>()(
         tts,
         dictation,
         performance,
-        codex,
-        codexWorkspace,
-        claude,
-        claudeWorkspace,
         selectedPromptPreset,
       }) =>
         ({
@@ -381,10 +335,6 @@ export const useSettingsStore = create<SettingsState>()(
           tts,
           dictation,
           performance,
-          codex,
-          codexWorkspace,
-          claude,
-          claudeWorkspace,
           selectedPromptPreset,
         }) as SettingsState,
     },

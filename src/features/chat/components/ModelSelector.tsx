@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Check, ChevronDown, Cpu, Link2, Search, Settings2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useShallow } from "zustand/react/shallow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -8,8 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { codexStatus } from "@/features/codex/codexClient";
-import { claudeStatus } from "@/features/claude/claudeClient";
+import { agentStatus } from "@/features/coding-agents/client";
 import { connectionsClient } from "@/features/connections/client";
 import { useConnectionsStore } from "@/features/connections/store";
 import { getCurrentProviderAccountId } from "@/features/providers";
@@ -25,7 +25,6 @@ import {
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
 import { useChatStore } from "@/store/chatStore";
-import { useSettingsStore } from "@/store/settingsStore";
 
 type ModelTab = "all" | "local" | "external";
 const TABS: { id: ModelTab; label: string }[] = [
@@ -56,11 +55,17 @@ export function ModelSelector({
   onManageConnections,
 }: ModelSelectorProps) {
   const accountId = getCurrentProviderAccountId();
-  const { summaries, models, loading, actions } = useConnectionsStore();
+  const { summaries, models, loading, actions } = useConnectionsStore(
+    useShallow((state) => ({
+      summaries: state.summaries,
+      models: state.models,
+      loading: state.loading,
+      actions: state.actions,
+    })),
+  );
   const selected = useRuntimeStore((state) => state.selected);
   const selectedLabel = useRuntimeStore((state) => state.label);
   const selectRuntime = useRuntimeStore((state) => state.actions.select);
-  const settings = useSettingsStore();
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const createConversation = useChatStore((state) => state.actions.createConversation);
   const addMessage = useChatStore((state) => state.actions.addMessage);
@@ -79,12 +84,14 @@ export function ModelSelector({
     void (async () => {
       await actions.load(accountId);
       const state = useConnectionsStore.getState();
-      await Promise.all(
-        state.summaries.map((item) => state.actions.loadModels(item.connection.id)),
+      const refreshModels = Promise.allSettled(
+        state.summaries
+          .filter((item) => item.connection.enabled && item.health.status !== "failed")
+          .map((item) => state.actions.loadModels(item.connection.id, true)),
       );
       const [codex, claude, recents] = await Promise.all([
-        codexStatus(settings.codex),
-        claudeStatus(settings.claude),
+        agentStatus("codex"),
+        agentStatus("claude-code"),
         connectionsClient.recents(accountId),
       ]);
       setAgents([
@@ -93,8 +100,8 @@ export function ModelSelector({
           family: "coding-agent",
           group: "Coding agents",
           title: "Codex",
-          connection: "ACP adapter",
-          available: codex.usable,
+          connection: "Local CLI",
+          available: codex.installed && codex.authenticated,
           runtime: null,
         },
         {
@@ -102,14 +109,15 @@ export function ModelSelector({
           family: "coding-agent",
           group: "Coding agents",
           title: "Claude Code",
-          connection: "ACP adapter",
-          available: claude.usable,
+          connection: "Local CLI",
+          available: claude.installed && claude.authenticated,
           runtime: null,
         },
       ]);
       setRecentIds(new Set(recents.map(optionId)));
+      await refreshModels;
     })();
-  }, [accountId, actions, open, settings.claude, settings.codex]);
+  }, [accountId, actions, open]);
 
   const options = useMemo<RuntimeOption[]>(() => {
     const connectionOptions = summaries.flatMap((summary) =>
@@ -190,7 +198,7 @@ export function ModelSelector({
       installation_id: agent,
       agent_kind: agent,
       workspace_id: workspace.id,
-      acp_session_id: null,
+      agent_session_id: null,
     };
   };
 

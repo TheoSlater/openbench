@@ -3,8 +3,10 @@ import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
 import {
   DEFAULT_RUNTIME_KEY,
   LEGACY_DEFAULT_MODEL_KEY,
+  isDefaultRuntime,
   migrateLegacyDefaultModel,
   readDefaultRuntime,
+  writeDefaultRuntime,
 } from "@/lib/runtime/legacy-default-model";
 
 function makeStorage(initial: Record<string, string> = {}) {
@@ -92,5 +94,37 @@ describe("legacy default model migration", () => {
   it("treats a corrupt stored runtime as absent", () => {
     storage.data.set(DEFAULT_RUNTIME_KEY, "{not json");
     expect(readDefaultRuntime(storage)).toBeNull();
+  });
+
+  it("recognizes the stored default runtime", () => {
+    storage.data.set(DEFAULT_RUNTIME_KEY, JSON.stringify(CHAT));
+    expect(isDefaultRuntime(CHAT, storage)).toBe(true);
+    expect(
+      isDefaultRuntime(
+        { kind: "chat-model", connection_id: "conn-1", model_id: "other" },
+        storage,
+      ),
+    ).toBe(false);
+    expect(
+      isDefaultRuntime(
+        {
+          kind: "coding-agent",
+          installation_id: "codex",
+          agent_kind: "codex",
+          workspace_id: "w",
+        },
+        storage,
+      ),
+    ).toBe(false);
+  });
+
+  it("is false without a stored default or after the stored default changes", () => {
+    expect(isDefaultRuntime(CHAT, storage)).toBe(false);
+    writeDefaultRuntime(CHAT, storage);
+    writeDefaultRuntime(
+      { kind: "chat-model", connection_id: "conn-2", model_id: "llama" },
+      storage,
+    );
+    expect(isDefaultRuntime(CHAT, storage)).toBe(false);
   });
 });

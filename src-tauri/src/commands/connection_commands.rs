@@ -4,13 +4,65 @@
 //! model, installation, and workspace read/write commands land with the UI in
 //! checkpoint 7 rather than being stubbed out here.
 
+use crate::connections::ConnectionValidation;
 use crate::db::rework_migration;
-use crate::providers::adapter::{ConnectionProviderAdapter, ConnectionValidation, ProviderAdapter};
 use crate::runtime::RuntimeRef;
 use crate::AppState;
 
 fn now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+#[derive(serde::Deserialize)]
+struct DiscoveredModel {
+    id: String,
+    name: Option<String>,
+    owned_by: Option<String>,
+}
+
+async fn discover_models(
+    state: &AppState,
+    connection: &crate::connections::Connection,
+    credential: Option<&str>,
+) -> Result<Vec<crate::connections::ConnectionModel>, String> {
+    let value =
+        crate::commands::ai_runtime_commands::discover_models(state, connection, credential)
+            .await?;
+    let rows: Vec<DiscoveredModel> = serde_json::from_value(value)
+        .map_err(|_| "Model discovery returned an invalid catalog".to_string())?;
+    let seen = now();
+    Ok(rows
+        .into_iter()
+        .map(|model| crate::connections::ConnectionModel {
+            connection_id: connection.id.clone(),
+            remote_id: model.id.clone(),
+            display_name: model.name.or(Some(model.id)),
+            capabilities: None,
+            enabled: true,
+            aliases: Vec::new(),
+            metadata: model
+                .owned_by
+                .map(|owner| serde_json::json!({ "ownedBy": owner }).to_string()),
+            discovery_source: crate::connections::DiscoverySource::Remote,
+            last_seen_at: Some(seen.clone()),
+        })
+        .collect())
+}
+
+async fn validate(
+    state: &AppState,
+    connection: &crate::connections::Connection,
+    credential: Option<&str>,
+) -> Result<ConnectionValidation, String> {
+    let models = discover_models(state, connection, credential).await?;
+    Ok(validation_for(&models))
+}
+
+fn validation_for(models: &[crate::connections::ConnectionModel]) -> ConnectionValidation {
+    ConnectionValidation {
+        ready: true,
+        message: format!("Connected. {} model(s) available.", models.len()),
+    }
 }
 
 /// Resolve a legacy `localStorage["default_model"]` value against the migrated
@@ -55,10 +107,7 @@ pub async fn validate_connection(
     token: Option<String>,
 ) -> Result<ConnectionValidation, String> {
     let connection = authorized_connection(&state, &connection_id, token.as_deref()).await?;
-    let result = ConnectionProviderAdapter::new(connection, state.secret_store.as_ref())
-        .map_err(|error| error.message)?
-        .validate()
-        .await;
+    let result = validate(&state, &connection, None).await;
     let (status, detail) = match &result {
         Ok(validation) => (
             crate::connections::ConnectionHealthStatus::Ready,
@@ -66,7 +115,7 @@ pub async fn validate_connection(
         ),
         Err(error) => (
             crate::connections::ConnectionHealthStatus::Failed,
-            error.message.as_str(),
+            error.as_str(),
         ),
     };
     crate::connections::repository::record_connection_health(
@@ -77,7 +126,7 @@ pub async fn validate_connection(
         &now(),
     )
     .await?;
-    result.map_err(|error| error.message)
+    result
 }
 
 #[tauri::command]
@@ -87,9 +136,7 @@ pub async fn refresh_connection_models(
     token: Option<String>,
 ) -> Result<Vec<crate::connections::ConnectionModel>, String> {
     let connection = authorized_connection(&state, &connection_id, token.as_deref()).await?;
-    let adapter = ConnectionProviderAdapter::new(connection, state.secret_store.as_ref())
-        .map_err(|error| error.message)?;
-    let models = adapter.list_models().await.map_err(|error| error.message)?;
+    let models = discover_models(&state, &connection, None).await?;
     crate::connections::repository::refresh_discovered_models(&state.db, &connection_id, &models)
         .await?;
     crate::connections::repository::list_models(&state.db, &connection_id).await
@@ -138,24 +185,6 @@ pub async fn save_manual_connection_model(
 }
 
 #[tauri::command]
-pub async fn set_connection_model_enabled(
-    state: tauri::State<'_, AppState>,
-    connection_id: String,
-    remote_id: String,
-    enabled: bool,
-    token: Option<String>,
-) -> Result<(), String> {
-    authorized_connection(&state, &connection_id, token.as_deref()).await?;
-    crate::connections::repository::set_model_enabled(
-        &state.db,
-        &connection_id,
-        &remote_id,
-        enabled,
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn save_chat_connection(
     state: tauri::State<'_, AppState>,
     mut connection: crate::connections::Connection,
@@ -197,26 +226,8 @@ pub async fn save_chat_connection(
 
     let mut validation_connection = connection.clone();
     validation_connection.enabled = true;
-    let validation = if let Some(value) = credential.as_deref() {
-        let temporary = crate::connections::secrets::InMemorySecretStore::new();
-        crate::connections::secrets::SecretStore::set(
-            &temporary,
-            &reference,
-            &crate::connections::secrets::Secret::new(value),
-        )
-        .map_err(|error| error.to_string())?;
-        ConnectionProviderAdapter::new(validation_connection, &temporary)
-            .map_err(|error| error.message)?
-            .validate()
-            .await
-            .map_err(|error| error.message)?
-    } else {
-        ConnectionProviderAdapter::new(validation_connection, state.secret_store.as_ref())
-            .map_err(|error| error.message)?
-            .validate()
-            .await
-            .map_err(|error| error.message)?
-    };
+    let models = discover_models(&state, &validation_connection, credential.as_deref()).await?;
+    let validation = validation_for(&models);
 
     if let Some(value) = credential {
         state
@@ -225,6 +236,8 @@ pub async fn save_chat_connection(
             .map_err(|error| error.to_string())?;
     }
     crate::connections::repository::save_connection(&state.db, &connection).await?;
+    crate::connections::repository::refresh_discovered_models(&state.db, &connection.id, &models)
+        .await?;
     crate::connections::repository::record_connection_health(
         &state.db,
         &connection.id,

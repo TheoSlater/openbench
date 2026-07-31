@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { ConversationRepository, mapRowToConversation, mapRowToMessage } from "./types";
+import { ConversationRepository, mapRowToConversation, mapRowToMessage, type MessageRow } from "./types";
 import { Message, Conversation, Folder, ConversationMetadata } from "@/types/chat";
 
 export type { ConversationRepository } from "./types";
@@ -64,7 +64,7 @@ class SqliteConversationRepository implements ConversationRepository {
   }
 
   async getMessages(conversationId: string, limit: number, offset: number): Promise<Message[]> {
-    const rows = await this.db.select<{ id: string; conversationId: string; role: "user" | "assistant"; content: string; createdAt: string; attachments?: string; model?: string; provider?: Message["provider"]; thinking?: string; thinkingDuration?: number; webSearch?: string; status?: Message["status"]; errorMessage?: string }[]>(
+    const rows = await this.db.select<MessageRow[]>(
       "SELECT * FROM messages WHERE conversationId = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?",
       [conversationId, limit, offset]
     );
@@ -72,7 +72,7 @@ class SqliteConversationRepository implements ConversationRepository {
   }
 
   async getAllMessages(userId?: string): Promise<Message[]> {
-    const rows = await this.db.select<{ id: string; conversationId: string; role: "user" | "assistant"; content: string; createdAt: string; attachments?: string; model?: string; provider?: Message["provider"]; thinking?: string; thinkingDuration?: number; webSearch?: string; status?: Message["status"]; errorMessage?: string }[]>(
+    const rows = await this.db.select<MessageRow[]>(
       userId
         ? "SELECT messages.* FROM messages INNER JOIN conversations ON conversations.id = messages.conversationId WHERE conversations.userId = ? ORDER BY messages.conversationId ASC, messages.createdAt ASC"
         : "SELECT * FROM messages ORDER BY conversationId ASC, createdAt ASC",
@@ -83,7 +83,7 @@ class SqliteConversationRepository implements ConversationRepository {
 
   async addMessage(message: Message): Promise<void> {
     await this.db.execute(
-      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage, memoryUpdates) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage, memoryUpdates, runtimeParts, usage, finishReason, agentSessionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         message.id, message.conversationId, message.role, message.content, message.createdAt,
         message.attachments ? JSON.stringify(message.attachments) : null,
@@ -92,6 +92,10 @@ class SqliteConversationRepository implements ConversationRepository {
         message.status || null,
         message.errorMessage || null,
         message.memoryUpdates?.length ? JSON.stringify(message.memoryUpdates) : null,
+        message.runtimeParts?.length ? JSON.stringify(message.runtimeParts) : null,
+        message.usage ? JSON.stringify(message.usage) : null,
+        message.finishReason || null,
+        message.agentSessionId || null,
       ]
     );
     await this.db.execute("UPDATE conversations SET updatedAt = ? WHERE id = ?", [message.createdAt, message.conversationId]);

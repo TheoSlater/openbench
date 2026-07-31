@@ -37,3 +37,9 @@ AGENTS.md
 
 # Viewport pack build output (hundreds of MB of Chromium)
 dist-pack/
+
+# Target-specific Bun executable bundled by Tauri.
+src-tauri/binaries/polyui-ai-runtime-*
+
+# ts-rs writes duplicate bindings here when Cargo runs from src-tauri.
+src-tauri/bindings/

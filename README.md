@@ -102,6 +102,8 @@ bun run tauri dev
 
 ### 📦 Building for Production
 
+Production builds compile the pinned AI SDK runtime into a target-specific Bun sidecar before Tauri packaging. See [AI SDK runtime architecture](docs/ai-sdk-runtime.md) for security, package versions, and platform size impact.
+
 To build the default installer:
 ```bash
 bun run tauri build
