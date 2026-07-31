@@ -37,3 +37,6 @@ AGENTS.md
 
 # Viewport pack build output (hundreds of MB of Chromium)
 dist-pack/
+
+# Target-specific Bun executable bundled by Tauri.
+src-tauri/binaries/polyui-ai-runtime-*

@@ -36,6 +36,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/polyui-ai-runtime"
+    ],
     "resources": {
       "target/onnxruntime/*onnxruntime*": ""
     },

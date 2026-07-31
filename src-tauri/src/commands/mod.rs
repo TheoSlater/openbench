@@ -1,4 +1,5 @@
 pub mod acp_commands;
+pub mod ai_runtime_commands;
 pub mod adapter_install_commands;
 pub mod chat_commands;
 pub mod claude_commands;

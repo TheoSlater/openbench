@@ -1,4 +1,5 @@
 mod acp;
+mod ai_sidecar;
 mod auth;
 mod claude;
 mod codex;
@@ -52,11 +53,14 @@ use tokio::sync::Mutex;
 /// managed state.
 static ACP_HOST_FOR_EXIT: std::sync::OnceLock<Arc<crate::acp::host::AcpHost>> =
     std::sync::OnceLock::new();
+static AI_SIDECAR_FOR_EXIT: std::sync::OnceLock<Arc<crate::ai_sidecar::AiSidecar>> =
+    std::sync::OnceLock::new();
 
 pub struct AppState {
     pub db: SqlitePool,
     /// Owns every running coding-agent process.
     pub acp: Arc<crate::acp::host::AcpHost>,
+    pub ai: Arc<crate::ai_sidecar::AiSidecar>,
     /// Cached Codex detection, so rendering the settings page never scans.
     pub codex: crate::commands::codex_commands::CodexCache,
     /// Cached Claude detection and negotiated setup data.
@@ -175,6 +179,11 @@ pub fn run() {
             startup_log::log_phase("database ready");
 
             let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
+            let ai = crate::ai_sidecar::AiSidecar::new(app.handle())
+                .map_err(std::io::Error::other)?;
+            AI_SIDECAR_FOR_EXIT
+                .set(ai.clone())
+                .unwrap_or_else(|_| log::warn!("AI sidecar was registered twice"));
             crate::acp::lifecycle::sweep_pid_receipts();
             let acp = crate::acp::host::AcpHost::new();
             ACP_HOST_FOR_EXIT
@@ -183,6 +192,7 @@ pub fn run() {
             app.manage(AppState {
                 db: db.clone(),
                 acp,
+                ai,
                 codex: crate::commands::codex_commands::CodexCache::default(),
                 claude: crate::commands::claude_commands::ClaudeCache::default(),
                 chat_requests: providers::adapter::ChatRequestRegistry::default(),
@@ -295,6 +305,10 @@ pub fn run() {
             commands::acp_commands::acp_cancel_turn,
             commands::acp_commands::acp_stop_session,
             commands::acp_commands::acp_answer_permission,
+            commands::ai_runtime_commands::ai_runtime_start,
+            commands::ai_runtime_commands::ai_runtime_cancel,
+            commands::ai_runtime_commands::ai_runtime_models,
+            commands::ai_runtime_commands::ai_runtime_generate,
             commands::memory_commands::memory_get_settings,
             commands::memory_commands::memory_update_settings,
             commands::memory_commands::memory_test_connection,
@@ -368,6 +382,10 @@ pub fn run() {
             if let Some(acp) = ACP_HOST_FOR_EXIT.get() {
                 startup_log::log_phase("exit requested; stopping agent processes");
                 tauri::async_runtime::block_on(acp.shutdown());
+            }
+            if let Some(ai) = AI_SIDECAR_FOR_EXIT.get() {
+                startup_log::log_phase("exit requested; stopping AI sidecar");
+                tauri::async_runtime::block_on(ai.shutdown());
             }
 
             startup_log::log_phase("exit requested; terminating process");
