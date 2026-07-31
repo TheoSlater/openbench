@@ -54,14 +54,6 @@ export const connectionsClient = {
       ...auth(),
     });
   },
-  setModelEnabled(connectionId: string, remoteId: string, enabled: boolean) {
-    return invoke<void>("set_connection_model_enabled", {
-      connectionId,
-      remoteId,
-      enabled,
-      ...auth(),
-    });
-  },
   remove(connectionId: string) {
     return invoke<void>("delete_chat_connection", {
       connectionId,

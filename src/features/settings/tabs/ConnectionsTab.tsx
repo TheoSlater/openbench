@@ -171,20 +171,8 @@ function ConnectionEditor({
               <div className="max-h-28 overflow-y-auto rounded-md border p-2 text-xs text-muted-foreground">
                 {models.length
                   ? models.map((model) => (
-                    <div key={model.remote_id} className="flex items-center justify-between gap-3 py-1">
+                    <div key={model.remote_id} className="py-1">
                       <span className="truncate">{model.display_name ?? model.remote_id}</span>
-                      <Switch
-                        aria-label={`Enable ${model.display_name ?? model.remote_id}`}
-                        checked={model.enabled}
-                        onCheckedChange={(enabled) => {
-                          setModels((current) => current.map((item) => (
-                            item.remote_id === model.remote_id ? { ...item, enabled } : item
-                          )));
-                          void connectionsClient
-                            .setModelEnabled(initial.id, model.remote_id, enabled)
-                            .catch((error) => notify.error("Model update failed", String(error)));
-                        }}
-                      />
                     </div>
                   ))
                   : "No configured models."}
@@ -271,7 +259,7 @@ function ProviderConnectionCard({
       </CardHeader>
       <CardContent className="flex items-end justify-between gap-4">
         <div className="min-w-0 text-xs text-muted-foreground">
-          <div>{summary.available_model_count} available · {summary.enabled_model_count} enabled</div>
+          <div>{summary.available_model_count} models available</div>
           {health.last_validated_at ? (
             <div className="truncate">
               Validated {new Date(health.last_validated_at).toLocaleString()}

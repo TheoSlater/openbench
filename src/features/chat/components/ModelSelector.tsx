@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Check, ChevronDown, Cpu, Link2, Search, Settings2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useShallow } from "zustand/react/shallow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -54,7 +55,14 @@ export function ModelSelector({
   onManageConnections,
 }: ModelSelectorProps) {
   const accountId = getCurrentProviderAccountId();
-  const { summaries, models, loading, actions } = useConnectionsStore();
+  const { summaries, models, loading, actions } = useConnectionsStore(
+    useShallow((state) => ({
+      summaries: state.summaries,
+      models: state.models,
+      loading: state.loading,
+      actions: state.actions,
+    })),
+  );
   const selected = useRuntimeStore((state) => state.selected);
   const selectedLabel = useRuntimeStore((state) => state.label);
   const selectRuntime = useRuntimeStore((state) => state.actions.select);
@@ -76,8 +84,10 @@ export function ModelSelector({
     void (async () => {
       await actions.load(accountId);
       const state = useConnectionsStore.getState();
-      await Promise.all(
-        state.summaries.map((item) => state.actions.loadModels(item.connection.id)),
+      const refreshModels = Promise.allSettled(
+        state.summaries
+          .filter((item) => item.connection.enabled && item.health.status !== "failed")
+          .map((item) => state.actions.loadModels(item.connection.id, true)),
       );
       const [codex, claude, recents] = await Promise.all([
         agentStatus("codex"),
@@ -105,6 +115,7 @@ export function ModelSelector({
         },
       ]);
       setRecentIds(new Set(recents.map(optionId)));
+      await refreshModels;
     })();
   }, [accountId, actions, open]);
 

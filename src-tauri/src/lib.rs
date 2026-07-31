@@ -243,7 +243,6 @@ pub fn run() {
             commands::connection_commands::validate_connection,
             commands::connection_commands::refresh_connection_models,
             commands::connection_commands::save_manual_connection_model,
-            commands::connection_commands::set_connection_model_enabled,
             commands::connection_commands::save_chat_connection,
             commands::connection_commands::list_chat_connections,
             commands::connection_commands::list_connection_models,
