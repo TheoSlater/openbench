@@ -12,16 +12,22 @@ pub struct AgentCliStatus {
 }
 
 fn executable(name: &str) -> Option<PathBuf> {
-    let file = if cfg!(windows) { format!("{name}.exe") } else { name.into() };
+    let file = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.into()
+    };
     std::env::var_os("PATH")
         .into_iter()
         .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
-        .chain(dirs::home_dir().into_iter().flat_map(|home| [
-            home.join(".local/bin"),
-            home.join(".bun/bin"),
-            home.join(".npm-global/bin"),
-            home.join(".claude/local"),
-        ]))
+        .chain(dirs::home_dir().into_iter().flat_map(|home| {
+            [
+                home.join(".local/bin"),
+                home.join(".bun/bin"),
+                home.join(".npm-global/bin"),
+                home.join(".claude/local"),
+            ]
+        }))
         .map(|dir| dir.join(&file))
         .find(|path| path.is_file())
 }

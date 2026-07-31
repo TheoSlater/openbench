@@ -3,13 +3,22 @@ import {
   streamText,
   toUIMessageStream,
   type LanguageModel,
+  type TextStreamPart,
+  type ToolSet,
   type UIMessageChunk,
 } from "ai";
 import type { CodexAppServerProvider } from "ai-sdk-provider-codex-cli";
 import type { AgentCommand } from "./protocol";
-import { ApprovalBroker } from "./approvals";
+import { ApprovalBroker, type AgentEvent } from "./approvals";
 
-type AgentModel = { model: LanguageModel; close?: () => Promise<void> };
+type RuntimeAgentEvent = Exclude<AgentEvent, { kind: "permission" }>;
+
+type AgentModel = {
+  model: LanguageModel;
+  events?: RuntimeAgentEvent[];
+  includeRawChunks?: boolean;
+  close?: () => Promise<void>;
+};
 type AgentDeps = {
   approvals?: ApprovalBroker;
   createModel?: (command: AgentCommand, approvals: ApprovalBroker) => Promise<AgentModel>;
@@ -32,7 +41,9 @@ function toolDetail(toolName: string, input: Record<string, unknown>) {
 async function claudeModel(command: AgentCommand, approvals: ApprovalBroker): Promise<AgentModel> {
   const { claudeCode } = await import("ai-sdk-provider-claude-code");
   const { agent } = command;
+  const events: RuntimeAgentEvent[] = [];
   return {
+    events,
     model: claudeCode(agent.modelId ?? "sonnet", {
       cwd: agent.workspace,
       pathToClaudeCodeExecutable: agent.executablePath,
@@ -42,9 +53,22 @@ async function claudeModel(command: AgentCommand, approvals: ApprovalBroker): Pr
       settingSources: ["user", "project", "local"],
       tools: { type: "preset", preset: "claude_code" },
       logger: false,
+      onTaskEvent: (event) => {
+        const description = "description" in event
+          ? event.description
+          : event.subtype === "task_updated"
+            ? event.patch.description
+            : undefined;
+        events.push({
+          kind: "task",
+          id: event.taskId,
+          text: description ?? event.subtype,
+          status: event.subtype.replace("task_", ""),
+        });
+      },
       canUseTool: async (toolName, input, options) => {
-        const mutation = ["Bash", "Edit", "Write", "NotebookEdit"].includes(toolName);
-        if (agent.accessMode === "read-only" && mutation) {
+        const safeRead = ["Read", "Glob", "Grep", "WebFetch", "WebSearch"].includes(toolName);
+        if (agent.accessMode === "read-only" && !safeRead) {
           return { behavior: "deny", message: "This session is read-only." };
         }
         const decision = await approvals.request(
@@ -79,6 +103,7 @@ async function codexModel(command: AgentCommand, approvals: ApprovalBroker): Pro
   const ask = async (approvalId: string, detail: Parameters<ApprovalBroker["request"]>[2]) =>
     approvals.request(command.requestId, approvalId, detail);
   return {
+    includeRawChunks: true,
     model: provider(modelId, {
       cwd: agent.workspace,
       threadMode: "persistent",
@@ -86,6 +111,7 @@ async function codexModel(command: AgentCommand, approvals: ApprovalBroker): Pro
       approvalPolicy: "on-request",
       sandboxPolicy: agent.accessMode,
       autoApprove: false,
+      includeRawChunks: true,
       effort: command.reasoning === "none" ? undefined : command.reasoning,
       serverRequests: {
         onCommandExecutionApproval: async ({ params }) => ({
@@ -105,6 +131,86 @@ async function codexModel(command: AgentCommand, approvals: ApprovalBroker): Pro
       },
     }),
   };
+}
+
+function rawAgentEvent(rawValue: unknown): RuntimeAgentEvent | undefined {
+  if (!rawValue || typeof rawValue !== "object") return undefined;
+  const raw = rawValue as { method?: unknown; params?: { item?: unknown } };
+  if (!["item/started", "item/completed"].includes(String(raw.method))) return undefined;
+  if (!raw.params?.item || typeof raw.params.item !== "object") return undefined;
+  const item = raw.params.item as Record<string, unknown>;
+  const id = typeof item.id === "string" ? item.id : crypto.randomUUID();
+  const status = raw.method === "item/completed" ? "completed" : "running";
+  if (item.type === "plan" && typeof item.text === "string") {
+    return { kind: "plan", id, text: item.text, status };
+  }
+  if (item.type === "commandExecution") {
+    return {
+      kind: "terminal",
+      id,
+      command: typeof item.command === "string" ? item.command : undefined,
+      cwd: typeof item.cwd === "string" ? item.cwd : undefined,
+      status: typeof item.status === "string" ? item.status : status,
+    };
+  }
+  if (item.type === "fileChange") {
+    const paths = Array.isArray(item.changes)
+      ? item.changes.flatMap((change) => {
+        if (!change || typeof change !== "object") return [];
+        const value = change as Record<string, unknown>;
+        const path = value.path ?? value.filePath;
+        return typeof path === "string" ? [path] : [];
+      })
+      : undefined;
+    return {
+      kind: "file",
+      id,
+      paths: paths?.length ? paths : undefined,
+      status: typeof item.status === "string" ? item.status : status,
+    };
+  }
+  return undefined;
+}
+
+const dataChunk = (event: RuntimeAgentEvent): UIMessageChunk => ({
+  type: "data-agent",
+  id: event.id,
+  data: event,
+});
+
+function withAgentEvents(
+  stream: ReadableStream<UIMessageChunk>,
+  events: RuntimeAgentEvent[],
+): ReadableStream<UIMessageChunk> {
+  const tools = new Map<string, RuntimeAgentEvent>();
+  return stream.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      while (events.length) controller.enqueue(dataChunk(events.shift()!));
+      if (chunk.type === "tool-input-available") {
+        const name = chunk.toolName.toLowerCase();
+        const detail = toolDetail(chunk.toolName, (chunk.input ?? {}) as Record<string, unknown>);
+        const event: RuntimeAgentEvent | undefined = /exec|bash|shell|command/.test(name)
+          ? { kind: "terminal", id: chunk.toolCallId, command: detail.command, status: "running" }
+          : /edit|write|file|patch|notebook/.test(name)
+            ? { kind: "file", id: chunk.toolCallId, paths: detail.paths, status: "running" }
+            : undefined;
+        if (event) {
+          tools.set(chunk.toolCallId, event);
+          controller.enqueue(dataChunk(event));
+        }
+      } else if (["tool-output-available", "tool-output-error", "tool-output-denied"].includes(chunk.type)) {
+        const event = "toolCallId" in chunk ? tools.get(chunk.toolCallId) : undefined;
+        if (event) controller.enqueue(dataChunk({
+          ...event,
+          status: chunk.type === "tool-output-available" ? "completed" : "failed",
+        }));
+      }
+      controller.enqueue(chunk);
+    },
+    flush(controller) {
+      while (events.length) controller.enqueue(dataChunk(events.shift()!));
+    },
+  }));
 }
 
 export async function createAgentModel(
@@ -142,10 +248,25 @@ export async function streamAgent(
     instructions: command.instructions,
     messages: await convertToModelMessages(command.messages),
     abortSignal,
+    include: created.includeRawChunks ? { rawChunks: true } : undefined,
   });
   let agentSessionId: string | undefined;
+  const events = created.events ?? [];
+  const observed = result.fullStream.pipeThrough(new TransformStream<
+    TextStreamPart<ToolSet>,
+    TextStreamPart<ToolSet>
+  >({
+    transform(part, controller) {
+      if (part.type === "raw") {
+        const event = rawAgentEvent(part.rawValue);
+        if (event) events.push(event);
+      } else {
+        controller.enqueue(part);
+      }
+    },
+  }));
   const stream = toUIMessageStream({
-    stream: result.stream,
+    stream: observed,
     originalMessages: command.messages,
     generateMessageId: command.responseMessageId ? () => command.responseMessageId! : undefined,
     sendReasoning: true,
@@ -162,8 +283,9 @@ export async function streamAgent(
     },
     onError: (error) => error instanceof Error ? error.message : "Coding agent failed",
   });
-  if (!created.close) return stream;
-  return stream.pipeThrough(new TransformStream({
+  const enriched = withAgentEvents(stream, events);
+  if (!created.close) return enriched;
+  return enriched.pipeThrough(new TransformStream({
     transform(chunk, controller) { controller.enqueue(chunk); },
     async flush() { await created.close?.(); },
   }));

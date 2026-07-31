@@ -298,7 +298,7 @@ export function useChatStream(
           kind: runtime.agent_kind,
           workspaceId: runtime.workspace_id,
           installationId: runtime.installation_id,
-          accessMode: "workspace-write",
+          accessMode: useRuntimeStore.getState().accessMode,
           sessionId: runtime.agent_session_id ?? undefined,
         } : undefined,
         model,

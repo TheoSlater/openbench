@@ -263,9 +263,8 @@ async fn handle_connection(
         )
         .await;
     }
-    let response = response_for_request(
-        method, path, body, token, db, secret_store, ai, app_handle,
-    ).await;
+    let response =
+        response_for_request(method, path, body, token, db, secret_store, ai, app_handle).await;
     stream.write_all(&response).await
 }
 
@@ -325,8 +324,10 @@ async fn handle_chat_stream_response(
             }
         };
         match event {
-            crate::ai_sidecar::AiRuntimeEvent::Chunk { request_id: id, chunk }
-                if id == request_id && chunk["type"] == "text-delta" => {
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "text-delta" => {
                 let delta = chunk["delta"].as_str().unwrap_or_default();
                 if let Err(error) = write_sse(
                     &mut stream,
@@ -339,8 +340,10 @@ async fn handle_chat_stream_response(
                     return Err(error);
                 }
             }
-            crate::ai_sidecar::AiRuntimeEvent::Chunk { request_id: id, chunk }
-                if id == request_id && chunk["type"] == "reasoning-delta" => {
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "reasoning-delta" => {
                 let delta = chunk["delta"].as_str().unwrap_or_default();
                 if let Err(error) = write_sse(
                     &mut stream,
@@ -353,12 +356,19 @@ async fn handle_chat_stream_response(
                     return Err(error);
                 }
             }
-            crate::ai_sidecar::AiRuntimeEvent::Chunk { request_id: id, chunk }
-                if id == request_id && chunk["type"] == "data-runtime-result" => {
-                content = chunk["data"]["text"].as_str().unwrap_or_default().to_string();
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id && chunk["type"] == "data-runtime-result" => {
+                content = chunk["data"]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
             }
-            crate::ai_sidecar::AiRuntimeEvent::Error { request_id: id, error }
-                if id == request_id => {
+            crate::ai_sidecar::AiRuntimeEvent::Error {
+                request_id: id,
+                error,
+            } if id == request_id => {
                 write_sse(
                     &mut stream,
                     "error",
@@ -402,7 +412,14 @@ async fn start_mobile_chat(
     secret_store: &dyn crate::connections::secrets::SecretStore,
     ai: &crate::ai_sidecar::AiSidecar,
     request: &BrowserChatRequest,
-) -> Result<(String, String, tokio::sync::broadcast::Receiver<crate::ai_sidecar::AiRuntimeEvent>), String> {
+) -> Result<
+    (
+        String,
+        String,
+        tokio::sync::broadcast::Receiver<crate::ai_sidecar::AiRuntimeEvent>,
+    ),
+    String,
+> {
     let _ = (&request.provider_type, request.provider_config_id);
     let (connection, model) = if let Some(connection_id) = request.connection_id.as_deref() {
         (
@@ -431,25 +448,35 @@ async fn start_mobile_chat(
     let provider_type = legacy_provider_type(&connection.provider).to_string();
     let request_id = Uuid::new_v4().to_string();
     let events = ai.subscribe();
-    let messages = request.messages.iter().map(|message| serde_json::json!({
-        "id": Uuid::new_v4().to_string(),
-        "role": message.role,
-        "parts": [{ "type": "text", "text": message.content }],
-    })).collect::<Vec<_>>();
-    ai.start_stream(&request_id, serde_json::json!({
-        "type": "chat",
-        "requestId": request_id,
-        "conversationId": request.conversation_id,
-        "connection": crate::commands::ai_runtime_commands::sidecar_connection(
-            secret_store,
-            &connection,
-            Some(&model),
-            None,
-        )?,
-        "messages": messages,
-        "reasoning": "medium",
-        "collectText": true,
-    })).await?;
+    let messages = request
+        .messages
+        .iter()
+        .map(|message| {
+            serde_json::json!({
+                "id": Uuid::new_v4().to_string(),
+                "role": message.role,
+                "parts": [{ "type": "text", "text": message.content }],
+            })
+        })
+        .collect::<Vec<_>>();
+    ai.start_stream(
+        &request_id,
+        serde_json::json!({
+            "type": "chat",
+            "requestId": request_id,
+            "conversationId": request.conversation_id,
+            "connection": crate::commands::ai_runtime_commands::sidecar_connection(
+                secret_store,
+                &connection,
+                Some(&model),
+                None,
+            )?,
+            "messages": messages,
+            "reasoning": "medium",
+            "collectText": true,
+        }),
+    )
+    .await?;
     Ok((provider_type, request_id, events))
 }
 
@@ -629,17 +656,27 @@ async fn response_for_request(
                 let mut failure = None;
                 while let Ok(event) = events.recv().await {
                     match event {
-                        crate::ai_sidecar::AiRuntimeEvent::Chunk { request_id: id, chunk }
-                            if id == request_id && chunk["type"] == "data-runtime-result" => {
-                            content = chunk["data"]["text"].as_str().unwrap_or_default().to_string();
+                        crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                            request_id: id,
+                            chunk,
+                        } if id == request_id && chunk["type"] == "data-runtime-result" => {
+                            content = chunk["data"]["text"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
                         }
-                        crate::ai_sidecar::AiRuntimeEvent::Error { request_id: id, error }
-                            if id == request_id => {
+                        crate::ai_sidecar::AiRuntimeEvent::Error {
+                            request_id: id,
+                            error,
+                        } if id == request_id => {
                             failure = Some(error);
                             break;
                         }
                         crate::ai_sidecar::AiRuntimeEvent::Done { request_id: id }
-                            if id == request_id => break,
+                            if id == request_id =>
+                        {
+                            break
+                        }
                         _ => {}
                     }
                 }

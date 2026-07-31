@@ -11,6 +11,8 @@ pub struct SidecarProcess {
     child: Child,
     stdin: ChildStdin,
     pid: u32,
+    #[cfg(windows)]
+    _job: Option<windows_job::JobObject>,
 }
 
 impl SidecarProcess {
@@ -28,10 +30,34 @@ impl SidecarProcess {
         let mut child = command
             .spawn()
             .map_err(|error| format!("failed to start AI runtime: {error}"))?;
-        let pid = child.id().ok_or_else(|| "AI runtime has no process id".to_string())?;
-        let stdin = child.stdin.take().ok_or_else(|| "AI runtime stdin unavailable".to_string())?;
-        let stdout = child.stdout.take().ok_or_else(|| "AI runtime stdout unavailable".to_string())?;
-        Ok((SidecarProcess { child, stdin, pid }, BufReader::new(stdout)))
+        let pid = child
+            .id()
+            .ok_or_else(|| "AI runtime has no process id".to_string())?;
+        #[cfg(windows)]
+        let job = windows_job::JobObject::assign(pid)
+            .map(Some)
+            .unwrap_or_else(|error| {
+                log::warn!("AI runtime process tree cleanup unavailable: {error}");
+                None
+            });
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "AI runtime stdin unavailable".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "AI runtime stdout unavailable".to_string())?;
+        Ok((
+            SidecarProcess {
+                child,
+                stdin,
+                pid,
+                #[cfg(windows)]
+                _job: job,
+            },
+            BufReader::new(stdout),
+        ))
     }
 
     pub async fn write(&mut self, value: &serde_json::Value) -> Result<(), String> {
@@ -106,5 +132,66 @@ fn validate(path: PathBuf) -> Result<PathBuf, String> {
         Ok(path)
     } else {
         Err("AI runtime executable path is not an absolute file".into())
+    }
+}
+
+#[cfg(windows)]
+mod windows_job {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    };
+
+    pub struct JobObject(HANDLE);
+    unsafe impl Send for JobObject {}
+    unsafe impl Sync for JobObject {}
+
+    impl JobObject {
+        pub fn assign(pid: u32) -> std::io::Result<Self> {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return Err(std::io::Error::last_os_error());
+                }
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    std::ptr::addr_of!(info).cast(),
+                    std::mem::size_of_val(&info) as u32,
+                ) == 0
+                {
+                    let error = std::io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                let process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+                if process.is_null() || process == INVALID_HANDLE_VALUE {
+                    let error = std::io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                let assigned = AssignProcessToJobObject(job, process);
+                CloseHandle(process);
+                if assigned == 0 {
+                    let error = std::io::Error::last_os_error();
+                    CloseHandle(job);
+                    return Err(error);
+                }
+                Ok(Self(job))
+            }
+        }
+    }
+
+    impl Drop for JobObject {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
     }
 }

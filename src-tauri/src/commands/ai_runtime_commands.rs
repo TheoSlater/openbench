@@ -54,7 +54,9 @@ pub(crate) fn secret(
         .map(|value| Some(value.expose().to_string()))
         .or_else(|error| match error {
             SecretError::NotFound => Ok(None),
-            SecretError::Unavailable(detail) => Err(format!("Credential store unavailable: {detail}")),
+            SecretError::Unavailable(detail) => {
+                Err(format!("Credential store unavailable: {detail}"))
+            }
         })
 }
 
@@ -135,9 +137,13 @@ pub async fn ai_runtime_start(
             }
         })
     } else {
-        let connection_id = request.connection_id.as_deref()
+        let connection_id = request
+            .connection_id
+            .as_deref()
             .ok_or_else(|| "Connection id is required".to_string())?;
-        let model_id = request.model_id.as_deref()
+        let model_id = request
+            .model_id
+            .as_deref()
             .ok_or_else(|| "Model id is required".to_string())?;
         let configured = connection(&state, connection_id, token.as_deref()).await?;
         serde_json::json!({
@@ -191,7 +197,10 @@ pub async fn ai_runtime_approval(
     approved: bool,
     reason: Option<String>,
 ) -> Result<(), String> {
-    state.ai.approval(&request_id, &approval_id, approved, reason).await
+    state
+        .ai
+        .approval(&request_id, &approval_id, approved, reason)
+        .await
 }
 
 #[tauri::command]
@@ -268,7 +277,10 @@ pub fn set_web_search_credential(
     credential: Option<String>,
 ) -> Result<(), String> {
     let reference = web_search_ref(&provider)?;
-    match credential.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+    match credential
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
         Some(value) => state.secret_store.set(&reference, &Secret::new(value)),
         None => state.secret_store.delete(&reference),
     }

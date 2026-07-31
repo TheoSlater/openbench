@@ -62,7 +62,11 @@ impl LlmMemoryExtractor {
         secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
         ai: Arc<crate::ai_sidecar::AiSidecar>,
     ) -> Self {
-        Self { pool, secret_store, ai }
+        Self {
+            pool,
+            secret_store,
+            ai,
+        }
     }
 
     async fn recent_context(
@@ -116,19 +120,27 @@ impl LlmMemoryExtractor {
         prompt: String,
     ) -> Result<String, MemoryError> {
         let request_id = uuid::Uuid::new_v4().to_string();
-        let result = self.ai.request(&request_id, serde_json::json!({
-            "type": "generate",
-            "requestId": request_id,
-            "connection": crate::commands::ai_runtime_commands::sidecar_connection(
-                self.secret_store.as_ref(),
-                connection,
-                Some(model),
-                None,
-            ).map_err(MemoryError::ProviderUnavailable)?,
-            "prompt": prompt,
-            "instructions": EXTRACTION_SYSTEM_PROMPT,
-        })).await.map_err(MemoryError::ProviderUnavailable)?;
-        result.get("text")
+        let result = self
+            .ai
+            .request(
+                &request_id,
+                serde_json::json!({
+                    "type": "generate",
+                    "requestId": request_id,
+                    "connection": crate::commands::ai_runtime_commands::sidecar_connection(
+                        self.secret_store.as_ref(),
+                        connection,
+                        Some(model),
+                        None,
+                    ).map_err(MemoryError::ProviderUnavailable)?,
+                    "prompt": prompt,
+                    "instructions": EXTRACTION_SYSTEM_PROMPT,
+                }),
+            )
+            .await
+            .map_err(MemoryError::ProviderUnavailable)?;
+        result
+            .get("text")
             .and_then(serde_json::Value::as_str)
             .filter(|text| !text.trim().is_empty())
             .map(str::to_string)
@@ -161,9 +173,7 @@ impl MemoryExtractor for LlmMemoryExtractor {
         let context = self.recent_context(&input).await?;
         let prompt = build_extraction_prompt(&input, &context, &existing);
 
-        let raw = self
-            .run_completion(&connection, &model, prompt)
-            .await?;
+        let raw = self.run_completion(&connection, &model, prompt).await?;
         let entries = parse_extracted_memories(&raw);
         Ok(convert_extracted_memories(entries, &input, &existing))
     }

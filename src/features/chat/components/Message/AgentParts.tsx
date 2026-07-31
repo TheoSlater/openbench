@@ -8,7 +8,8 @@ import type { Message } from "@/types/chat";
 import type { AgentEvent } from "@/lib/ai/types";
 
 type Part = NonNullable<Message["runtimeParts"]>[number];
-type Permission = AgentEvent & { requestId: string };
+type Permission = Extract<AgentEvent, { kind: "permission" }> & { requestId: string };
+type PlanEvent = Extract<AgentEvent, { kind: "plan" | "task" }>;
 type ToolPart = Part & {
   toolCallId: string;
   toolName?: string;
@@ -32,14 +33,17 @@ export const AgentParts = memo(function AgentParts({
 }: {
   parts?: Message["runtimeParts"];
 }) {
-  const { permissions, tools } = useMemo(() => {
+  const { permissions, plans, tools } = useMemo(() => {
     const permissionMap = new Map<string, Permission>();
+    const planMap = new Map<string, PlanEvent>();
     const tools: ToolPart[] = [];
     for (const part of parts ?? []) {
       if (part.type === "data-agent") {
-        const event = part.data as Permission;
+        const event = part.data as AgentEvent & { requestId?: string };
         if (event.kind === "permission" && event.requestId) {
           permissionMap.set(event.approvalId, event as Permission);
+        } else if (event.kind === "plan" || event.kind === "task") {
+          planMap.set(event.id, event as PlanEvent);
         }
       } else if (toolName(part)) {
         tools.push(part as ToolPart);
@@ -47,10 +51,11 @@ export const AgentParts = memo(function AgentParts({
     }
     return {
       permissions: [...permissionMap.values()].filter((event) => event.status === "pending"),
+      plans: [...planMap.values()],
       tools,
     };
   }, [parts]);
-  if (!permissions.length && !tools.length) return null;
+  if (!permissions.length && !plans.length && !tools.length) return null;
 
   return (
     <div className="mb-3 flex flex-col gap-2">
@@ -75,6 +80,16 @@ export const AgentParts = memo(function AgentParts({
           </Card>
         );
       })}
+      {plans.map((plan) => (
+        <Card key={plan.id} className="shadow-none">
+          <CardHeader className="py-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-sm">{plan.text}</CardTitle>
+              <Badge variant="secondary">{plan.status}</Badge>
+            </div>
+          </CardHeader>
+        </Card>
+      ))}
       {permissions.map((permission) => (
         <Card key={permission.approvalId} className="border-primary/30 shadow-none">
           <CardHeader>

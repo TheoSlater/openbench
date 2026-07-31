@@ -62,7 +62,10 @@ impl AiSidecar {
         command: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let (sender, receiver) = oneshot::channel();
-        self.pending.lock().await.insert(request_id.to_string(), sender);
+        self.pending
+            .lock()
+            .await
+            .insert(request_id.to_string(), sender);
         if let Err(error) = self.send(command).await {
             self.pending.lock().await.remove(request_id);
             return Err(error);
@@ -110,7 +113,12 @@ impl AiSidecar {
         if state.process.is_none() {
             self.spawn_locked(&mut state).await?;
         }
-        let result = state.process.as_mut().expect("sidecar started").write(&command).await;
+        let result = state
+            .process
+            .as_mut()
+            .expect("sidecar started")
+            .write(&command)
+            .await;
         if result.is_ok() {
             return Ok(());
         }
@@ -118,7 +126,12 @@ impl AiSidecar {
             process.terminate().await;
         }
         self.spawn_locked(&mut state).await?;
-        state.process.as_mut().expect("sidecar restarted").write(&command).await
+        state
+            .process
+            .as_mut()
+            .expect("sidecar restarted")
+            .write(&command)
+            .await
     }
 
     async fn spawn_locked(&self, state: &mut State) -> Result<(), String> {
@@ -147,7 +160,14 @@ impl AiSidecar {
             if state.generation == generation {
                 state.process.take();
                 drop(state);
-                fail_all(&app, &pending, &active, &events, "AI runtime stopped unexpectedly").await;
+                fail_all(
+                    &app,
+                    &pending,
+                    &active,
+                    &events,
+                    "AI runtime stopped unexpectedly",
+                )
+                .await;
             }
         });
         Ok(())
@@ -166,10 +186,7 @@ async fn route_record(
         SidecarRecord::Chunk { request_id, chunk } => {
             let event = AiRuntimeEvent::Chunk { request_id, chunk };
             let _ = events.send(event.clone());
-            let _ = app.emit(
-                "ai-runtime-event",
-                event,
-            );
+            let _ = app.emit("ai-runtime-event", event);
         }
         SidecarRecord::Done { request_id } => {
             active.lock().await.remove(&request_id);

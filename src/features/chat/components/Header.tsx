@@ -53,7 +53,11 @@ export const Header = memo(function Header({
     })),
   );
   const ollama = useOllama();
-  const selectedRuntime = useRuntimeStore((state) => state.selected);
+  const { selectedRuntime, accessMode, setAccessMode } = useRuntimeStore(useShallow((state) => ({
+    selectedRuntime: state.selected,
+    accessMode: state.accessMode,
+    setAccessMode: state.actions.setAccessMode,
+  })));
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const viewportDrawerOpen = useViewportStore((state) => state.drawerOpen);
   const memoryPanelOpen = useMemoryPanelOpen();
@@ -75,6 +79,20 @@ export const Header = memo(function Header({
                 <ModelSelector
                   onManageConnections={onOpenConnections}
                 />
+                {selectedRuntime?.kind === "coding-agent" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    title="Coding-agent workspace access"
+                    onClick={() => setAccessMode(
+                      accessMode === "read-only" ? "workspace-write" : "read-only",
+                    )}
+                  >
+                    {accessMode === "read-only" ? "Read only" : "Can edit"}
+                  </Button>
+                ) : null}
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button

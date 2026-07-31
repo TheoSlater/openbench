@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../../src/lib/ai/types";
 export type { AgentEvent } from "../../src/lib/ai/types";
+type PermissionEvent = Extract<AgentEvent, { kind: "permission" }>;
 
 type Decision = { approved: boolean; reason?: string };
 type Pending = { requestId: string; resolve: (decision: Decision) => void };
@@ -7,12 +8,12 @@ type Pending = { requestId: string; resolve: (decision: Decision) => void };
 export class ApprovalBroker {
   private readonly pending = new Map<string, Pending>();
 
-  constructor(private readonly emit: (event: AgentEvent, requestId: string) => void) {}
+  constructor(private readonly emit: (event: PermissionEvent, requestId: string) => void) {}
 
   request(
     requestId: string,
     approvalId: string,
-    detail: Omit<AgentEvent, "kind" | "approvalId" | "status">,
+    detail: Omit<PermissionEvent, "kind" | "approvalId" | "status">,
     signal?: AbortSignal,
   ): Promise<Decision> {
     const key = `${requestId}:${approvalId}`;

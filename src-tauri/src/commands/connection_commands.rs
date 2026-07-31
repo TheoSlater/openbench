@@ -4,8 +4,8 @@
 //! model, installation, and workspace read/write commands land with the UI in
 //! checkpoint 7 rather than being stubbed out here.
 
-use crate::db::rework_migration;
 use crate::connections::ConnectionValidation;
+use crate::db::rework_migration;
 use crate::runtime::RuntimeRef;
 use crate::AppState;
 
@@ -25,12 +25,9 @@ async fn discover_models(
     connection: &crate::connections::Connection,
     credential: Option<&str>,
 ) -> Result<Vec<crate::connections::ConnectionModel>, String> {
-    let value = crate::commands::ai_runtime_commands::discover_models(
-        state,
-        connection,
-        credential,
-    )
-    .await?;
+    let value =
+        crate::commands::ai_runtime_commands::discover_models(state, connection, credential)
+            .await?;
     let rows: Vec<DiscoveredModel> = serde_json::from_value(value)
         .map_err(|_| "Model discovery returned an invalid catalog".to_string())?;
     let seen = now();

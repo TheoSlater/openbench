@@ -160,8 +160,8 @@ pub fn run() {
             startup_log::log_phase("database ready");
 
             let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
-            let ai = crate::ai_sidecar::AiSidecar::new(app.handle())
-                .map_err(std::io::Error::other)?;
+            let ai =
+                crate::ai_sidecar::AiSidecar::new(app.handle()).map_err(std::io::Error::other)?;
             AI_SIDECAR_FOR_EXIT
                 .set(ai.clone())
                 .unwrap_or_else(|_| log::warn!("AI sidecar was registered twice"));
