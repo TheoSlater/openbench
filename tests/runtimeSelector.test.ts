@@ -7,6 +7,7 @@ import {
   isLocalOption,
   moveRuntimeHighlight,
   requiresRuntimeFork,
+  runtimeLabel,
 } from "@/features/runtime/runtime-options";
 
 const options: RuntimeOption[] = [
@@ -75,5 +76,18 @@ describe("runtime selector options", () => {
     expect(moveRuntimeHighlight(2, 1, options.length)).toBe(0);
     expect(requiresRuntimeFork(options[1].runtime, options[0])).toBe(true);
     expect(requiresRuntimeFork(options[1].runtime, options[2])).toBe(false);
+  });
+
+  it("labels chat models by model id and agents by name", () => {
+    expect(runtimeLabel(options[1].runtime)).toBe("gpt");
+    expect(
+      runtimeLabel({
+        kind: "coding-agent",
+        installation_id: "claude-code",
+        agent_kind: "claude-code",
+        workspace_id: "w",
+      }),
+    ).toBe("Claude Code");
+    expect(runtimeLabel(null)).toBe("");
   });
 });

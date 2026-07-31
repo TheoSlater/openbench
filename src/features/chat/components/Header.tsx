@@ -31,7 +31,9 @@ import {
 import { useConversationMemoryCount } from "@/features/memory/useConversationMemoryCount";
 import { showViewportDrawer, useViewportStore } from "@/features/viewport/viewportStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
-import { writeDefaultRuntime } from "@/lib/runtime/legacy-default-model";
+import { runtimeLabel } from "@/features/runtime/runtime-options";
+import { isDefaultRuntime, writeDefaultRuntime } from "@/lib/runtime/legacy-default-model";
+import { useNotify } from "@/hooks/useNotify";
 
 
 interface HeaderProps {
@@ -53,8 +55,10 @@ export const Header = memo(function Header({
     })),
   );
   const ollama = useOllama();
-  const { selectedRuntime, accessMode, setAccessMode } = useRuntimeStore(useShallow((state) => ({
+  const notify = useNotify();
+  const { selectedRuntime, selectedLabel, accessMode, setAccessMode } = useRuntimeStore(useShallow((state) => ({
     selectedRuntime: state.selected,
+    selectedLabel: state.label,
     accessMode: state.accessMode,
     setAccessMode: state.actions.setAccessMode,
   })));
@@ -145,9 +149,15 @@ export const Header = memo(function Header({
                 type="button"
                 disabled={!selectedRuntime}
                 className="mt-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-70"
-                onClick={() => selectedRuntime && writeDefaultRuntime(selectedRuntime)}
+                onClick={() => {
+                  if (!selectedRuntime) return;
+                  writeDefaultRuntime(selectedRuntime);
+                  notify.success(
+                    `${selectedLabel || runtimeLabel(selectedRuntime)} set as default`,
+                  );
+                }}
               >
-                Set as default
+                {selectedRuntime && isDefaultRuntime(selectedRuntime) ? "Default" : "Set as default"}
               </button>
             </>
         </Box>

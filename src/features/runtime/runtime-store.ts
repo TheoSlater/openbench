@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
+import { runtimeLabel } from "@/features/runtime/runtime-options";
 import { readDefaultRuntime } from "@/lib/runtime/legacy-default-model";
 
 type RuntimeState = {
@@ -13,9 +14,11 @@ type RuntimeState = {
   };
 };
 
+const defaultRuntime = readDefaultRuntime();
+
 export const useRuntimeStore = create<RuntimeState>((set) => ({
-  selected: readDefaultRuntime(),
-  label: "",
+  selected: defaultRuntime,
+  label: runtimeLabel(defaultRuntime),
   accessMode: "read-only",
   actions: {
     select: (selected, label) => set({ selected, label }),
