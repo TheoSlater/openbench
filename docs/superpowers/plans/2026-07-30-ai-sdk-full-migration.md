@@ -436,4 +436,3 @@ If the host lacks platform packaging tools, capture the exact command, stderr, a
 **Rollback point:** commit `docs: document AI SDK architecture`.
 
 Working tree must be clean. Do not push or open a PR.
-
