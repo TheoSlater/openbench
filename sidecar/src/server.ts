@@ -9,11 +9,14 @@ import {
   type RuntimeRecord,
 } from "./protocol";
 import { generate, streamChat } from "./runtime";
+import { closeAgentProviders, streamAgent } from "./agents";
+import { ApprovalBroker } from "./approvals";
 
 export type RuntimeServerDeps = {
   createModel?: typeof createModel;
   listModels?: typeof listModels;
   streamChat?: typeof streamChat;
+  streamAgent?: typeof streamAgent;
   write: (record: RuntimeRecord, secrets?: string[]) => void;
 };
 
@@ -22,12 +25,24 @@ export class RuntimeServer {
   private readonly makeModel: typeof createModel;
   private readonly discoverModels: typeof listModels;
   private readonly runChat: typeof streamChat;
+  private readonly runAgent: typeof streamAgent;
+  private readonly approvals: ApprovalBroker;
   private stopped = false;
 
   constructor(private readonly deps: RuntimeServerDeps) {
     this.makeModel = deps.createModel ?? createModel;
     this.discoverModels = deps.listModels ?? listModels;
     this.runChat = deps.streamChat ?? streamChat;
+    this.runAgent = deps.streamAgent ?? streamAgent;
+    this.approvals = new ApprovalBroker((event, requestId) => deps.write({
+      type: "chunk",
+      requestId,
+      chunk: {
+        type: "data-agent",
+        id: event.approvalId,
+        data: { ...event, requestId },
+      },
+    }));
   }
 
   get activeRequestCount(): number {
@@ -42,11 +57,21 @@ export class RuntimeServer {
       case "chat":
         this.startChat(command);
         return;
+      case "agent":
+        this.startAgent(command);
+        return;
       case "cancel":
         this.active.get(command.requestId)?.abort("cancelled");
+        this.approvals.cancel(command.requestId);
         return;
       case "approval":
-        throw new Error("No approval is pending");
+        if (!this.approvals.resolve(
+          command.requestId,
+          command.approvalId,
+          command.approved,
+          command.reason,
+        )) throw new Error("No approval is pending");
+        return;
       case "list-models":
         await this.withRequest(command.requestId, [command.connection.secret], async (signal) => {
           const result = await this.discoverModels(command.connection, ((input, init) =>
@@ -80,7 +105,39 @@ export class RuntimeServer {
         this.stopped = true;
         for (const controller of this.active.values()) controller.abort("shutdown");
         this.active.clear();
+        await closeAgentProviders();
     }
+  }
+
+  private startAgent(command: Extract<RuntimeCommand, { type: "agent" }>): void {
+    if (this.active.has(command.requestId)) {
+      throw new Error(`Duplicate request id: ${command.requestId}`);
+    }
+    const controller = new AbortController();
+    this.active.set(command.requestId, controller);
+    void (async () => {
+      try {
+        const stream = await this.runAgent(command, controller.signal, {
+          approvals: this.approvals,
+        });
+        const reader = stream.getReader();
+        while (true) {
+          const next = await reader.read();
+          if (next.done) break;
+          this.deps.write({ type: "chunk", requestId: command.requestId, chunk: next.value });
+        }
+      } catch (error) {
+        this.deps.write({
+          type: "error",
+          requestId: command.requestId,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      } finally {
+        this.approvals.cancel(command.requestId);
+        this.active.delete(command.requestId);
+        this.deps.write({ type: "done", requestId: command.requestId });
+      }
+    })();
   }
 
   private startChat(command: ChatCommand): void {

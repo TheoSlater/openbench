@@ -1,7 +1,6 @@
 import type { UIMessage } from "ai";
 import type { Message, SearchResultItem } from "@/types/chat";
-
-type Part = UIMessage["parts"][number];
+import type { PolyUIData } from "./types";
 
 type Metadata = {
   conversationId: string;
@@ -12,9 +11,11 @@ type Metadata = {
   errorMessage?: string;
   usage?: Message["usage"];
   finishReason?: Message["finishReason"];
+  agentSessionId?: string;
 };
 
-export type PolyUIMessage = UIMessage<Metadata>;
+export type PolyUIMessage = UIMessage<Metadata, PolyUIData>;
+type Part = PolyUIMessage["parts"][number];
 
 function fileUrl(content: string, mediaType: string): string {
   return content.startsWith("data:") ? content : `data:${mediaType};base64,${content}`;
@@ -46,6 +47,7 @@ export function toUIMessage(message: Message): PolyUIMessage {
       errorMessage: message.errorMessage,
       usage: message.usage,
       finishReason: message.finishReason,
+      agentSessionId: message.agentSessionId,
     },
     parts,
   };
@@ -126,5 +128,6 @@ export function fromUIMessage(
     runtimeParts: runtimeParts.length ? runtimeParts : undefined,
     usage: metadata?.usage,
     finishReason: metadata?.finishReason,
+    agentSessionId: metadata?.agentSessionId,
   };
 }

@@ -2,13 +2,14 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { Message } from "@/types/chat";
 import type { PolyUIMessage } from "@/lib/ai/messages";
-import { TauriChatTransport } from "@/lib/ai/transport";
+import { TauriChatTransport, type AgentTransport } from "@/lib/ai/transport";
 
 export type ChatJob = {
   requestId: string;
   messageId: string;
   conversationId: string;
-  connectionId: string;
+  connectionId?: string;
+  agent?: AgentTransport & { installationId: string };
   model: string;
   provider: Message["provider"];
   messages: PolyUIMessage[];
@@ -44,6 +45,12 @@ const ModelChatSession = memo(function ModelChatSession({
     conversationId: job.conversationId,
     connectionId: job.connectionId,
     modelId: job.model,
+    agent: job.agent ? {
+      kind: job.agent.kind,
+      workspaceId: job.agent.workspaceId,
+      accessMode: job.agent.accessMode,
+      sessionId: job.agent.sessionId,
+    } : undefined,
     instructions: job.instructions,
     reasoning: job.reasoning,
     webSearchProvider: job.webSearchProvider,

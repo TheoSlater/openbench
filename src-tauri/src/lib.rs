@@ -307,6 +307,7 @@ pub fn run() {
             commands::acp_commands::acp_answer_permission,
             commands::ai_runtime_commands::ai_runtime_start,
             commands::ai_runtime_commands::ai_runtime_cancel,
+            commands::ai_runtime_commands::ai_runtime_approval,
             commands::ai_runtime_commands::ai_runtime_models,
             commands::ai_runtime_commands::ai_runtime_generate,
             commands::memory_commands::memory_get_settings,

@@ -71,13 +71,21 @@ export class RuntimeTransportManager {
 
 export const aiRuntimeManager = new RuntimeTransportManager(tauriBridge);
 
+export type AgentTransport = {
+  kind: "claude-code" | "codex";
+  workspaceId: string;
+  accessMode: "read-only" | "workspace-write";
+  sessionId?: string;
+};
+
 type TransportOptions = {
   manager?: RuntimeTransportManager;
   requestId: string;
   responseMessageId?: string;
   conversationId: string;
-  connectionId: string;
-  modelId: string;
+  connectionId?: string;
+  modelId?: string;
+  agent?: AgentTransport;
   instructions?: string;
   reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   webSearchProvider?: "local" | "exa" | "ollama" | "tavily";
@@ -112,6 +120,7 @@ implements ChatTransport<UI_MESSAGE> {
           conversationId: this.options.conversationId,
           connectionId: this.options.connectionId,
           modelId: this.options.modelId,
+          agent: this.options.agent ?? null,
           messages,
           instructions: this.options.instructions ?? null,
           reasoning: this.options.reasoning ?? null,

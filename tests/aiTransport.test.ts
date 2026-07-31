@@ -129,4 +129,28 @@ describe("Tauri AI SDK transport", () => {
     expect(encoded).toContain("connectionId");
     expect(encoded).not.toMatch(/apiKey|api_key|credential|authorization/i);
   });
+
+  it("sends coding-agent workspace ids without an API credential", async () => {
+    const bridge = new FakeBridge();
+    const transport = new TauriChatTransport({
+      manager: new RuntimeTransportManager(bridge),
+      requestId: "req-agent",
+      conversationId: "conv",
+      agent: {
+        kind: "codex",
+        workspaceId: "workspace-1",
+        accessMode: "workspace-write",
+        sessionId: "thread-1",
+      },
+    });
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat",
+      messageId: undefined,
+      messages,
+    });
+    const encoded = JSON.stringify(bridge.calls[0]);
+    expect(encoded).toContain("workspace-1");
+    expect(encoded).not.toMatch(/apiKey|api_key|credential|authorization/i);
+  });
 });

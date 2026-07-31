@@ -26,6 +26,7 @@ import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import type { ModelChoice } from "@/lib/models/model-choice";
 import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
 import { ChatRuntime, type ChatJob } from "@/features/chat/runtime/ChatRuntime";
+import { connectionsClient } from "@/features/connections/client";
 
 const titleStore: TitleStore = {
   findConversation: (id) => useChatStore.getState().conversations.find((c) => c.id === id),
@@ -194,6 +195,20 @@ export function useChatStream(
       memoryUpdates:
         current?.memoryUpdates ?? pendingMemoryUpdates.get(job.conversationId),
     });
+    if (job.agent && entity.agentSessionId) {
+      const runtime = {
+        kind: "coding-agent" as const,
+        installation_id: job.agent.installationId,
+        agent_kind: job.agent.kind,
+        workspace_id: job.agent.workspaceId,
+        acp_session_id: entity.agentSessionId,
+      };
+      await connectionsClient.setRuntime(job.conversationId, runtime);
+      useRuntimeStore.getState().actions.select(
+        runtime,
+        job.agent.kind === "codex" ? "Codex" : "Claude Code",
+      );
+    }
     setStreamingMessage(job.messageId, null);
     timings.current.delete(job.requestId);
     finishJob(job);
@@ -228,12 +243,13 @@ export function useChatStream(
     conversationId: string,
     models: ModelChoice[],
   ) => {
-    if (!conversationId || !models.length) return;
+    if (!conversationId) return;
     const runtime = useRuntimeStore.getState().selected;
-    if (runtime?.kind !== "chat-model") {
+    if (!runtime || runtime.kind === "unresolved") {
       notify.error("Chat unavailable", "Choose a model connection first");
       return;
     }
+    if (runtime.kind === "chat-model" && !models.length) return;
     const store = useChatStore.getState();
     const source = conversationId === store.activeConversationId
       ? store.messages.filter((message) => message.conversationId === conversationId)
@@ -251,7 +267,13 @@ export function useChatStream(
       webSearchEnabled,
       webSearchEnabled,
     );
-    const created = models.map(({ model, provider }): ChatJob => {
+    const targets = runtime.kind === "coding-agent"
+      ? [{
+        model: runtime.agent_kind === "codex" ? "Codex" : "Claude Code",
+        provider: undefined,
+      }]
+      : models;
+    const created = targets.map(({ model, provider }): ChatJob => {
       const requestId = crypto.randomUUID();
       const messageId = crypto.randomUUID();
       settled.current.delete(requestId);
@@ -271,13 +293,21 @@ export function useChatStream(
         requestId,
         messageId,
         conversationId,
-        connectionId: runtime.connection_id,
+        connectionId: runtime.kind === "chat-model" ? runtime.connection_id : undefined,
+        agent: runtime.kind === "coding-agent" ? {
+          kind: runtime.agent_kind,
+          workspaceId: runtime.workspace_id,
+          installationId: runtime.installation_id,
+          accessMode: "workspace-write",
+          sessionId: runtime.acp_session_id ?? undefined,
+        } : undefined,
         model,
         provider,
         messages: uiMessages,
         instructions,
         reasoning: voiceModeRef.current ? "none" : undefined,
-        webSearchProvider: webSearchEnabled ? webSearch.provider : undefined,
+        webSearchProvider:
+          runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
         token: getSessionToken,
       };
     });
@@ -295,7 +325,8 @@ export function useChatStream(
     processingQueueRef.current = true;
     try {
       const models = validModelChoices(modelChoicesRef.current);
-      if (!models.length) return;
+      const runtime = useRuntimeStore.getState().selected;
+      if (!models.length && runtime?.kind !== "coding-agent") return;
       store.actions.dequeueMessage(next.id);
       const user = await addMessage({
         id: crypto.randomUUID(),
@@ -317,7 +348,11 @@ export function useChatStream(
     attachments?: Attachment[],
   ) => {
     const models = validModelChoices(modelChoices);
-    if ((!content.trim() && !attachments?.length) || !models.length) return;
+    const runtime = useRuntimeStore.getState().selected;
+    if (
+      (!content.trim() && !attachments?.length) ||
+      (!models.length && runtime?.kind !== "coding-agent")
+    ) return;
     const conversationId =
       useChatStore.getState().activeConversationId ?? activeConversationId;
     if (!conversationId) return;
@@ -350,7 +385,12 @@ export function useChatStream(
 
   const regenerateMessage = useCallback((conversationId: string) => {
     const models = validModelChoices(modelChoices);
-    if (jobsRef.current.length || !models.length || !conversationId) return;
+    const runtime = useRuntimeStore.getState().selected;
+    if (
+      jobsRef.current.length ||
+      (!models.length && runtime?.kind !== "coding-agent") ||
+      !conversationId
+    ) return;
     void startStream(conversationId, models);
   }, [modelChoices, startStream]);
 

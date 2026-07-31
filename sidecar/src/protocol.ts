@@ -12,46 +12,68 @@ const providerSchema = z.enum([
   "vercel-gateway",
 ]);
 
+const optional = <T extends z.ZodType>(schema: T) => schema.nullish()
+  .transform((value) => value ?? undefined);
+
 const connectionSchema = z.object({
   id: z.string().min(1),
   provider: providerSchema,
   modelId: z.string().min(1),
-  baseUrl: z.string().url().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  secret: z.string().optional(),
+  baseUrl: optional(z.string().url()),
+  headers: optional(z.record(z.string(), z.string())),
+  secret: optional(z.string()),
 });
 
 const chatSchema = z.object({
   type: z.literal("chat"),
   requestId: z.string().min(1),
-  responseMessageId: z.string().min(1).optional(),
-  conversationId: z.string().min(1).optional(),
+  responseMessageId: optional(z.string().min(1)),
+  conversationId: optional(z.string().min(1)),
   connection: connectionSchema,
   messages: z.array(z.custom<UIMessage>()),
-  instructions: z.string().optional(),
-  reasoning: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
-  webSearch: z.object({
+  instructions: optional(z.string()),
+  reasoning: optional(z.enum(["none", "minimal", "low", "medium", "high", "xhigh"])),
+  webSearch: optional(z.object({
     provider: z.enum(["local", "exa", "ollama", "tavily"]),
-    secret: z.string().optional(),
-    baseUrl: z.string().url().optional(),
-  }).optional(),
+    secret: optional(z.string()),
+    baseUrl: optional(z.string().url()),
+  })),
+});
+
+const agentSchema = z.object({
+  type: z.literal("agent"),
+  requestId: z.string().min(1),
+  responseMessageId: optional(z.string().min(1)),
+  conversationId: z.string().min(1),
+  agent: z.object({
+    kind: z.enum(["claude-code", "codex"]),
+    workspace: z.string().min(1),
+    accessMode: z.enum(["read-only", "workspace-write"]),
+    executablePath: optional(z.string().min(1)),
+    modelId: optional(z.string().min(1)),
+    sessionId: optional(z.string().min(1)),
+  }),
+  messages: z.array(z.custom<UIMessage>()),
+  instructions: optional(z.string()),
+  reasoning: optional(z.enum(["none", "minimal", "low", "medium", "high", "xhigh"])),
 });
 
 const commandSchema = z.discriminatedUnion("type", [
   chatSchema,
+  agentSchema,
   z.object({ type: z.literal("cancel"), requestId: z.string().min(1) }),
   z.object({
     type: z.literal("approval"),
     requestId: z.string().min(1),
     approvalId: z.string().min(1),
     approved: z.boolean(),
-    reason: z.string().optional(),
+    reason: optional(z.string()),
   }),
   z.object({
     type: z.literal("list-models"),
     requestId: z.string().min(1),
     connection: connectionSchema.omit({ modelId: true }).extend({
-      modelId: z.string().optional(),
+      modelId: optional(z.string()),
     }),
   }),
   z.object({
@@ -63,7 +85,7 @@ const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("generate"),
     requestId: z.string().min(1),
     connection: connectionSchema,
-    instructions: z.string().optional(),
+    instructions: optional(z.string()),
     prompt: z.string().min(1),
   }),
   z.object({ type: z.literal("shutdown") }),
@@ -71,6 +93,7 @@ const commandSchema = z.discriminatedUnion("type", [
 
 export type RuntimeCommand = z.infer<typeof commandSchema>;
 export type ChatCommand = z.infer<typeof chatSchema>;
+export type AgentCommand = z.infer<typeof agentSchema>;
 export type RuntimeConnection = ChatCommand["connection"];
 
 export type RuntimeRecord =

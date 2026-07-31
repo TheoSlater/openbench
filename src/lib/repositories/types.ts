@@ -52,6 +52,7 @@ export type MessageRow = {
   runtimeParts?: string;
   usage?: string;
   finishReason?: Message["finishReason"];
+  agentSessionId?: string;
 };
 
 export function mapRowToMessage(row: MessageRow): Message {
@@ -73,5 +74,6 @@ export function mapRowToMessage(row: MessageRow): Message {
     runtimeParts: row.runtimeParts ? JSON.parse(row.runtimeParts) : undefined,
     usage: row.usage ? JSON.parse(row.usage) : undefined,
     finishReason: row.finishReason,
+    agentSessionId: row.agentSessionId,
   };
 }

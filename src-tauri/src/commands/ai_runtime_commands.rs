@@ -10,12 +10,22 @@ pub struct AiChatRequest {
     request_id: String,
     response_message_id: Option<String>,
     conversation_id: String,
-    connection_id: String,
-    model_id: String,
+    connection_id: Option<String>,
+    model_id: Option<String>,
+    agent: Option<AiAgentRequest>,
     messages: Vec<serde_json::Value>,
     instructions: Option<String>,
     reasoning: Option<String>,
     web_search_provider: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AiAgentRequest {
+    kind: String,
+    workspace_id: String,
+    access_mode: String,
+    session_id: Option<String>,
 }
 
 async fn connection(
@@ -77,7 +87,42 @@ pub async fn ai_runtime_start(
     request: AiChatRequest,
     token: Option<String>,
 ) -> Result<(), String> {
-    let configured = connection(&state, &request.connection_id, token.as_deref()).await?;
+    let runtime = if let Some(agent) = request.agent {
+        let workspace = repository::get_workspace(&state.db, &agent.workspace_id)
+            .await?
+            .ok_or_else(|| "Workspace was not found".to_string())?;
+        crate::auth::authorize_account(&state.db, token.as_deref(), &workspace.account_id)
+            .await
+            .map_err(|_| "Not authorized for this workspace".to_string())?;
+        if !std::path::Path::new(&workspace.path).is_dir() {
+            return Err("Workspace directory is unavailable".into());
+        }
+        if !matches!(agent.kind.as_str(), "claude-code" | "codex") {
+            return Err("Unknown coding agent".into());
+        }
+        if !matches!(agent.access_mode.as_str(), "read-only" | "workspace-write") {
+            return Err("Unknown workspace access mode".into());
+        }
+        serde_json::json!({
+            "type": "agent",
+            "agent": {
+                "kind": agent.kind,
+                "workspace": workspace.path,
+                "accessMode": agent.access_mode,
+                "sessionId": agent.session_id,
+            }
+        })
+    } else {
+        let connection_id = request.connection_id.as_deref()
+            .ok_or_else(|| "Connection id is required".to_string())?;
+        let model_id = request.model_id.as_deref()
+            .ok_or_else(|| "Model id is required".to_string())?;
+        let configured = connection(&state, connection_id, token.as_deref()).await?;
+        serde_json::json!({
+            "type": "chat",
+            "connection": sidecar_connection(&state, &configured, Some(model_id))?,
+        })
+    };
     let web_search = if let Some(provider) = request.web_search_provider.as_deref() {
         let secret_ref = SecretRef::for_web_search(provider);
         Some(serde_json::json!({
@@ -88,11 +133,12 @@ pub async fn ai_runtime_start(
         None
     };
     let command = serde_json::json!({
-        "type": "chat",
+        "type": runtime["type"],
         "requestId": request.request_id,
         "responseMessageId": request.response_message_id,
         "conversationId": request.conversation_id,
-        "connection": sidecar_connection(&state, &configured, Some(&request.model_id))?,
+        "connection": runtime.get("connection"),
+        "agent": runtime.get("agent"),
         "messages": request.messages,
         "instructions": request.instructions,
         "reasoning": request.reasoning,
@@ -113,6 +159,17 @@ pub async fn ai_runtime_cancel(
     request_id: String,
 ) -> Result<(), String> {
     state.ai.cancel(&request_id).await
+}
+
+#[tauri::command]
+pub async fn ai_runtime_approval(
+    state: tauri::State<'_, AppState>,
+    request_id: String,
+    approval_id: String,
+    approved: bool,
+    reason: Option<String>,
+) -> Result<(), String> {
+    state.ai.approval(&request_id, &approval_id, approved, reason).await
 }
 
 #[tauri::command]

@@ -21,6 +21,28 @@ describe("AI sidecar protocol", () => {
     }))).toMatchObject({ type: "chat", requestId: "req-1" });
   });
 
+  it("normalizes Rust null optionals without weakening required fields", () => {
+    const parsed = parseCommand(JSON.stringify({
+      type: "agent",
+      requestId: "req-agent",
+      responseMessageId: null,
+      conversationId: "conv",
+      agent: {
+        kind: "codex",
+        workspace: "/tmp/project",
+        accessMode: "workspace-write",
+        executablePath: null,
+        modelId: null,
+        sessionId: null,
+      },
+      messages: [],
+      instructions: null,
+      reasoning: null,
+    }));
+    expect(parsed).toMatchObject({ type: "agent", requestId: "req-agent" });
+    expect(parsed).not.toHaveProperty("agent.sessionId", null);
+  });
+
   it.each(["apiKey", "api_key", "credential", "authorization"])(
     "rejects frontend-owned %s fields",
     (field) => {

@@ -83,7 +83,7 @@ class SqliteConversationRepository implements ConversationRepository {
 
   async addMessage(message: Message): Promise<void> {
     await this.db.execute(
-      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage, memoryUpdates, runtimeParts, usage, finishReason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage, memoryUpdates, runtimeParts, usage, finishReason, agentSessionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         message.id, message.conversationId, message.role, message.content, message.createdAt,
         message.attachments ? JSON.stringify(message.attachments) : null,
@@ -95,6 +95,7 @@ class SqliteConversationRepository implements ConversationRepository {
         message.runtimeParts?.length ? JSON.stringify(message.runtimeParts) : null,
         message.usage ? JSON.stringify(message.usage) : null,
         message.finishReason || null,
+        message.agentSessionId || null,
       ]
     );
     await this.db.execute("UPDATE conversations SET updatedAt = ? WHERE id = ?", [message.createdAt, message.conversationId]);

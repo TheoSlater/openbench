@@ -11,12 +11,8 @@ import type { ModelChoice } from "@/lib/models/model-choice";
 import { materializeAttachments, releaseImageAttachment } from "@/lib/image-upload/attachments";
 import { useFolderStore } from "@/store/folderStore";
 import { FolderHome } from "@/features/folders/FolderHome";
-import { useOllama } from "@/features/ollama";
 import { useViewStore, getViewComponent } from "@/lib/view-registry";
 import { useConfirmStore } from "@/store/confirmStore";
-import { AcpActivity } from "@/features/acp/AcpActivity";
-import { useAcpChat } from "@/features/acp/useAcpChat";
-import { useAcpActivityStore } from "@/features/acp/activity-store";
 import { connectionsClient } from "@/features/connections/client";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import { useConnectionsStore } from "@/features/connections/store";
@@ -44,7 +40,6 @@ export default function ChatWorkspace({
   onOpenConnections,
 }: ChatWorkspaceProps) {
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
-  const ollama = useOllama();
   const activeFolder = useFolderStore((state) => state.folders.find((folder) => folder.id === state.activeFolderId));
   const effectiveSystemPrompt = activeFolder?.systemPrompt
     ? `${systemPromptContent}\n${activeFolder.systemPrompt}`
@@ -63,16 +58,15 @@ export default function ChatWorkspace({
       provider: toLegacyProviderType(connection.provider),
     }];
   }, [selectedRuntime, summaries]);
-  const legacyChat = useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
-  const acpChat = useAcpChat();
+  const chat = useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
   const selectedModels = selectedModelChoices.map((choice) => choice.model);
   const selectRuntime = useRuntimeStore((state) => state.actions.select);
-  const acpActions = useAcpActivityStore((state) => state.actions);
-  const messages = legacyChat.messages;
-  const isStreaming = acpChat.isAgent ? acpChat.isStreaming : legacyChat.isStreaming;
-  const stopStreaming = acpChat.isAgent ? acpChat.stopStreaming : legacyChat.stopStreaming;
-  const bottomRef = legacyChat.bottomRef;
-  const hasMessages = legacyChat.hasMessages || Boolean(acpChat.activity) || acpChat.history.length > 0;
+  const messages = chat.messages;
+  const isStreaming = chat.isStreaming;
+  const stopStreaming = chat.stopStreaming;
+  const bottomRef = chat.bottomRef;
+  const hasMessages = chat.hasMessages;
+  const runtimeAvailable = selectedRuntime?.kind === "chat-model" || selectedRuntime?.kind === "coding-agent";
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const chatKey = activeConversationId ?? NEW_CHAT_DRAFT_KEY;
   const currentAttachments = useChatStore(
@@ -141,16 +135,12 @@ export default function ChatWorkspace({
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed && currentAttachments.length === 0) return;
-      const conversationId = await ensureConversation();
+      await ensureConversation();
       const attachments = await materializeAttachments([
         ...(activeFolder?.contextFiles ?? []),
         ...currentAttachments,
       ]);
-      if (acpChat.isAgent) {
-        await acpChat.sendMessage(trimmed, attachments, conversationId);
-      } else {
-        await legacyChat.sendMessage(trimmed, attachments);
-      }
+      await chat.sendMessage(trimmed, attachments);
       currentAttachments.forEach(releaseImageAttachment);
       clearAttachments(chatKey);
     },
@@ -159,8 +149,7 @@ export default function ChatWorkspace({
       chatKey,
       currentAttachments,
       ensureConversation,
-      acpChat,
-      legacyChat,
+      chat,
       clearAttachments,
     ],
   );
@@ -174,7 +163,7 @@ export default function ChatWorkspace({
 
       const run = async () => {
         await deleteMessagesAfter(activeConversationId, targetMessage.id);
-        legacyChat.regenerateMessage(activeConversationId);
+        chat.regenerateMessage(activeConversationId);
       };
 
       // Regenerating mid-conversation throws away every later message, with
@@ -199,34 +188,12 @@ export default function ChatWorkspace({
       deleteMessagesAfter,
       isStreaming,
       messages,
-      legacyChat,
+      chat,
     ],
   );
 
   const activeView = useViewStore((s) => s.activeView);
   const ViewComponent = activeView ? getViewComponent(activeView) : undefined;
-  const activity = acpChat.isAgent ? (
-    <div className="flex flex-col gap-4">
-      {acpChat.history.map((turn, index) => (
-        <AcpActivity
-          key={`${turn.sessionId ?? "turn"}-${index}`}
-          state={turn}
-          onDecision={(requestId, decision) =>
-            void acpActions.answer(turn.conversationId, requestId, decision)}
-          onReauthenticate={onOpenConnections}
-        />
-      ))}
-      {acpChat.activity ? (
-        <AcpActivity
-          state={acpChat.activity}
-          onDecision={(requestId, decision) =>
-            void acpActions.answer(acpChat.activity!.conversationId, requestId, decision)}
-          onReauthenticate={onOpenConnections}
-        />
-      ) : null}
-    </div>
-  ) : undefined;
-
   return (
     // No `h-full` here. As a flex child of the workspace row this already fills
     // the cross axis via `align-items: stretch`, and `height: 100%` is actively
@@ -238,7 +205,7 @@ export default function ChatWorkspace({
     <Box
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
-      {legacyChat.runtime}
+      {chat.runtime}
       {/* Full voice mode is opaque over the workspace — skip rendering the
           chat UI behind it so streaming markdown re-renders don't starve the
           orb animation. Compact voice mode shows the chat, with the voice bar
@@ -259,7 +226,7 @@ export default function ChatWorkspace({
           onSubmit={handleSend}
           onStop={stopStreaming}
           isStreaming={isStreaming}
-          providerOnline={acpChat.isAgent || ollama.online}
+          providerOnline={runtimeAvailable}
           onOpenConnections={onOpenConnections}
           onOpenVoiceMode={openVoiceMode}
         />
@@ -268,16 +235,15 @@ export default function ChatWorkspace({
           key={activeConversationId ?? "no-conv"}
           messages={messages}
           bottomRef={bottomRef}
-          onRegenerate={acpChat.isAgent ? undefined : handleRegenerate}
+          onRegenerate={selectedRuntime?.kind === "coding-agent" ? undefined : handleRegenerate}
           isTemporary={isTemporary}
-          activity={activity}
         />
       ) : (
         <EmptyState
           selectedModels={selectedModels}
           userName={userName}
           isTemporary={isTemporary}
-          providerOnline={acpChat.isAgent || ollama.online}
+          providerOnline={runtimeAvailable}
           onOpenConnections={onOpenConnections}
         >
           {voiceModeOpen ? null : (
@@ -324,9 +290,7 @@ export default function ChatWorkspace({
             onSubmit={handleSend}
             onInterrupt={stopStreaming}
             canSubmit={
-              acpChat.isAgent ||
-              (ollama.online &&
-                selectedModelChoices.some((choice) => Boolean(choice.model && choice.provider)))
+              runtimeAvailable
             }
             isResponding={isStreaming}
             messages={messages}

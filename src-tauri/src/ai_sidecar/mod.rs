@@ -75,6 +75,23 @@ impl AiSidecar {
             .await
     }
 
+    pub async fn approval(
+        &self,
+        request_id: &str,
+        approval_id: &str,
+        approved: bool,
+        reason: Option<String>,
+    ) -> Result<(), String> {
+        self.send(serde_json::json!({
+            "type": "approval",
+            "requestId": request_id,
+            "approvalId": approval_id,
+            "approved": approved,
+            "reason": reason,
+        }))
+        .await
+    }
+
     pub async fn shutdown(&self) {
         if let Some(process) = self.state.lock().await.process.take() {
             process.terminate().await;
