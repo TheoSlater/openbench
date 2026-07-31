@@ -95,6 +95,8 @@ All AI SDK packages are exact-pinned as one AI SDK 7/provider-v4 family. The two
 
 These are uncompressed payload additions; final installer deltas depend on each Tauri bundle format's compression and signing. Cross-target Bun compilation was verified for all three. CI/release hosts must still run native installer builds and signing.
 
+Linux `.deb` and `.rpm` bundles build with the standalone sidecar. The current AppImage toolchain does not: `linuxdeploy` patches the Bun single-file executable during its first pass, then its GTK pass cannot read the modified ELF and exits while running `ldd`. This is a packaging-tool incompatibility, not an application build failure. Do not ship an AppImage until Bun or `linuxdeploy` preserves Bun's appended executable payload; use the `.deb`/`.rpm` artifacts meanwhile.
+
 ## Local development and tests
 
 ```bash
