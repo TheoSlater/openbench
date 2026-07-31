@@ -69,7 +69,7 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.mobileWebAccess).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
-    expect(defaults.general.terminalEmulator).toBe("browser");
+    expect(defaults.general.terminalEmulator).toBe("native");
     expect(defaults.codex).toEqual({
       adapter_override: null,
       codex_path: null,
