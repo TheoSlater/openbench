@@ -71,12 +71,13 @@ async function remoteSearch(
 
 function decodeHtml(text: string): string {
   return text
-    .replace(/<[^>]+>/g, "")
     .replaceAll("&amp;", "&")
     .replaceAll("&quot;", "\"")
     .replaceAll("&#x27;", "'")
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
+    .replace(/<[^>]+>/g, "")
+    .replace(/<|>/g, "")
     .trim();
 }
 
