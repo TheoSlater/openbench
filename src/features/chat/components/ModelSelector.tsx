@@ -5,7 +5,6 @@ import { useShallow } from "zustand/react/shallow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +18,6 @@ import {
   isExternalOption,
   isLocalOption,
   moveRuntimeHighlight,
-  requiresRuntimeFork,
   type RuntimeOption,
 } from "@/features/runtime/runtime-options";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
@@ -67,16 +65,12 @@ export function ModelSelector({
   const selectedLabel = useRuntimeStore((state) => state.label);
   const selectRuntime = useRuntimeStore((state) => state.actions.select);
   const activeConversationId = useChatStore((state) => state.activeConversationId);
-  const createConversation = useChatStore((state) => state.actions.createConversation);
-  const addMessage = useChatStore((state) => state.actions.addMessage);
-  const currentMessages = useChatStore((state) => state.messages);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ModelTab>("all");
   const [agents, setAgents] = useState<RuntimeOption[]>([]);
   const [recentIds, setRecentIds] = useState<Set<string>>(new Set());
   const [highlighted, setHighlighted] = useState(0);
-  const [pending, setPending] = useState<RuntimeOption | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -202,32 +196,11 @@ export function ModelSelector({
     };
   };
 
-  const applySelection = async (
-    option: RuntimeOption,
-    transition: "current" | "new" | "fork" = "current",
-  ) => {
+  const applySelection = async (option: RuntimeOption) => {
     const runtime = await materialize(option);
     if (!runtime) return;
-    let conversationId = activeConversationId;
-    if (transition !== "current") {
-      const sourceMessages = transition === "fork" ? [...currentMessages] : [];
-      const created = await createConversation(
-        transition === "fork" ? "Forked conversation" : "New Chat",
-      );
-      conversationId = created.id;
-      for (const message of sourceMessages) {
-        await addMessage({
-          ...message,
-          id: crypto.randomUUID(),
-          conversationId,
-          isStreaming: false,
-          isThinking: false,
-        });
-      }
-    }
-    if (conversationId) await connectionsClient.setRuntime(conversationId, runtime);
+    if (activeConversationId) await connectionsClient.setRuntime(activeConversationId, runtime);
     selectRuntime(runtime, option.title);
-    setPending(null);
     setOpen(false);
   };
 
@@ -236,13 +209,6 @@ export function ModelSelector({
       onManageConnections?.();
       setOpen(false);
       return;
-    }
-    if (activeConversationId) {
-      const current = await connectionsClient.getRuntime(activeConversationId);
-      if (requiresRuntimeFork(current, option)) {
-        setPending(option);
-        return;
-      }
     }
     await applySelection(option);
   };
@@ -382,21 +348,6 @@ export function ModelSelector({
           </Button>
         </PopoverContent>
       </Popover>
-
-      <Dialog open={Boolean(pending)} onOpenChange={(next) => !next && setPending(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Start a different runtime family</DialogTitle>
-            <DialogDescription>
-              Current conversation stays unchanged. Start empty or explicitly fork its messages into {pending?.title}.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => pending && void applySelection(pending, "fork")}>Fork conversation</Button>
-            <Button onClick={() => pending && void applySelection(pending, "new")}>New conversation</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

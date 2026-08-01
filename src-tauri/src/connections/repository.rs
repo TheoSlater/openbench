@@ -582,24 +582,13 @@ pub async fn get_conversation_runtime(
 
 /// Write a conversation's runtime reference.
 ///
-/// Rejects a change of runtime family before touching the database, so the
-/// caller gets a useful message instead of a trigger abort. The trigger is
-/// still the backstop for writers that bypass this function.
+/// A conversation may move between runtime families freely; switching the
+/// header model selector rebinds the active conversation in place.
 pub async fn set_conversation_runtime(
     pool: &SqlitePool,
     conversation_id: &str,
     runtime: &RuntimeRef,
 ) -> Result<()> {
-    if let Some(current) = get_conversation_runtime(pool, conversation_id).await? {
-        if !current.may_transition_to(runtime) {
-            return Err(format!(
-                "conversation {conversation_id} is a {} conversation and cannot become {}; fork instead",
-                current.kind().as_str(),
-                runtime.kind().as_str()
-            ));
-        }
-    }
-
     let payload = runtime
         .to_column()
         .map_err(|error| format!("failed to encode runtime ref: {error}"))?;

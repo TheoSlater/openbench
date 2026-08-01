@@ -94,6 +94,10 @@ async fn legacy_database() -> SqlitePool {
 /// Apply the rework SQL migration. Mirrors the shipped file; kept here rather
 /// than read from disk so the test does not depend on the source tree being
 /// present, matching how `fix_migration_checksums` already has to behave.
+///
+/// Also mirrors the follow-up `runtime_switch_free` migration that removed the
+/// runtime-family immutability trigger: a migrated database no longer enforces
+/// that rule.
 async fn apply_rework_schema(pool: &SqlitePool) {
     let statements = include_str!("migrations/20260727000000_runtime_rework.sql");
     for statement in split_sql(statements) {
@@ -102,6 +106,10 @@ async fn apply_rework_schema(pool: &SqlitePool) {
             .await
             .unwrap_or_else(|error| panic!("failed to apply: {statement}\n{error}"));
     }
+    sqlx::query("DROP TRIGGER IF EXISTS conversations_runtime_kind_immutable")
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 /// Split on `;` at statement level, keeping `BEGIN … END` trigger bodies whole.
@@ -241,7 +249,8 @@ async fn the_shipped_sql_migration_applies_through_sqlx() {
     providers.sort_by_key(|provider| provider.as_str());
     assert_eq!(providers, vec![Provider::Ollama, Provider::Openai]);
 
-    // The trigger survived the batch and is enforcing.
+    // The trigger from the rework migration is dropped by the follow-up
+    // `runtime_switch_free` migration: in-place family switching is allowed.
     insert_conversation(&pool, "conv", "acct").await;
     repository::set_conversation_runtime(
         &pool,
@@ -253,12 +262,11 @@ async fn the_shipped_sql_migration_applies_through_sqlx() {
     )
     .await
     .unwrap();
-    let error = sqlx::query("UPDATE conversations SET runtime_kind = 'coding-agent' WHERE id = ?1")
+    sqlx::query("UPDATE conversations SET runtime_kind = 'coding-agent' WHERE id = ?1")
         .bind("conv")
         .execute(&pool)
         .await
-        .unwrap_err();
-    assert!(error.to_string().contains("immutable"), "{error}");
+        .expect("trigger must be gone");
 }
 
 #[tokio::test]
@@ -1043,7 +1051,7 @@ async fn migration_requires_the_sql_migration_to_have_run() {
 }
 
 #[tokio::test]
-async fn runtime_family_cannot_change_in_place() {
+async fn runtime_family_can_change_in_place() {
     let pool = legacy_database().await;
     apply_rework_schema(&pool).await;
     insert_conversation(&pool, "conv", "acct").await;
@@ -1062,12 +1070,21 @@ async fn runtime_family_cannot_change_in_place() {
         workspace_id: "ws".into(),
         agent_session_id: None,
     };
-    let error = repository::set_conversation_runtime(&pool, "conv", &agent)
+    repository::set_conversation_runtime(&pool, "conv", &agent)
         .await
-        .unwrap_err();
-    assert!(error.contains("fork instead"), "{error}");
+        .unwrap();
 
-    // Unchanged.
+    // Switching the header selector rebinds the conversation in place.
+    assert_eq!(
+        repository::get_conversation_runtime(&pool, "conv")
+            .await
+            .unwrap(),
+        Some(agent)
+    );
+
+    repository::set_conversation_runtime(&pool, "conv", &chat)
+        .await
+        .unwrap();
     assert_eq!(
         repository::get_conversation_runtime(&pool, "conv")
             .await
@@ -1077,7 +1094,7 @@ async fn runtime_family_cannot_change_in_place() {
 }
 
 #[tokio::test]
-async fn the_database_trigger_blocks_a_family_change_that_bypasses_rust() {
+async fn the_database_allows_a_family_change_that_bypasses_rust() {
     let pool = legacy_database().await;
     apply_rework_schema(&pool).await;
     insert_conversation(&pool, "conv", "acct").await;
@@ -1094,13 +1111,25 @@ async fn the_database_trigger_blocks_a_family_change_that_bypasses_rust() {
     .unwrap();
 
     // The frontend writes conversations through tauri-plugin-sql directly, so
-    // the rule has to hold at the database.
-    let error = sqlx::query("UPDATE conversations SET runtime_kind = 'coding-agent' WHERE id = ?1")
+    // in-place family switching has to be allowed at the database too.
+    let agent = RuntimeRef::CodingAgent {
+        installation_id: "inst".into(),
+        agent_kind: crate::runtime::AgentKind::Codex,
+        workspace_id: "ws".into(),
+        agent_session_id: None,
+    };
+    sqlx::query("UPDATE conversations SET runtime_kind = ?2, runtime_ref = ?3 WHERE id = ?1")
         .bind("conv")
+        .bind("coding-agent")
+        .bind(agent.to_column().unwrap())
         .execute(&pool)
         .await
-        .unwrap_err();
-    assert!(error.to_string().contains("immutable"), "{error}");
+        .unwrap();
+
+    assert_eq!(
+        repository::get_conversation_runtime(&pool, "conv").await.unwrap(),
+        Some(agent)
+    );
 }
 
 #[tokio::test]

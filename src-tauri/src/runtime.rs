@@ -2,13 +2,12 @@
 //!
 //! Poly UI has two runtime families that do not share an interface:
 //! chat models (direct BYOK APIs or Gateway) and local coding agents
-//! (Claude Code or Codex). A conversation belongs to
-//! exactly one, decided at creation.
+//! (Claude Code or Codex). A conversation may move between families in
+//! place — switching the header model selector rebinds the conversation.
 //!
 //! The discriminant is stored in its own column (`conversations.runtime_kind`)
 //! rather than inferred from which payload fields happen to be non-null. The
-//! payload lives in `conversations.runtime_ref` as JSON. A DB trigger enforces
-//! that the family never changes in place — see the runtime rework migration.
+//! payload lives in `conversations.runtime_ref` as JSON.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -138,19 +137,6 @@ impl RuntimeRef {
         }
     }
 
-    /// Whether moving from `self` to `next` is allowed on an existing
-    /// conversation.
-    ///
-    /// Resolving an `Unresolved` conversation is allowed — that is the user
-    /// answering the question the migration asked. Crossing between the chat
-    /// and coding-agent families is not: that is a new conversation or an
-    /// explicit fork. Mirrored by the `conversations_runtime_kind_immutable`
-    /// trigger so the rule holds even for writers that bypass this code.
-    #[must_use]
-    pub fn may_transition_to(&self, next: &RuntimeRef) -> bool {
-        self.kind() == RuntimeKind::Unresolved || self.kind() == next.kind()
-    }
-
     /// JSON for the `runtime_ref` column.
     pub fn to_column(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
@@ -231,21 +217,6 @@ mod tests {
         let payload = chat().to_column().unwrap();
         let error = RuntimeRef::from_columns("coding-agent", &payload).unwrap_err();
         assert!(error.contains("coding-agent"), "{error}");
-    }
-
-    #[test]
-    fn family_cannot_change_but_unresolved_can_be_answered() {
-        assert!(!chat().may_transition_to(&agent()));
-        assert!(!agent().may_transition_to(&chat()));
-        assert!(chat().may_transition_to(&chat()));
-
-        let unresolved = RuntimeRef::Unresolved {
-            reason: UnresolvedReason::NoConnection,
-            legacy_provider: None,
-            legacy_model: None,
-        };
-        assert!(unresolved.may_transition_to(&chat()));
-        assert!(unresolved.may_transition_to(&agent()));
     }
 
     #[test]

@@ -81,10 +81,3 @@ export function runtimeLabel(runtime: RuntimeRef | null): string {
   }
   return "";
 }
-
-export function requiresRuntimeFork(
-  current: RuntimeRef | null,
-  next: RuntimeOption,
-): boolean {
-  return current !== null && current.kind !== next.family;
-}

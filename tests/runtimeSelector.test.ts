@@ -6,7 +6,6 @@ import {
   isExternalOption,
   isLocalOption,
   moveRuntimeHighlight,
-  requiresRuntimeFork,
   runtimeLabel,
 } from "@/features/runtime/runtime-options";
 
@@ -71,11 +70,9 @@ describe("runtime selector options", () => {
     expect(options.map(isLocalOption)).toEqual([false, false, true]);
   });
 
-  it("wraps keyboard navigation and detects family switches", () => {
+  it("wraps keyboard navigation", () => {
     expect(moveRuntimeHighlight(0, -1, options.length)).toBe(2);
     expect(moveRuntimeHighlight(2, 1, options.length)).toBe(0);
-    expect(requiresRuntimeFork(options[1].runtime, options[0])).toBe(true);
-    expect(requiresRuntimeFork(options[1].runtime, options[2])).toBe(false);
   });
 
   it("labels chat models by model id and agents by name", () => {

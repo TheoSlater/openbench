@@ -196,18 +196,24 @@ export function useChatStream(
         current?.memoryUpdates ?? pendingMemoryUpdates.get(job.conversationId),
     });
     if (job.agent && entity.agentSessionId) {
-      const runtime = {
-        kind: "coding-agent" as const,
-        installation_id: job.agent.installationId,
-        agent_kind: job.agent.kind,
-        workspace_id: job.agent.workspaceId,
-        agent_session_id: entity.agentSessionId,
-      };
-      await connectionsClient.setRuntime(job.conversationId, runtime);
-      useRuntimeStore.getState().actions.select(
-        runtime,
-        job.agent.kind === "codex" ? "Codex" : "Claude Code",
-      );
+      // The user may have switched to another runtime while the agent was
+      // running; only persist the resumed session when the conversation is
+      // still bound to a coding agent, so a mid-stream switch wins.
+      const current = await connectionsClient.getRuntime(job.conversationId);
+      if (current?.kind === "coding-agent") {
+        const runtime = {
+          kind: "coding-agent" as const,
+          installation_id: job.agent.installationId,
+          agent_kind: job.agent.kind,
+          workspace_id: job.agent.workspaceId,
+          agent_session_id: entity.agentSessionId,
+        };
+        await connectionsClient.setRuntime(job.conversationId, runtime);
+        useRuntimeStore.getState().actions.select(
+          runtime,
+          job.agent.kind === "codex" ? "Codex" : "Claude Code",
+        );
+      }
     }
     setStreamingMessage(job.messageId, null);
     timings.current.delete(job.requestId);
