@@ -1,19 +1,8 @@
 import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SettingsSection, SettingRow } from "../SettingsShell";
-import {
-  useSettingsStore,
-  type TerminalEmulator,
-} from "@/store/settingsStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import {
   disableMemoryForOwner,
   memoryGetSettings,
@@ -27,7 +16,6 @@ export function AdvancedSettingsContent() {
     experimentalFeatures,
     memoryBeta,
     previewFeatures,
-    terminalEmulator,
     actions,
   } = useSettingsStore(
     useShallow((state) => ({
@@ -35,7 +23,6 @@ export function AdvancedSettingsContent() {
       experimentalFeatures: state.general.experimentalFeatures,
       memoryBeta: state.general.memoryBeta,
       previewFeatures: state.general.previewFeatures,
-      terminalEmulator: state.general.terminalEmulator,
       actions: state.actions,
     })),
   );
@@ -140,34 +127,6 @@ export function AdvancedSettingsContent() {
             A Memory tab appears in Settings when enabled.
           </p>
         </SettingRow>
-        <SettingRow
-          title="Terminal (Beta)"
-          description="Choose a terminal renderer for the native PTY and full system commands."
-          action={
-            <Select
-              value={terminalEmulator === "xterm" ? "xterm" : "native"}
-              onValueChange={(value) =>
-                actions.updateGeneral({
-                  terminalEmulator: value as TerminalEmulator,
-                })
-              }
-            >
-              <SelectTrigger
-                size="sm"
-                className="min-w-48"
-                disabled={!betaFeatures}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="native">Native PTY (Ghostty)</SelectItem>
-                  <SelectItem value="xterm">Native PTY (xterm.js)</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          }
-        />
       </SettingsSection>
 
     </>

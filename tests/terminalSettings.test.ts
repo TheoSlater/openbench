@@ -7,14 +7,13 @@ const source = readFileSync(
 );
 
 describe("advanced feature tiers", () => {
-  it("groups beta terminal selection behind the beta master toggle", () => {
+  it("exposes feature tier toggles without a terminal renderer picker", () => {
     expect(source).toContain("Enable experimental features");
     expect(source).toContain("Enable beta features");
     expect(source).toContain("Enable preview features");
-    expect(source).toContain("Terminal (Beta)");
-    expect(source).toContain("Native PTY (Ghostty)");
-    expect(source).toContain("Native PTY (xterm.js)");
+    expect(source).not.toContain("Native PTY (Ghostty)");
+    expect(source).not.toContain("Native PTY (xterm.js)");
     expect(source).not.toContain("Just Bash (Browser)");
-    expect(source).toContain("disabled={!betaFeatures}");
+    expect(source).not.toContain("terminalEmulator");
   });
 });

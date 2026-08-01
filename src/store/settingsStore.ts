@@ -14,21 +14,11 @@ export type GeneralSettings = {
   experimentalFeatures: boolean;
   betaFeatures: boolean;
   previewFeatures: boolean;
-  terminalEmulator: TerminalEmulator;
   mobileWebAccess: boolean;
   showModelInEmptyState: boolean;
   voiceModeExperimental: boolean;
   memoryBeta: boolean;
 };
-
-export type TerminalEmulator = "browser" | "native" | "xterm";
-
-/** Maps pre-Ghostty renderer values without overwriting an intentional xterm choice. */
-export function migrateTerminalEmulatorV27(
-  emulator: TerminalEmulator,
-): TerminalEmulator {
-  return emulator === "native" || emulator === "xterm" ? "xterm" : "native";
-}
 
 export type BrowserTtsSettings = {
   voiceURI: string;
@@ -98,7 +88,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 29;
+const SETTINGS_VERSION = 30;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -134,7 +124,6 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
       experimentalFeatures: false,
       betaFeatures: false,
       previewFeatures: false,
-      terminalEmulator: "native",
       mobileWebAccess: false,
       showModelInEmptyState: false,
       voiceModeExperimental: false,
@@ -292,14 +281,6 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 26 && state?.general) {
           state.general.betaFeatures = Boolean(state.general.memoryBeta);
           state.general.previewFeatures = false;
-          state.general.terminalEmulator = "browser";
-        }
-        if (version < 27 && state?.general) {
-          // Before v27, `native` meant xterm.js. Preserve that explicit user
-          // choice while moving the former browser/Just Bash default to Ghostty.
-          state.general.terminalEmulator = migrateTerminalEmulatorV27(
-            state.general.terminalEmulator,
-          );
         }
         if (version < 28 && state?.general?.webSearch) {
           delete state.general.webSearch.apiKeys;
@@ -309,6 +290,9 @@ export const useSettingsStore = create<SettingsState>()(
           delete state.codexWorkspace;
           delete state.claude;
           delete state.claudeWorkspace;
+        }
+        if (version < 30 && state?.general) {
+          delete state.general.terminalEmulator;
         }
         startupPhase("settings migration complete");
         return state as SettingsState;

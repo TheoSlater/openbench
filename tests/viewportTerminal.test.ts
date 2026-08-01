@@ -13,18 +13,6 @@ const terminal = readFileSync(
   "src/features/viewport/components/TerminalViewport.tsx",
   "utf8",
 );
-const browserTerminal = readFileSync(
-  "src/features/viewport/components/BrowserTerminalViewport.tsx",
-  "utf8",
-);
-const nativeTerminal = existsSync(
-  "src/features/viewport/components/NativeTerminalViewport.tsx",
-)
-  ? readFileSync(
-      "src/features/viewport/components/NativeTerminalViewport.tsx",
-      "utf8",
-    )
-  : "";
 const xtermTerminal = readFileSync(
   "src/features/viewport/components/XtermTerminalViewport.tsx",
   "utf8",
@@ -58,28 +46,16 @@ describe("viewport terminal tab", () => {
     expect(drawerTab).not.toContain("draggable");
   });
 
-  it("connects terminal input to the browser Bash shell", () => {
-    expect(browserTerminal).toContain('from "@wterm/just-bash"');
-    expect(browserTerminal).toContain("shell.attach(write)");
-    expect(browserTerminal).toContain("shellRef.current?.handleInput(data)");
-  });
-
   it("loads only the emulator in use", () => {
-    // Both engines are heavy and only one runs. Importing either eagerly puts
+    // xterm.js is heavy and only one engine exists; importing it eagerly puts
     // it in the drawer's chunk, which gates how fast the drawer can open.
     expect(terminal).toContain("lazy(() =>");
     expect(terminal).not.toContain('from "@wterm/just-bash"');
     expect(terminal).not.toContain('from "@xterm/xterm"');
   });
 
-  it("uses the Ghostty-backed wterm for native commands", () => {
+  it("renders the native PTY with xterm.js only", () => {
     expect(terminal).toContain("betaFeatures");
-    expect(terminal).toContain("<NativeTerminalViewportLazy");
-    expect(nativeTerminal).toContain('from "@wterm/ghostty"');
-    expect(nativeTerminal).toContain("GhosttyCore.load()");
-    expect(nativeTerminal).toContain("core={core}");
-    expect(nativeTerminal).toContain("startPty");
-    expect(terminal).toContain('terminalEmulator === "xterm"');
     expect(terminal).toContain("<XtermTerminalViewportLazy");
     expect(xtermTerminal).toContain('from "@xterm/xterm"');
     expect(xtermTerminal).toContain("startPty");

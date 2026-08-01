@@ -5,7 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { closePty, resizePty, startPty, writePty } from "../pty";
 import { TerminalLoading } from "./TerminalLoading";
 
-/** Native PTY rendered with xterm.js for users who prefer the legacy renderer. */
+/** Native PTY rendered with xterm.js. */
 export function XtermTerminalViewport() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [starting, setStarting] = useState(true);

@@ -22,7 +22,6 @@ Object.defineProperty(globalThis, "localStorage", {
 
 import {
   mergeSettingsWithDefaults,
-  migrateTerminalEmulatorV27,
   useSettingsStore,
 } from "../src/store/settingsStore";
 
@@ -47,7 +46,6 @@ describe("mergeSettingsWithDefaults", () => {
     expect(merged.general.webSearch).toEqual(defaults.general.webSearch);
     expect(merged.general.betaFeatures).toBe(false);
     expect(merged.general.previewFeatures).toBe(false);
-    expect(merged.general.terminalEmulator).toBe("native");
     expect(merged.tts.supertonic.speed).toBe(defaults.tts.supertonic.speed);
     expect(merged.performance).toEqual(defaults.performance);
     expect(merged.actions).toBe(defaults.actions);
@@ -65,6 +63,5 @@ describe("mergeSettingsWithDefaults", () => {
     expect(defaults.general.mobileWebAccess).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);
-    expect(defaults.general.terminalEmulator).toBe("native");
   });
 });

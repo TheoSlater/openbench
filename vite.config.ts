@@ -31,20 +31,14 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "node:zlib": path.resolve(
-        __dirname,
-        "./src/features/viewport/justBashZlibShim.ts",
-      ),
     },
   },
-  // The terminal emulators are only reachable through a dynamic import, so Vite
-  // never sees them while scanning entry points. Without this, the first drawer
+  // The terminal emulator is only reachable through a dynamic import, so Vite
+  // never sees it while scanning entry points. Without this, the first drawer
   // open in `tauri dev` triggers a dependency re-bundle and a page reload
   // instead of just rendering. No effect on production builds.
   optimizeDeps: {
     include: [
-      "@wterm/just-bash",
-      "@wterm/react",
       "@xterm/xterm",
       "@xterm/addon-fit",
     ],
