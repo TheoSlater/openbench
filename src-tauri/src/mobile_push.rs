@@ -49,6 +49,20 @@ struct CompletionPayload<'a> {
     conversation_id: &'a str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApprovalPayload<'a> {
+    aps: Aps<'a>,
+    kind: &'a str,
+    conversation_id: &'a str,
+    request_id: &'a str,
+    approval_id: &'a str,
+    action: &'a str,
+    command: Option<&'a str>,
+    paths: &'a [String],
+    cwd: Option<&'a str>,
+}
+
 pub fn validate_registration(token: &str, environment: &str) -> Result<(), String> {
     if token.len() < 32 || token.len() > 512 || token.len() % 2 != 0 {
         return Err("Invalid APNs device token length.".to_string());
@@ -85,6 +99,66 @@ pub async fn unregister_token(db: &SqlitePool, token: &str) -> Result<(), String
 }
 
 pub async fn notify_agent_completed(db: &SqlitePool, conversation_id: &str) -> Result<(), String> {
+    let payload = CompletionPayload {
+        aps: Aps {
+            alert: Alert {
+                title: "Poly",
+                body: "Your agent finished its response.",
+            },
+            sound: "default",
+            category: "agent_completed",
+            thread_id: conversation_id,
+        },
+        conversation_id,
+    };
+    send_payload(db, &payload).await
+}
+
+pub async fn notify_approval_requested(
+    db: &SqlitePool,
+    conversation_id: &str,
+    request_id: &str,
+    approval_id: &str,
+    action: &str,
+    command: Option<&str>,
+    paths: &[String],
+    cwd: Option<&str>,
+) -> Result<(), String> {
+    let action = truncate_push_value(action, 120);
+    let command = command.map(|value| truncate_push_value(value, 300));
+    let paths = paths
+        .iter()
+        .take(4)
+        .map(|path| truncate_push_value(path, 160))
+        .collect::<Vec<_>>();
+    let cwd = cwd.map(|value| truncate_push_value(value, 160));
+    let payload = ApprovalPayload {
+        aps: Aps {
+            alert: Alert {
+                title: "Poly needs approval",
+                body: &action,
+            },
+            sound: "default",
+            category: "approval_requested",
+            thread_id: conversation_id,
+        },
+        kind: "approval-requested",
+        conversation_id,
+        request_id,
+        approval_id,
+        action: &action,
+        command: command.as_deref(),
+        paths: &paths,
+        cwd: cwd.as_deref(),
+    };
+    send_payload(db, &payload).await
+}
+
+fn truncate_push_value(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+async fn send_payload<T: Serialize + ?Sized>(db: &SqlitePool, payload: &T) -> Result<(), String> {
     let rows = sqlx::query("SELECT token, environment FROM mobile_push_tokens")
         .fetch_all(db)
         .await
@@ -99,19 +173,6 @@ pub async fn notify_agent_completed(db: &SqlitePool, conversation_id: &str) -> R
         .http2_adaptive_window(true)
         .build()
         .map_err(|error| error.to_string())?;
-    let payload = CompletionPayload {
-        aps: Aps {
-            alert: Alert {
-                title: "Poly",
-                body: "Your agent finished its response.",
-            },
-            sound: "default",
-            category: "agent-completed",
-            thread_id: conversation_id,
-        },
-        conversation_id,
-    };
-
     let mut failures = Vec::new();
     for row in rows {
         let token = row.get::<String, _>("token");
@@ -127,7 +188,7 @@ pub async fn notify_agent_completed(db: &SqlitePool, conversation_id: &str) -> R
             .header("apns-topic", &credentials.topic)
             .header("apns-push-type", "alert")
             .header("apns-priority", "10")
-            .json(&payload)
+            .json(payload)
             .send()
             .await
             .map_err(|error| error.to_string())?;
@@ -214,5 +275,35 @@ mod tests {
         assert!(super::validate_registration(&"a".repeat(64), "sandbox").is_ok());
         assert!(super::validate_registration("not-hex", "sandbox").is_err());
         assert!(super::validate_registration(&"a".repeat(64), "staging").is_err());
+    }
+
+    #[test]
+    fn approval_push_contains_action_identifiers() {
+        let paths = vec!["src/app.ts".to_string()];
+        let payload = super::ApprovalPayload {
+            aps: super::Aps {
+                alert: super::Alert {
+                    title: "Poly needs approval",
+                    body: "Change files",
+                },
+                sound: "default",
+                category: "approval_requested",
+                thread_id: "conversation-1",
+            },
+            kind: "approval-requested",
+            conversation_id: "conversation-1",
+            request_id: "request-1",
+            approval_id: "approval-1",
+            action: "Change files",
+            command: None,
+            paths: &paths,
+            cwd: Some("/tmp/project"),
+        };
+
+        let json = serde_json::to_value(payload).unwrap();
+        assert_eq!(json["aps"]["category"], "approval_requested");
+        assert_eq!(json["requestId"], "request-1");
+        assert_eq!(json["approvalId"], "approval-1");
+        assert_eq!(super::truncate_push_value("abcdef", 3), "abc");
     }
 }

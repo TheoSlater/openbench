@@ -77,6 +77,11 @@ export function relayPairingPayload(
   });
 }
 
+export function isRelayStreamResponse(response: Response) {
+  return Boolean(response.body)
+    && response.headers.get("content-type")?.includes("text/event-stream") === true;
+}
+
 class RelayHostBridge {
   private socket: WebSocket | null = null;
   private sessionKey: string | null = null;
@@ -136,15 +141,21 @@ class RelayHostBridge {
         headers: { "content-type": "application/json" },
         body: request.body,
       });
-      if (request.path.startsWith("/api/chat-stream") && response.body) {
+      if (isRelayStreamResponse(response) && response.body) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         for (;;) {
           const next = await reader.read();
           if (next.done) break;
-          this.send({ type: "stream", id: request.id, data: decoder.decode(next.value) });
+          this.send({
+            type: "stream",
+            id: request.id,
+            data: decoder.decode(next.value, { stream: true }),
+          });
         }
-        this.send({ type: "stream-end", id: request.id });
+        const remainder = decoder.decode();
+        if (remainder) this.send({ type: "stream", id: request.id, data: remainder });
+        this.send({ type: "stream-end", id: request.id, status: response.status });
         return;
       }
       this.send({

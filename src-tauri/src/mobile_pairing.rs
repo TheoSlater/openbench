@@ -3,6 +3,7 @@ use crate::AppState;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Row;
+use std::collections::HashMap;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::path::{Path, PathBuf};
@@ -65,6 +66,7 @@ pub async fn mobile_pairing_start(
     let token = Uuid::new_v4().to_string();
     let info = build_pairing_info(&host, port, &token);
     let last_device_seen = Arc::new(Mutex::new(None));
+    let jobs = Arc::new(Mutex::new(HashMap::new()));
     let (stop_tx, stop_rx) = oneshot::channel();
 
     tokio::spawn(run_pairing_server(
@@ -75,6 +77,7 @@ pub async fn mobile_pairing_start(
         app_state.ai.clone(),
         app_handle,
         Arc::clone(&last_device_seen),
+        jobs,
         stop_rx,
     ));
     *current = Some(MobilePairingSession {
@@ -124,6 +127,71 @@ fn build_pairing_info(host: &str, port: u16, token: &str) -> MobilePairingInfo {
 const DEVICE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_HTTP_REQUEST_BYTES: usize = 4 * 1024 * 1024;
+const MOBILE_JOB_TTL: Duration = Duration::from_secs(10 * 60);
+const SSE_HEARTBEAT: Duration = Duration::from_secs(15);
+
+#[derive(Clone)]
+struct MobileJobEvent {
+    name: String,
+    data: String,
+}
+
+#[derive(Clone)]
+enum MobileJobOutcome {
+    Running,
+    Done(String),
+    Error(String),
+}
+
+struct MobileJob {
+    conversation_id: Option<String>,
+    content: String,
+    pending_approval: Option<String>,
+    outcome: MobileJobOutcome,
+    updated_at: Instant,
+    events: tokio::sync::broadcast::Sender<MobileJobEvent>,
+}
+
+impl MobileJob {
+    fn new(conversation_id: Option<String>) -> Self {
+        let (events, _) = tokio::sync::broadcast::channel(256);
+        Self {
+            conversation_id,
+            content: String::new(),
+            pending_approval: None,
+            outcome: MobileJobOutcome::Running,
+            updated_at: Instant::now(),
+            events,
+        }
+    }
+
+    fn publish(&mut self, name: &str, data: String) {
+        if name == "chunk" {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) {
+                self.content
+                    .push_str(value["content"].as_str().unwrap_or_default());
+            }
+            self.pending_approval = None;
+        } else if matches!(name, "reasoning" | "activity") {
+            self.pending_approval = None;
+        } else if name == "approval" {
+            self.pending_approval = Some(data.clone());
+        } else if name == "done" {
+            self.pending_approval = None;
+            self.outcome = MobileJobOutcome::Done(data.clone());
+        } else if name == "error" {
+            self.pending_approval = None;
+            self.outcome = MobileJobOutcome::Error(data.clone());
+        }
+        self.updated_at = Instant::now();
+        let _ = self.events.send(MobileJobEvent {
+            name: name.to_string(),
+            data,
+        });
+    }
+}
+
+type MobileJobs = Arc<Mutex<HashMap<String, MobileJob>>>;
 
 fn should_cancel_job_on_client_disconnect() -> bool {
     false
@@ -182,6 +250,7 @@ async fn run_pairing_server(
     ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
     last_device_seen: Arc<Mutex<Option<Instant>>>,
+    jobs: MobileJobs,
     mut stop: oneshot::Receiver<()>,
 ) {
     let token = Arc::new(token);
@@ -198,6 +267,7 @@ async fn run_pairing_server(
                 let ai = ai.clone();
                 let app_handle = app_handle.clone();
                 let last_device_seen = Arc::clone(&last_device_seen);
+                let jobs = Arc::clone(&jobs);
                 tokio::spawn(async move {
                     let _ = handle_connection(
                         stream,
@@ -208,6 +278,7 @@ async fn run_pairing_server(
                         ai,
                         app_handle,
                         last_device_seen,
+                        jobs,
                     )
                     .await;
                 });
@@ -236,10 +307,54 @@ struct BrowserApprovalRequest {
 }
 
 #[derive(Deserialize)]
+struct BrowserCancelRequest {
+    request_id: String,
+}
+
+fn parse_cancel_request(body: &str) -> Result<BrowserCancelRequest, String> {
+    let mut request =
+        serde_json::from_str::<BrowserCancelRequest>(body).map_err(|error| error.to_string())?;
+    request.request_id = request.request_id.trim().to_string();
+    if request.request_id.is_empty() {
+        return Err("Request ID is required.".to_string());
+    }
+    Ok(request)
+}
+
+#[derive(Deserialize)]
 struct BrowserConversationRequest {
     id: String,
     title: String,
     is_temporary: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct BrowserConversationEditRequest {
+    id: String,
+    title: Option<String>,
+}
+
+fn parse_conversation_edit(
+    body: &str,
+    require_title: bool,
+) -> Result<BrowserConversationEditRequest, String> {
+    let mut request = serde_json::from_str::<BrowserConversationEditRequest>(body)
+        .map_err(|error| error.to_string())?;
+    request.id = request.id.trim().to_string();
+    if request.id.is_empty() {
+        return Err("Conversation ID is required.".to_string());
+    }
+    if require_title {
+        let title = request.title.as_deref().unwrap_or_default().trim();
+        if title.is_empty() {
+            return Err("Conversation title is required.".to_string());
+        }
+        if title.chars().count() > 200 {
+            return Err("Conversation title is too long.".to_string());
+        }
+        request.title = Some(title.to_string());
+    }
+    Ok(request)
 }
 
 #[derive(Deserialize)]
@@ -349,6 +464,7 @@ async fn handle_connection(
     ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
     last_device_seen: Arc<Mutex<Option<Instant>>>,
+    jobs: MobileJobs,
 ) -> std::io::Result<()> {
     let request = read_http_request(&mut stream).await?;
     let request = String::from_utf8_lossy(&request);
@@ -380,11 +496,25 @@ async fn handle_connection(
             secret_store,
             ai,
             app_handle,
+            jobs,
         )
         .await;
     }
-    let response =
-        response_for_request(method, path, body, token, db, secret_store, ai, app_handle).await;
+    if method == "GET" && path.starts_with("/api/job-stream") {
+        return handle_job_stream_response(stream, path, token, jobs).await;
+    }
+    let response = response_for_request(
+        method,
+        path,
+        body,
+        token,
+        db,
+        secret_store,
+        ai,
+        app_handle,
+        jobs,
+    )
+    .await;
     stream.write_all(&response).await
 }
 
@@ -397,6 +527,7 @@ async fn handle_chat_stream_response(
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
+    jobs: MobileJobs,
 ) -> std::io::Result<()> {
     if !token_matches(path, token) {
         stream.write_all(&unauthorized_response()).await?;
@@ -420,10 +551,20 @@ async fn handle_chat_stream_response(
             return finish_sse(&mut stream).await;
         }
     };
+    let reservation_id = Uuid::new_v4().to_string();
+    {
+        let mut jobs = jobs.lock().await;
+        jobs.retain(|_, job| job.updated_at.elapsed() < MOBILE_JOB_TTL);
+        jobs.insert(
+            reservation_id.clone(),
+            MobileJob::new(request.conversation_id.clone()),
+        );
+    }
     let (provider_type, request_id, mut events, mut runtime) =
         match start_mobile_chat(&db, secret_store.as_ref(), &ai, &request).await {
             Ok(started) => started,
             Err(error) => {
+                jobs.lock().await.remove(&reservation_id);
                 write_sse(
                     &mut stream,
                     "error",
@@ -434,15 +575,40 @@ async fn handle_chat_stream_response(
             }
         };
 
+    {
+        let mut jobs = jobs.lock().await;
+        let job = jobs
+            .remove(&reservation_id)
+            .unwrap_or_else(|| MobileJob::new(request.conversation_id.clone()));
+        jobs.insert(request_id.clone(), job);
+    }
+    let mut client_connected = write_sse(
+        &mut stream,
+        "started",
+        &serde_json::json!({ "requestId": request_id }).to_string(),
+    )
+    .await
+    .is_ok();
+
     let mut content = String::new();
-    let mut client_connected = true;
     let mut completed = false;
+    let mut failure = None;
+    let mut heartbeat = tokio::time::interval(SSE_HEARTBEAT);
     loop {
-        let event = match events.recv().await {
-            Ok(event) => event,
-            Err(_) => {
-                let _ = ai.cancel(&request_id).await;
-                break;
+        let event = tokio::select! {
+            _ = heartbeat.tick() => {
+                if client_connected && write_sse(&mut stream, "ping", "{}").await.is_err() {
+                    client_connected = false;
+                }
+                continue;
+            }
+            event = events.recv() => match event {
+                Ok(event) => event,
+                Err(_) => {
+                    let _ = ai.cancel(&request_id).await;
+                    failure = Some("AI event stream closed.".to_string());
+                    break;
+                }
             }
         };
         match event {
@@ -452,6 +618,13 @@ async fn handle_chat_stream_response(
             } if id == request_id && chunk["type"] == "text-delta" => {
                 let delta = chunk["delta"].as_str().unwrap_or_default();
                 content.push_str(delta);
+                publish_mobile_job(
+                    &jobs,
+                    &request_id,
+                    "chunk",
+                    serde_json::json!({ "content": delta }).to_string(),
+                )
+                .await;
                 if client_connected {
                     if let Err(error) = write_sse(
                         &mut stream,
@@ -473,6 +646,13 @@ async fn handle_chat_stream_response(
                 chunk,
             } if id == request_id && chunk["type"] == "reasoning-delta" => {
                 let delta = chunk["delta"].as_str().unwrap_or_default();
+                publish_mobile_job(
+                    &jobs,
+                    &request_id,
+                    "reasoning",
+                    serde_json::json!({ "content": delta }).to_string(),
+                )
+                .await;
                 if client_connected {
                     if let Err(error) = write_sse(
                         &mut stream,
@@ -497,21 +677,86 @@ async fn handle_chat_stream_response(
                 && chunk["data"]["kind"] == "permission"
                 && chunk["data"]["status"] == "pending" =>
             {
-                if client_connected {
-                    let approval = serde_json::json!({
-                        "requestId": request_id,
-                        "approvalId": chunk["data"]["approvalId"],
-                        "action": chunk["data"]["action"],
-                        "command": chunk["data"]["command"],
-                        "paths": chunk["data"]["paths"],
-                        "cwd": chunk["data"]["cwd"],
+                let approval = serde_json::json!({
+                    "requestId": request_id,
+                    "approvalId": chunk["data"]["approvalId"],
+                    "action": chunk["data"]["action"],
+                    "command": chunk["data"]["command"],
+                    "paths": chunk["data"]["paths"],
+                    "cwd": chunk["data"]["cwd"],
+                });
+                publish_mobile_job(&jobs, &request_id, "approval", approval.to_string()).await;
+
+                if let (Some(conversation_id), Some(approval_id)) = (
+                    request.conversation_id.clone(),
+                    chunk["data"]["approvalId"].as_str().map(str::to_string),
+                ) {
+                    let push_db = db.clone();
+                    let action = chunk["data"]["action"]
+                        .as_str()
+                        .unwrap_or("Approval required")
+                        .to_string();
+                    let command = chunk["data"]["command"].as_str().map(str::to_string);
+                    let paths = chunk["data"]["paths"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|path| path.as_str().map(str::to_string))
+                        .collect::<Vec<_>>();
+                    let cwd = chunk["data"]["cwd"].as_str().map(str::to_string);
+                    let push_request_id = request_id.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = crate::mobile_push::notify_approval_requested(
+                            &push_db,
+                            &conversation_id,
+                            &push_request_id,
+                            &approval_id,
+                            &action,
+                            command.as_deref(),
+                            &paths,
+                            cwd.as_deref(),
+                        )
+                        .await
+                        {
+                            log::warn!("Approval push failed: {error}");
+                        }
                     });
+                }
+
+                if client_connected {
                     if write_sse(&mut stream, "approval", &approval.to_string())
                         .await
                         .is_err()
                     {
                         client_connected = false;
                     }
+                }
+            }
+            crate::ai_sidecar::AiRuntimeEvent::Chunk {
+                request_id: id,
+                chunk,
+            } if id == request_id
+                && chunk["type"] == "data-agent"
+                && matches!(
+                    chunk["data"]["kind"].as_str(),
+                    Some("plan" | "task" | "terminal" | "file")
+                ) =>
+            {
+                let activity = serde_json::json!({
+                    "kind": chunk["data"]["kind"],
+                    "status": chunk["data"]["status"],
+                    "text": chunk["data"]["text"],
+                    "command": chunk["data"]["command"],
+                    "paths": chunk["data"]["paths"],
+                    "cwd": chunk["data"]["cwd"],
+                });
+                publish_mobile_job(&jobs, &request_id, "activity", activity.to_string()).await;
+                if client_connected
+                    && write_sse(&mut stream, "activity", &activity.to_string())
+                        .await
+                        .is_err()
+                {
+                    client_connected = false;
                 }
             }
             crate::ai_sidecar::AiRuntimeEvent::Chunk {
@@ -545,14 +790,7 @@ async fn handle_chat_stream_response(
                 request_id: id,
                 error,
             } if id == request_id => {
-                if client_connected {
-                    let _ = write_sse(
-                        &mut stream,
-                        "error",
-                        &serde_json::json!({ "error": error }).to_string(),
-                    )
-                    .await;
-                }
+                failure = Some(error);
                 break;
             }
             crate::ai_sidecar::AiRuntimeEvent::Done { request_id: id } if id == request_id => {
@@ -613,17 +851,137 @@ async fn handle_chat_stream_response(
             }
         }
     }
-    if client_connected {
-        write_sse(
-            &mut stream,
+    let (event, data) = if let Some(error) = failure {
+        ("error", serde_json::json!({ "error": error }).to_string())
+    } else {
+        (
             "done",
-            &serde_json::json!({ "id": assistant_id, "content": content, "provider": provider_type })
+            serde_json::json!({ "id": assistant_id, "content": content, "provider": provider_type })
                 .to_string(),
         )
-        .await?;
+    };
+    publish_mobile_job(&jobs, &request_id, event, data.clone()).await;
+    if client_connected {
+        write_sse(&mut stream, event, &data).await?;
         finish_sse(&mut stream).await?;
     }
     Ok(())
+}
+
+async fn publish_mobile_job(jobs: &MobileJobs, request_id: &str, name: &str, data: String) {
+    if let Some(job) = jobs.lock().await.get_mut(request_id) {
+        job.publish(name, data);
+    }
+}
+
+async fn handle_job_stream_response(
+    mut stream: TcpStream,
+    path: &str,
+    token: &str,
+    jobs: MobileJobs,
+) -> std::io::Result<()> {
+    if !token_matches(path, token) {
+        stream.write_all(&unauthorized_response()).await?;
+        return Ok(());
+    }
+    stream
+        .write_all(
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncache-control: no-cache\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+        )
+        .await?;
+
+    let request_id = query_value(path, "requestId").unwrap_or_default();
+    let (content, pending_approval, outcome, mut events) = {
+        let mut jobs = jobs.lock().await;
+        jobs.retain(|_, job| job.updated_at.elapsed() < MOBILE_JOB_TTL);
+        let Some(job) = jobs.get(&request_id) else {
+            write_sse(
+                &mut stream,
+                "error",
+                r#"{"error":"Mobile job was not found."}"#,
+            )
+            .await?;
+            return finish_sse(&mut stream).await;
+        };
+        (
+            job.content.clone(),
+            job.pending_approval.clone(),
+            job.outcome.clone(),
+            job.events.subscribe(),
+        )
+    };
+
+    write_sse(
+        &mut stream,
+        "snapshot",
+        &serde_json::json!({ "content": content }).to_string(),
+    )
+    .await?;
+    match outcome {
+        MobileJobOutcome::Done(data) => {
+            write_sse(&mut stream, "done", &data).await?;
+            return finish_sse(&mut stream).await;
+        }
+        MobileJobOutcome::Error(data) => {
+            write_sse(&mut stream, "error", &data).await?;
+            return finish_sse(&mut stream).await;
+        }
+        MobileJobOutcome::Running => {}
+    }
+    if let Some(approval) = pending_approval {
+        write_sse(&mut stream, "approval", &approval).await?;
+    }
+
+    let mut heartbeat = tokio::time::interval(SSE_HEARTBEAT);
+    loop {
+        tokio::select! {
+            _ = heartbeat.tick() => write_sse(&mut stream, "ping", "{}").await?,
+            event = events.recv() => {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        let (snapshot, pending_approval, outcome) = jobs
+                            .lock()
+                            .await
+                            .get(&request_id)
+                            .map(|job| (
+                                job.content.clone(),
+                                job.pending_approval.clone(),
+                                job.outcome.clone(),
+                            ))
+                            .unwrap_or((String::new(), None, MobileJobOutcome::Running));
+                        write_sse(
+                            &mut stream,
+                            "snapshot",
+                            &serde_json::json!({ "content": snapshot }).to_string(),
+                        ).await?;
+                        match outcome {
+                            MobileJobOutcome::Done(data) => {
+                                write_sse(&mut stream, "done", &data).await?;
+                                return finish_sse(&mut stream).await;
+                            }
+                            MobileJobOutcome::Error(data) => {
+                                write_sse(&mut stream, "error", &data).await?;
+                                return finish_sse(&mut stream).await;
+                            }
+                            MobileJobOutcome::Running => {
+                                if let Some(approval) = pending_approval {
+                                    write_sse(&mut stream, "approval", &approval).await?;
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                };
+                write_sse(&mut stream, &event.name, &event.data).await?;
+                if matches!(event.name.as_str(), "done" | "error") {
+                    break;
+                }
+            }
+        }
+    }
+    finish_sse(&mut stream).await
 }
 
 async fn start_mobile_chat(
@@ -946,6 +1304,7 @@ async fn response_for_request(
     secret_store: Arc<dyn crate::connections::secrets::SecretStore>,
     ai: Arc<crate::ai_sidecar::AiSidecar>,
     app_handle: tauri::AppHandle,
+    jobs: MobileJobs,
 ) -> Vec<u8> {
     if let Some(response) = response_for_static_path(method, path, token) {
         return response;
@@ -989,6 +1348,30 @@ async fn response_for_request(
             )
             .await;
         return match result {
+            Ok(()) => {
+                if let Some(job) = jobs.lock().await.get_mut(&request.request_id) {
+                    job.pending_approval = None;
+                }
+                json_response(200, r#"{"ok":true}"#)
+            }
+            Err(error) => json_response(
+                400,
+                &serde_json::json!({ "ok": false, "error": error }).to_string(),
+            ),
+        };
+    }
+
+    if method == "POST" && path.starts_with("/api/cancel") {
+        let request = match parse_cancel_request(body) {
+            Ok(request) => request,
+            Err(error) => {
+                return json_response(
+                    400,
+                    &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string(),
+                )
+            }
+        };
+        return match ai.cancel(&request.request_id).await {
             Ok(()) => json_response(200, r#"{"ok":true}"#),
             Err(error) => json_response(
                 400,
@@ -1091,6 +1474,86 @@ async fn response_for_request(
             }
         };
         return json_response(200, &body);
+    }
+
+    if method == "PATCH" && path.starts_with("/api/conversations") {
+        let request = match parse_conversation_edit(body, true) {
+            Ok(request) => request,
+            Err(error) => {
+                return json_response(
+                    400,
+                    &serde_json::json!({ "ok": false, "error": error }).to_string(),
+                )
+            }
+        };
+        let result = sqlx::query("UPDATE conversations SET title = ?1 WHERE id = ?2")
+            .bind(request.title.unwrap_or_default())
+            .bind(&request.id)
+            .execute(&db)
+            .await;
+        return match result {
+            Ok(updated) if updated.rows_affected() > 0 => {
+                emit_mobile_chat_updated(&app_handle, Some(&request.id));
+                json_response(200, r#"{"ok":true}"#)
+            }
+            Ok(_) => json_response(404, r#"{"ok":false,"error":"Conversation was not found."}"#),
+            Err(error) => json_response(
+                500,
+                &serde_json::json!({ "ok": false, "error": error.to_string() }).to_string(),
+            ),
+        };
+    }
+
+    if method == "DELETE" && path.starts_with("/api/conversations") {
+        let request = match parse_conversation_edit(body, false) {
+            Ok(request) => request,
+            Err(error) => {
+                return json_response(
+                    400,
+                    &serde_json::json!({ "ok": false, "error": error }).to_string(),
+                )
+            }
+        };
+        let has_active_job = jobs.lock().await.values().any(|job| {
+            job.conversation_id.as_deref() == Some(request.id.as_str())
+                && matches!(&job.outcome, MobileJobOutcome::Running)
+        });
+        if has_active_job {
+            return json_response(
+                409,
+                r#"{"ok":false,"error":"Stop the active response before deleting this chat."}"#,
+            );
+        }
+        let result = async {
+            let mut transaction = db.begin().await.map_err(|error| error.to_string())?;
+            sqlx::query("DELETE FROM messages WHERE conversationId = ?1")
+                .bind(&request.id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| error.to_string())?;
+            let deleted = sqlx::query("DELETE FROM conversations WHERE id = ?1")
+                .bind(&request.id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| error.to_string())?;
+            transaction
+                .commit()
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok::<_, String>(deleted.rows_affected())
+        }
+        .await;
+        return match result {
+            Ok(removed) if removed > 0 => {
+                emit_mobile_chat_updated(&app_handle, Some(&request.id));
+                json_response(200, r#"{"ok":true}"#)
+            }
+            Ok(_) => json_response(404, r#"{"ok":false,"error":"Conversation was not found."}"#),
+            Err(error) => json_response(
+                500,
+                &serde_json::json!({ "ok": false, "error": error }).to_string(),
+            ),
+        };
     }
 
     if method == "GET" && path.starts_with("/api/messages") {
@@ -1264,13 +1727,22 @@ fn emit_mobile_chat_updated(app_handle: &tauri::AppHandle, conversation_id: Opti
 }
 
 async fn list_conversations(db: &sqlx::SqlitePool) -> Result<serde_json::Value, String> {
-    let rows = sqlx::query("SELECT id, title, createdAt, updatedAt, isArchived, folderId FROM conversations ORDER BY updatedAt DESC")
+    let rows = sqlx::query("SELECT id, title, strftime('%Y-%m-%dT%H:%M:%fZ', createdAt) AS createdAt, strftime('%Y-%m-%dT%H:%M:%fZ', updatedAt) AS updatedAt, isArchived, folderId, runtime_kind, runtime_ref FROM conversations ORDER BY updatedAt DESC")
         .fetch_all(db)
         .await
         .map_err(|error| error.to_string())?;
     Ok(serde_json::Value::Array(
         rows.into_iter()
             .map(|row| {
+                let runtime = match (
+                    row.try_get::<String, _>("runtime_kind").ok(),
+                    row.try_get::<String, _>("runtime_ref").ok(),
+                ) {
+                    (Some(kind), Some(payload)) => {
+                        crate::runtime::RuntimeRef::from_columns(&kind, &payload).ok()
+                    }
+                    _ => None,
+                };
                 serde_json::json!({
                     "id": row.get::<String, _>("id"),
                     "title": row.get::<String, _>("title"),
@@ -1278,6 +1750,7 @@ async fn list_conversations(db: &sqlx::SqlitePool) -> Result<serde_json::Value, 
                     "updatedAt": row.get::<String, _>("updatedAt"),
                     "isArchived": row.get::<i64, _>("isArchived") != 0,
                     "folderId": row.try_get::<String, _>("folderId").ok(),
+                    "runtime": runtime,
                 })
             })
             .collect(),
@@ -1519,6 +1992,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn mobile_job_snapshot_preserves_missed_content() {
+        let mut job = super::MobileJob::new(Some("chat-1".to_string()));
+        job.publish("chunk", r#"{"content":"hello "}"#.to_string());
+        job.publish("chunk", r#"{"content":"world"}"#.to_string());
+
+        assert_eq!(job.content, "hello world");
+        assert!(matches!(job.outcome, super::MobileJobOutcome::Running));
+        job.publish("approval", r#"{"approvalId":"approval-1"}"#.to_string());
+        assert!(job.pending_approval.is_some());
+        job.publish("activity", r#"{"kind":"task"}"#.to_string());
+        assert!(job.pending_approval.is_none());
+    }
+
     #[tokio::test]
     async fn reads_http_body_split_across_tcp_packets() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
@@ -1609,6 +2096,26 @@ mod tests {
                 ..
             }) if workspace_id == "workspace-1"
         ));
+    }
+
+    #[test]
+    fn cancel_requires_request_id() {
+        let request = super::parse_cancel_request(r#"{"request_id":" request-1 "}"#).unwrap();
+
+        assert_eq!(request.request_id, "request-1");
+        assert!(super::parse_cancel_request(r#"{"request_id":" "}"#).is_err());
+    }
+
+    #[test]
+    fn conversation_edits_validate_and_trim() {
+        let rename =
+            super::parse_conversation_edit(r#"{"id":" chat-1 ","title":" New title "}"#, true)
+                .unwrap();
+
+        assert_eq!(rename.id, "chat-1");
+        assert_eq!(rename.title.as_deref(), Some("New title"));
+        assert!(super::parse_conversation_edit(r#"{"id":"","title":"x"}"#, true).is_err());
+        assert!(super::parse_conversation_edit(r#"{"id":"x","title":" "}"#, true).is_err());
     }
 
     #[test]
