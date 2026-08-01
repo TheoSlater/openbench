@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import { useEffect } from "react";
+import { create } from "zustand";
+
+import { useNotify } from "@/hooks/useNotify";
+import { useSettingsStore } from "@/store/settingsStore";
 
 import {
   createRelayKeyPair,
@@ -14,6 +19,12 @@ type PairingInfo = {
   httpBaseUrl: string;
   host: string;
   token: string;
+  deviceConnected?: boolean;
+};
+
+export type MobileDefaultModel = {
+  connectionId: string;
+  name: string;
 };
 
 type RemoteRequest = {
@@ -26,6 +37,20 @@ type RemoteRequest = {
 
 const keys = new Map<string, RelayKeyPair>();
 
+type MobileConnectionState = { connected: boolean; hostName: string | null };
+
+export const useMobileConnectionStatus = create<MobileConnectionState>(() => ({
+  connected: false,
+  hostName: null,
+}));
+
+function setMobileConnectionStatus(connected: boolean, hostName: string | null) {
+  useMobileConnectionStatus.setState((state) => ({
+    connected,
+    hostName: hostName ?? state.hostName,
+  }));
+}
+
 export function relayUrl(value: string) {
   const url = new URL(value);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -34,7 +59,11 @@ export function relayUrl(value: string) {
   return url.toString();
 }
 
-export function relayPairingPayload(info: PairingInfo, relay: string) {
+export function relayPairingPayload(
+  info: PairingInfo,
+  relay: string,
+  defaultModel?: MobileDefaultModel,
+) {
   const key = keys.get(info.token) ?? createRelayKeyPair();
   keys.set(info.token, key);
   return JSON.stringify({
@@ -44,6 +73,7 @@ export function relayPairingPayload(info: PairingInfo, relay: string) {
     hostName: info.host,
     pairingToken: info.token,
     hostPublicKey: key.publicKey,
+    defaultModel,
   });
 }
 
@@ -142,24 +172,40 @@ class RelayHostBridge {
 }
 
 export function useMobileRelayBridge() {
+  const notify = useNotify();
+  const notificationsEnabled = useSettingsStore((state) => state.general.notifications);
   useEffect(() => {
     const relay = import.meta.env.VITE_POLY_RELAY_URL as string | undefined;
-    if (!relay) return;
 
     let bridge: RelayHostBridge | null = null;
     let stopped = false;
+    let previousConnected: boolean | null = null;
     const sync = async () => {
       const info = await invoke<PairingInfo | null>("mobile_pairing_status").catch(
         () => null,
       );
-      if (stopped || !info) {
+      if (stopped) return;
+      const connected = Boolean(info?.deviceConnected);
+      setMobileConnectionStatus(connected, info?.host ?? null);
+      if (previousConnected !== null && previousConnected !== connected) {
+        const hostName = info?.host ?? "Poly device";
+        if (connected) {
+          notify.success("Device connected", hostName);
+          if (notificationsEnabled) sendNotification({ title: "Poly device connected", body: hostName });
+        } else {
+          notify.info("Device disconnected", hostName);
+          if (notificationsEnabled) sendNotification({ title: "Poly device disconnected", body: hostName });
+        }
+      }
+      previousConnected = connected;
+      if (!info) {
         bridge?.stop();
         bridge = null;
         return;
       }
       const key = keys.get(info.token) ?? createRelayKeyPair();
       keys.set(info.token, key);
-      if (!bridge) {
+      if (relay && !bridge) {
         bridge = new RelayHostBridge(info, relay, key);
         bridge.start();
       }
@@ -171,5 +217,5 @@ export function useMobileRelayBridge() {
       window.clearInterval(timer);
       bridge?.stop();
     };
-  }, []);
+  }, [notificationsEnabled, notify]);
 }

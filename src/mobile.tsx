@@ -119,23 +119,13 @@ function MobileApp() {
   }
 
   async function createChat(nextTemporary = temporary) {
+    if (activeConversation && messages.length === 0) return;
     const conversation = newConversation(nextTemporary);
     useChatStore.setState((state) => ({
       conversations: [conversation, ...state.conversations],
       activeConversationId: conversation.id,
       messages: [],
     }));
-    if (!nextTemporary) {
-      await api<Record<string, never>>("/api/conversations", token, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id: conversation.id,
-          title: conversation.title,
-          isTemporary: false,
-        }),
-      });
-    }
   }
 
   async function submit(content: string) {
@@ -149,13 +139,6 @@ function MobileApp() {
         activeConversationId: conversation!.id,
         messages: [],
       }));
-      if (!conversation.isTemporary) {
-        await api<Record<string, never>>("/api/conversations", token, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: conversation.id, title: conversation.title }),
-        });
-      }
     }
 
     const userMessage: Message = {
@@ -179,6 +162,16 @@ function MobileApp() {
     }));
 
     if (!conversation.isTemporary) {
+      if (messages.length === 0) {
+        await api<Record<string, never>>("/api/conversations", token, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: conversation.id,
+            title: conversation.title,
+          }),
+        });
+      }
       await api<Record<string, never>>("/api/messages", token, {
         method: "POST",
         headers: { "content-type": "application/json" },

@@ -5,10 +5,10 @@ use std::time::Duration;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCliStatus {
-    installed: bool,
-    authenticated: bool,
-    executable: Option<String>,
-    version: Option<String>,
+    pub(crate) installed: bool,
+    pub(crate) authenticated: bool,
+    pub(crate) executable: Option<String>,
+    pub(crate) version: Option<String>,
 }
 
 fn executable(name: &str) -> Option<PathBuf> {

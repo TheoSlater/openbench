@@ -9,7 +9,12 @@ import { Switch } from "@/components/ui/switch";
 import { Typography } from "@/components/ui/Typography";
 import { useSettingsStore } from "@/store/settingsStore";
 import { SettingRow, SettingsSection } from "../SettingsShell";
-import { relayPairingPayload } from "@/lib/mobile/relay-bridge";
+import {
+  relayPairingPayload,
+  type MobileDefaultModel,
+  useMobileConnectionStatus,
+} from "@/lib/mobile/relay-bridge";
+import { readDefaultRuntime } from "@/lib/runtime/legacy-default-model";
 
 type MobilePairingInfo = {
   url: string;
@@ -18,6 +23,14 @@ type MobilePairingInfo = {
   port: number;
   token: string;
 };
+
+function pairingUrl(url: string, defaultModel?: MobileDefaultModel) {
+  if (!defaultModel) return url;
+  const value = new URL(url);
+  value.searchParams.set("connectionId", defaultModel.connectionId);
+  value.searchParams.set("model", defaultModel.name);
+  return value.toString();
+}
 
 export function MobileTab() {
   const [pairing, setPairing] = useState<MobilePairingInfo | null>(null);
@@ -32,6 +45,12 @@ export function MobileTab() {
     })),
   );
   const canUseMobileWeb = experimentalFeatures && mobileWebAccess;
+  const deviceConnected = useMobileConnectionStatus((state) => state.connected);
+  const runtime = readDefaultRuntime();
+  const defaultModel = runtime?.kind === "chat-model"
+    ? { connectionId: runtime.connection_id, name: runtime.model_id }
+    : undefined;
+  const pairedUrl = pairing ? pairingUrl(pairing.url, defaultModel) : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +103,7 @@ export function MobileTab() {
   async function copyUrl() {
     if (!pairing) return;
     try {
-      await navigator.clipboard.writeText(pairing.url);
+      await navigator.clipboard.writeText(pairedUrl);
       setMessage("Pairing URL copied.");
     } catch {
       setMessage("Copy failed. Select the pairing URL and copy it manually.");
@@ -94,12 +113,12 @@ export function MobileTab() {
   return (
     <SettingsSection
       title="Mobile Pairing"
-      description="Connect a future PolyUI mobile app from the same Wi-Fi network."
+      description="Connect PolyUI mobile over the same Wi-Fi or a configured relay."
     >
       {experimentalFeatures ? (
         <SettingRow
           title="Mobile web access"
-          description="Allow phones on the same Wi-Fi to open the browser client."
+          description="Allow phones to open the browser client."
           action={
             <Switch
               checked={mobileWebAccess}
@@ -116,11 +135,11 @@ export function MobileTab() {
       )}
       {canUseMobileWeb ? (
         <SettingRow
-          title={pairing ? "Pairing is active" : "Start Wi-Fi pairing"}
+          title={pairing ? (deviceConnected ? "Device connected" : "Waiting for device") : "Start pairing"}
           description={
             pairing
-              ? `Listening at ${pairing.httpBaseUrl}. Keep this window open while pairing.`
-              : "Creates a temporary QR code. No cloud server or account required."
+              ? `Listening at ${pairing.httpBaseUrl}. ${relayUrl ? "Relay allows remote networks." : "Same Wi-Fi required."}`
+              : "Creates a temporary QR code."
           }
           action={
             pairing ? (
@@ -138,7 +157,7 @@ export function MobileTab() {
             <Stack spacing={3}>
               <div className="w-fit rounded-xl border border-border/60 bg-white p-3 dark:bg-white">
                 <QRCodeSVG
-                  value={relayUrl ? relayPairingPayload(pairing, relayUrl) : pairing.url}
+                  value={relayUrl ? relayPairingPayload(pairing, relayUrl, defaultModel) : pairedUrl}
                   size={184}
                   marginSize={1}
                 />
@@ -158,7 +177,7 @@ export function MobileTab() {
       ) : null}
       <SettingRow
         title="Connection limits"
-        description="Phone and computer must be on the same Wi-Fi. Firewall or VPN settings can block pairing."
+        description="Remote relay or same Wi-Fi. Firewall, VPN, or a stopped desktop can block connection."
       />
     </SettingsSection>
   );

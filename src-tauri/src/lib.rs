@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod memory;
 mod mobile_pairing;
+mod mobile_push;
 mod models;
 pub mod pty;
 mod runtime;
