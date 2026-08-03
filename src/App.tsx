@@ -176,6 +176,9 @@ function App() {
       const changedId = event.payload.conversationId;
       const store = useChatStore.getState();
       void store.actions.loadConversations().then(() => {
+        if (changedId) {
+          retryTitleForConversation(titleStore, changedId);
+        }
         if (changedId && store.activeConversationId === changedId) {
           void store.actions.setActiveConversationId(changedId);
         }

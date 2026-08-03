@@ -30,7 +30,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; frame-src http: https:; child-src http: https:; img-src 'self' data: blob: https://www.google.com https://img.shields.io; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob: data:; form-action 'self'; connect-src 'self' https://api.github.com"
+      "csp": "default-src 'self'; frame-src http: https:; child-src http: https:; img-src 'self' data: blob: https://www.google.com https://img.shields.io; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' blob: data:; form-action 'self'; connect-src 'self' https://api.github.com http://127.0.0.1:*"
     }
   },
   "bundle": {

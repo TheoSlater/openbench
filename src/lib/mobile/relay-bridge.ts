@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { sendNotification } from "@tauri-apps/plugin-notification";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { create } from "zustand";
 
 import { useNotify } from "@/hooks/useNotify";
@@ -37,6 +37,50 @@ type RemoteRequest = {
 
 const keys = new Map<string, RelayKeyPair>();
 
+type StoredRelayIdentity = { token: string; secretKey: string; publicKey: string };
+const RELAY_IDENTITY_KEY = "poly.mobile-relay-identity.v1";
+
+function loadStoredRelayIdentity(): StoredRelayIdentity | null {
+  try {
+    const raw = localStorage.getItem(RELAY_IDENTITY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredRelayIdentity;
+    if (!parsed?.token || !parsed?.secretKey || !parsed?.publicKey) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function storeRelayIdentity(identity: StoredRelayIdentity) {
+  try {
+    localStorage.setItem(RELAY_IDENTITY_KEY, JSON.stringify(identity));
+  } catch {
+    // Storage unavailable; the session just won't survive a restart.
+  }
+}
+
+function clearStoredRelayIdentity() {
+  try {
+    localStorage.removeItem(RELAY_IDENTITY_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function relayIdentityForToken(token: string): RelayKeyPair {
+  const stored = loadStoredRelayIdentity();
+  if (stored?.token === token) {
+    const pair = { secretKey: stored.secretKey, publicKey: stored.publicKey };
+    keys.set(token, pair);
+    return pair;
+  }
+  const pair = keys.get(token) ?? createRelayKeyPair();
+  keys.set(token, pair);
+  storeRelayIdentity({ token, secretKey: pair.secretKey, publicKey: pair.publicKey });
+  return pair;
+}
+
 type MobileConnectionState = { connected: boolean; hostName: string | null };
 
 export const useMobileConnectionStatus = create<MobileConnectionState>(() => ({
@@ -64,8 +108,7 @@ export function relayPairingPayload(
   relay: string,
   defaultModel?: MobileDefaultModel,
 ) {
-  const key = keys.get(info.token) ?? createRelayKeyPair();
-  keys.set(info.token, key);
+  const key = relayIdentityForToken(info.token);
   return JSON.stringify({
     version: 1,
     relayUrl: relay,
@@ -118,6 +161,13 @@ class RelayHostBridge {
     this.socket = null;
   }
 
+  unpair() {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: "unpair" }));
+    }
+    this.stop();
+  }
+
   private handle(raw: string) {
     const message = JSON.parse(raw) as
       | { type: "ready"; peerPublicKey: string }
@@ -134,7 +184,9 @@ class RelayHostBridge {
   private async handleRequest(request: RemoteRequest) {
     if (!this.socket || !this.sessionKey) return;
     try {
-      const url = new URL(request.path, this.info.httpBaseUrl);
+      const local = new URL(this.info.httpBaseUrl);
+      local.hostname = "127.0.0.1";
+      const url = new URL(request.path, local);
       url.searchParams.set("token", this.info.token);
       const response = await fetch(url, {
         method: request.method,
@@ -185,10 +237,13 @@ class RelayHostBridge {
 export function useMobileRelayBridge() {
   const notify = useNotify();
   const notificationsEnabled = useSettingsStore((state) => state.general.notifications);
+  const mobileWebAccess = useSettingsStore((state) => state.general.mobileWebAccess);
+  const experimentalFeatures = useSettingsStore((state) => state.general.experimentalFeatures);
+  const canUseMobileWeb = experimentalFeatures && mobileWebAccess;
+  const bridgeRef = useRef<RelayHostBridge | null>(null);
   useEffect(() => {
     const relay = import.meta.env.VITE_POLY_RELAY_URL as string | undefined;
 
-    let bridge: RelayHostBridge | null = null;
     let stopped = false;
     let previousConnected: boolean | null = null;
     const sync = async () => {
@@ -210,15 +265,14 @@ export function useMobileRelayBridge() {
       }
       previousConnected = connected;
       if (!info) {
-        bridge?.stop();
-        bridge = null;
+        bridgeRef.current?.stop();
+        bridgeRef.current = null;
         return;
       }
-      const key = keys.get(info.token) ?? createRelayKeyPair();
-      keys.set(info.token, key);
-      if (relay && !bridge) {
-        bridge = new RelayHostBridge(info, relay, key);
-        bridge.start();
+      const key = relayIdentityForToken(info.token);
+      if (relay && !bridgeRef.current) {
+        bridgeRef.current = new RelayHostBridge(info, relay, key);
+        bridgeRef.current.start();
       }
     };
     void sync();
@@ -226,7 +280,26 @@ export function useMobileRelayBridge() {
     return () => {
       stopped = true;
       window.clearInterval(timer);
-      bridge?.stop();
+      bridgeRef.current?.stop();
+      bridgeRef.current = null;
     };
   }, [notificationsEnabled, notify]);
+
+  const hadAccess = useRef(mobileWebAccess && experimentalFeatures);
+  useEffect(() => {
+    if (canUseMobileWeb) {
+      const stored = loadStoredRelayIdentity();
+      void invoke("mobile_pairing_start", { token: stored?.token ?? null }).catch(
+        () => undefined,
+      );
+    } else if (hadAccess.current) {
+      if (!mobileWebAccess) {
+        bridgeRef.current?.unpair();
+        bridgeRef.current = null;
+        clearStoredRelayIdentity();
+      }
+      void invoke("mobile_pairing_stop").catch(() => undefined);
+    }
+    hadAccess.current = canUseMobileWeb;
+  }, [canUseMobileWeb, mobileWebAccess]);
 }

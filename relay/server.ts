@@ -13,10 +13,14 @@ type RelayMessage =
       pairingToken: string;
       publicKey: string;
     }
-  | { type: "frame"; payload: unknown };
+  | { type: "frame"; payload: unknown }
+  | { type: "unpair" };
 
 const hosts = new Map<string, ServerWebSocket<SocketData>>();
 const clients = new Map<string, Set<ServerWebSocket<SocketData>>>();
+// Hosts that have explicitly unpaired; their pairing token must not be
+// accepted again, so re-pairing requires a fresh identity from the desktop.
+const unpairedHostIds = new Set<string>();
 function send(socket: ServerWebSocket<SocketData>, message: unknown) {
   socket.send(JSON.stringify(message));
 }
@@ -70,6 +74,11 @@ const server = Bun.serve<SocketData>({
           close(socket);
           return;
         }
+        if (unpairedHostIds.has(message.hostId)) {
+          send(socket, { type: "unpaired" });
+          close(socket);
+          return;
+        }
         if (message.role === "host" && hosts.has(message.hostId)) {
           hosts.get(message.hostId)?.close(1012, "Host reconnected");
         }
@@ -100,6 +109,22 @@ const server = Bun.serve<SocketData>({
           send(socket, { type: "ready", peerPublicKey: target.data.publicKey });
           send(target, { type: "ready", peerPublicKey: message.publicKey });
         }
+        return;
+      }
+
+      if (message.type === "unpair") {
+        if (socket.data.role !== "host" || !socket.data.hostId) {
+          close(socket);
+          return;
+        }
+        unpairedHostIds.add(socket.data.hostId);
+        const group = clients.get(socket.data.hostId) ?? [];
+        for (const client of group) {
+          send(client, { type: "unpaired" });
+          client.close(1008, "Host unpaired");
+        }
+        clients.delete(socket.data.hostId);
+        hosts.delete(socket.data.hostId);
         return;
       }
 

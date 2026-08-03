@@ -49,6 +49,7 @@ pub async fn mobile_pairing_start(
     state: State<'_, MobilePairingState>,
     app_state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
+    token: Option<String>,
 ) -> Result<MobilePairingInfo, String> {
     let mut current = state.current.lock().await;
     if let Some(session) = current.as_ref() {
@@ -63,7 +64,9 @@ pub async fn mobile_pairing_start(
         .local_addr()
         .map_err(|error| format!("Failed to read pairing port: {error}"))?
         .port();
-    let token = Uuid::new_v4().to_string();
+    let token = token
+        .filter(|value| !value.trim().is_empty() && !value.contains(char::is_whitespace))
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let info = build_pairing_info(&host, port, &token);
     let last_device_seen = Arc::new(Mutex::new(None));
     let jobs = Arc::new(Mutex::new(HashMap::new()));
@@ -473,6 +476,10 @@ async fn handle_connection(
     let method = parts.next().unwrap_or("GET");
     let path = parts.next().unwrap_or("/");
     let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+    if method == "OPTIONS" {
+        stream.write_all(&options_response()).await?;
+        return Ok(());
+    }
     if !token_matches(path, token) && !is_public_path(path) {
         let locked_out = limiter
             .lock()
@@ -535,7 +542,7 @@ async fn handle_chat_stream_response(
     }
     stream
         .write_all(
-            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncache-control: no-cache\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\naccess-control-allow-origin: *\r\ncache-control: no-cache\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
         )
         .await?;
 
@@ -886,7 +893,7 @@ async fn handle_job_stream_response(
     }
     stream
         .write_all(
-            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncache-control: no-cache\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\naccess-control-allow-origin: *\r\ncache-control: no-cache\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
         )
         .await?;
 
@@ -1456,7 +1463,7 @@ async fn response_for_request(
             return json_response(200, r#"{"ok":true}"#);
         }
         let owner_id = mobile_owner_account_id(&db).await.unwrap_or_default();
-        let result = sqlx::query("INSERT INTO conversations (id, title, createdAt, updatedAt, isArchived, userId, folderId) VALUES (?1, ?2, datetime('now'), datetime('now'), 0, ?3, NULL) ON CONFLICT(id) DO NOTHING")
+        let result = sqlx::query("INSERT INTO conversations (id, title, createdAt, updatedAt, isArchived, userId, folderId) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), 0, ?3, NULL) ON CONFLICT(id) DO NOTHING")
             .bind(&request.id)
             .bind(&request.title)
             .bind(owner_id)
@@ -1815,7 +1822,7 @@ async fn insert_message(
             .execute(db)
             .await;
     }
-    sqlx::query("INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage) VALUES (?1, ?2, ?3, ?4, datetime('now'), NULL, ?5, ?6, NULL, NULL, NULL, 'complete', NULL)")
+    sqlx::query("INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage) VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ','now'), NULL, ?5, ?6, NULL, NULL, NULL, 'complete', NULL)")
         .bind(&message.id)
         .bind(&message.conversation_id)
         .bind(&message.role)
@@ -1825,7 +1832,7 @@ async fn insert_message(
         .execute(db)
         .await
         .map_err(|error| error.to_string())?;
-    sqlx::query("UPDATE conversations SET updatedAt = datetime('now') WHERE id = ?1")
+    sqlx::query("UPDATE conversations SET updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1")
         .bind(&message.conversation_id)
         .execute(db)
         .await
@@ -1837,6 +1844,11 @@ async fn insert_message(
 /// the auth rate limit.
 fn is_public_path(path: &str) -> bool {
     path == "/health" || path == "/polyui-icon.png" || path.starts_with("/assets/")
+}
+
+fn options_response() -> Vec<u8> {
+    b"HTTP/1.1 204 No Content\r\naccess-control-allow-origin: *\r\naccess-control-allow-methods: GET, POST, PATCH, DELETE\r\naccess-control-allow-headers: content-type\r\naccess-control-max-age: 600\r\nconnection: close\r\n\r\n"
+        .to_vec()
 }
 
 fn unauthorized_response() -> Vec<u8> {
@@ -1853,7 +1865,7 @@ fn not_found_response() -> Vec<u8> {
 
 fn binary_response(content_type: &str, body: &[u8]) -> Vec<u8> {
     let header = format!(
-        "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+        "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\naccess-control-allow-origin: *\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
         body.len()
     );
     let mut response = header.into_bytes();
@@ -1875,7 +1887,7 @@ fn http_response(status: u16, content_type: &str, body: &str) -> Vec<u8> {
         _ => "Error",
     };
     format!(
-        "HTTP/1.1 {status} {reason}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: {content_type}\r\naccess-control-allow-origin: *\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     )
     .into_bytes()
