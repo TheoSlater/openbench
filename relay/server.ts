@@ -16,7 +16,7 @@ type RelayMessage =
   | { type: "frame"; payload: unknown };
 
 const hosts = new Map<string, ServerWebSocket<SocketData>>();
-const clients = new Map<string, ServerWebSocket<SocketData>>();
+const clients = new Map<string, Set<ServerWebSocket<SocketData>>>();
 function send(socket: ServerWebSocket<SocketData>, message: unknown) {
   socket.send(JSON.stringify(message));
 }
@@ -25,10 +25,21 @@ function close(socket: ServerWebSocket<SocketData>) {
   socket.close(1008, "Pairing rejected");
 }
 
-function peerFor(socket: ServerWebSocket<SocketData>) {
-  return socket.data.role === "host"
-    ? clients.get(socket.data.hostId ?? "")
-    : hosts.get(socket.data.hostId ?? "");
+function registerClient(hostId: string, socket: ServerWebSocket<SocketData>) {
+  const group = clients.get(hostId) ?? new Set();
+  group.add(socket);
+  clients.set(hostId, group);
+}
+
+function unregisterClient(hostId: string, socket: ServerWebSocket<SocketData>) {
+  const group = clients.get(hostId);
+  if (!group) return;
+  group.delete(socket);
+  if (group.size === 0) clients.delete(hostId);
+}
+
+function hostFor(socket: ServerWebSocket<SocketData>) {
+  return hosts.get(socket.data.hostId ?? "");
 }
 
 const server = Bun.serve<SocketData>({
@@ -62,7 +73,9 @@ const server = Bun.serve<SocketData>({
         if (message.role === "host" && hosts.has(message.hostId)) {
           hosts.get(message.hostId)?.close(1012, "Host reconnected");
         }
-        const existingPeer = (message.role === "host" ? clients : hosts).get(message.hostId);
+        const existingPeer = message.role === "host"
+          ? undefined
+          : hostFor(socket);
         if (existingPeer && existingPeer.data.pairingToken !== message.pairingToken) {
           close(socket);
           return;
@@ -73,12 +86,19 @@ const server = Bun.serve<SocketData>({
           pairingToken: message.pairingToken,
           publicKey: message.publicKey,
         };
-        (message.role === "host" ? hosts : clients).set(message.hostId, socket);
+        if (message.role === "host") {
+          hosts.set(message.hostId, socket);
+        } else {
+          registerClient(message.hostId, socket);
+        }
 
-        const peer = peerFor(socket);
-        if (peer) {
-          send(socket, { type: "ready", peerPublicKey: peer.data.publicKey });
-          send(peer, { type: "ready", peerPublicKey: message.publicKey });
+        const peer = message.role === "host"
+          ? Array.from(clients.get(message.hostId) ?? [])
+          : [hostFor(socket)].filter((p): p is NonNullable<typeof p> => Boolean(p));
+        for (const target of peer) {
+          if (!target) continue;
+          send(socket, { type: "ready", peerPublicKey: target.data.publicKey });
+          send(target, { type: "ready", peerPublicKey: message.publicKey });
         }
         return;
       }
@@ -87,20 +107,34 @@ const server = Bun.serve<SocketData>({
         close(socket);
         return;
       }
-      const peer = peerFor(socket);
-      if (!peer) {
+      const peer = socket.data.role === "host"
+        ? Array.from(clients.get(socket.data.hostId ?? "") ?? [])
+        : hostFor(socket) ? [hostFor(socket)!] : [];
+      if (peer.length === 0) {
         send(socket, { type: "error", error: "Host is offline." });
         return;
       }
-      send(peer, { type: "frame", payload: message.payload });
+      const payload = message.payload;
+      for (const target of peer) {
+        send(target, { type: "frame", payload });
+      }
     },
     close(socket) {
-      const map = socket.data.role === "host" ? hosts : clients;
-      if (socket.data.hostId && map.get(socket.data.hostId) === socket) {
-        map.delete(socket.data.hostId);
+      if (socket.data.role === "host") {
+        if (socket.data.hostId && hosts.get(socket.data.hostId) === socket) {
+          hosts.delete(socket.data.hostId);
+        }
+      } else if (socket.data.hostId) {
+        unregisterClient(socket.data.hostId, socket);
       }
-      const peer = socket.data.hostId ? peerFor(socket) : undefined;
-      if (peer) send(peer, { type: "peer-disconnected" });
+      const peer = socket.data.role === "host"
+        ? Array.from(clients.get(socket.data.hostId ?? "") ?? [])
+        : socket.data.hostId && hosts.get(socket.data.hostId)
+          ? [hosts.get(socket.data.hostId)!]
+          : [];
+      for (const target of peer) {
+        send(target, { type: "peer-disconnected" });
+      }
     },
   },
 });
