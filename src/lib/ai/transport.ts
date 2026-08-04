@@ -89,6 +89,7 @@ type TransportOptions = {
   instructions?: string;
   reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   webSearchProvider?: "local" | "exa" | "ollama" | "tavily";
+  terminalEnabled?: boolean;
   token?: () => string | null;
 };
 
@@ -125,6 +126,7 @@ implements ChatTransport<UI_MESSAGE> {
           instructions: this.options.instructions ?? null,
           reasoning: this.options.reasoning ?? null,
           webSearchProvider: this.options.webSearchProvider ?? null,
+          terminal: this.options.terminalEnabled ?? null,
         },
         token: this.options.token?.() ?? null,
       });

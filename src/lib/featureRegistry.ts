@@ -1,4 +1,4 @@
-import { Globe } from "lucide-react";
+import { Globe, SquareTerminal } from "lucide-react";
 import React from "react";
 import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -37,6 +37,20 @@ export const featureRegistry: FeatureDef[] = [
       useChatStore.getState().activeFeatureIds.includes("web_search"),
     toggle: () => useChatStore.getState().actions.toggleFeature("web_search"),
   },
+  {
+    id: "terminal",
+    name: "Terminal",
+    kind: "forced_toggle",
+    description: "Let the AI run commands in a terminal",
+    icon: SquareTerminal,
+    getWarning: () =>
+      "The AI can run shell commands on your machine with your permissions",
+    useIsActive: () =>
+      useChatStore((state) => state.activeFeatureIds.includes("terminal")),
+    getIsActive: () =>
+      useChatStore.getState().activeFeatureIds.includes("terminal"),
+    toggle: () => useChatStore.getState().actions.toggleFeature("terminal"),
+  },
 ];
 
 export function isFeatureAIActive(featureId: string): boolean {
@@ -52,7 +66,10 @@ export function isFeatureAIActive(featureId: string): boolean {
  */
 export function getDefaultFeatureIds(): string[] {
   const { general } = useSettingsStore.getState();
-  return general.webSearchEnabled ? ["web_search"] : [];
+  return [
+    ...(general.webSearchEnabled ? ["web_search"] : []),
+    ...(general.terminalToolEnabled ? ["terminal"] : []),
+  ];
 }
 
 export function useFeatures() {

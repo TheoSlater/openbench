@@ -9,11 +9,13 @@ import {
 } from "ai";
 import type { ChatCommand } from "./protocol";
 import { createModel } from "./providers";
+import { createTerminalTool, ptyBroker, withTerminalEvents, type PtyBroker } from "./terminal";
 import { createWebSearchTool } from "./web-search";
 
 type RuntimeDeps = {
   model?: LanguageModel;
   fetch?: typeof fetch;
+  terminalBroker?: PtyBroker;
 };
 
 function withSearchSources(
@@ -45,9 +47,12 @@ export async function streamChat(
   deps: RuntimeDeps = {},
 ): Promise<ReadableStream<UIMessageChunk>> {
   const model = deps.model ?? await createModel(command.connection, deps.fetch);
-  const tools = command.webSearch
-    ? { web_search: createWebSearchTool(command.webSearch, deps.fetch) }
-    : undefined;
+  const tools = {
+    ...(command.webSearch
+      ? { web_search: createWebSearchTool(command.webSearch, deps.fetch) }
+      : {}),
+    ...(command.terminal ? { terminal: createTerminalTool({ broker: deps.terminalBroker ?? ptyBroker }) } : {}),
+  };
   const result = streamText({
     model,
     instructions: command.instructions,
@@ -69,7 +74,7 @@ export async function streamChat(
       : undefined,
     onError: (error) => error instanceof Error ? error.message : "Model request failed",
   });
-  return withSearchSources(uiStream);
+  return withTerminalEvents(withSearchSources(uiStream));
 }
 
 export async function generate(

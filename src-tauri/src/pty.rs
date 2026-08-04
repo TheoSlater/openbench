@@ -1,5 +1,6 @@
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -125,6 +126,135 @@ pub fn pty_spawn(
     });
 
     Ok(id)
+}
+
+/// Spawns the shell in a PTY and immediately runs `command` inside it, like
+/// the AI-driven "run in terminal" tool does. The xterm tab shows the session
+/// live via `on_event`; when `relay_request_id` is set (the tool's
+/// `toolCallId`), the captured output and exit status are relayed back to the
+/// AI runtime so the model can read the result.
+#[tauri::command]
+pub fn pty_spawn_command(
+    state: State<'_, PtyState>,
+    app_state: State<'_, crate::AppState>,
+    cols: u16,
+    rows: u16,
+    command: String,
+    cwd: Option<String>,
+    relay_request_id: Option<String>,
+    on_event: Channel<PtyEvent>,
+) -> Result<String, String> {
+    let size = validate_pty_size(cols, rows)?;
+    let pair = native_pty_system()
+        .openpty(size)
+        .map_err(|error| error.to_string())?;
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|error| error.to_string())?;
+    let mut writer = pair
+        .master
+        .take_writer()
+        .map_err(|error| error.to_string())?;
+    let mut builder = CommandBuilder::new_default_prog();
+    match cwd {
+        Some(path) => builder.cwd(path),
+        None => {
+            if let Some(home) = dirs::home_dir() {
+                builder.cwd(home);
+            }
+        }
+    }
+    let mut child = pair
+        .slave
+        .spawn_command(builder)
+        .map_err(|error| error.to_string())?;
+    drop(pair.slave);
+    writer
+        .write_all(format!("{command}\r").as_bytes())
+        .and_then(|_| writer.flush())
+        .map_err(|error| error.to_string())?;
+
+    let id = Uuid::new_v4().to_string();
+    state
+        .sessions
+        .lock()
+        .map_err(|_| "PTY state lock poisoned.".to_string())?
+        .insert(
+            id.clone(),
+            PtySession {
+                master: pair.master,
+                writer,
+                killer: child.clone_killer(),
+            },
+        );
+
+    let sessions = state.sessions.clone();
+    let thread_id = id.clone();
+    let relay = relay_request_id.map(|request_id| (request_id, app_state.ai.clone()));
+    std::thread::spawn(move || {
+        let mut buffer = [0_u8; 8192];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let chunk = buffer[..read].to_vec();
+                    if on_event
+                        .send(PtyEvent {
+                            kind: "data",
+                            data: Some(chunk.clone()),
+                            message: None,
+                        })
+                        .is_err()
+                    {
+                        let _ = child.kill();
+                        break;
+                    }
+                    if let Some((request_id, sidecar)) = &relay {
+                        forward_pty_event(sidecar, request_id, "pty-data", json!({ "data": chunk }));
+                    }
+                }
+                Err(error) => {
+                    let _ = on_event.send(PtyEvent {
+                        kind: "error",
+                        data: None,
+                        message: Some(error.to_string()),
+                    });
+                    break;
+                }
+            }
+        }
+        let exit_code = child
+            .wait()
+            .ok()
+            .map(|status| status.exit_code() as i32);
+        if let Ok(mut sessions) = sessions.lock() {
+            sessions.remove(&thread_id);
+        }
+        let _ = on_event.send(PtyEvent {
+            kind: "exit",
+            data: None,
+            message: None,
+        });
+        if let Some((request_id, sidecar)) = &relay {
+            forward_pty_event(sidecar, request_id, "pty-exit", json!({ "exitCode": exit_code }));
+        }
+    });
+
+    Ok(id)
+}
+
+fn forward_pty_event(
+    sidecar: &Arc<crate::ai_sidecar::AiSidecar>,
+    request_id: &str,
+    kind: &str,
+    payload: serde_json::Value,
+) {
+    let _ = tauri::async_runtime::block_on(sidecar.forward(json!({
+        "type": kind,
+        "requestId": request_id,
+        "payload": payload,
+    })));
 }
 
 #[tauri::command]

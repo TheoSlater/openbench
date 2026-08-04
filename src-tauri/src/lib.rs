@@ -305,6 +305,7 @@ pub fn run() {
             mobile_pairing_stop,
             mobile_pairing_status,
             pty::pty_spawn,
+            pty::pty_spawn_command,
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,

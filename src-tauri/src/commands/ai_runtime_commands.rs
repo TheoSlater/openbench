@@ -17,6 +17,7 @@ pub struct AiChatRequest {
     instructions: Option<String>,
     reasoning: Option<String>,
     web_search_provider: Option<String>,
+    terminal: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -171,6 +172,7 @@ pub async fn ai_runtime_start(
         "instructions": request.instructions,
         "reasoning": request.reasoning,
         "webSearch": web_search,
+        "terminal": request.terminal,
     });
     state
         .ai

@@ -4,6 +4,7 @@ import type { UIMessageChunk } from "ai";
 import { streamChat } from "../sidecar/src/runtime";
 import { RuntimeServer } from "../sidecar/src/server";
 import type { ChatCommand, RuntimeRecord } from "../sidecar/src/protocol";
+import { ptyBroker } from "../sidecar/src/terminal";
 
 const usage = {
   inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
@@ -130,8 +131,26 @@ describe("AI sidecar runtime", () => {
     });
   });
 
-  it("routes cancellation to only the selected request", async () => {
-    const aborted: string[] = [];
+  it("routes PTY relay commands to the terminal broker", async () => {
+    const server = new RuntimeServer({ write: () => undefined });
+    const run = ptyBroker.awaitRun("server-pty-call", "ls", undefined);
+    const data = [...new TextEncoder().encode("a\nb")];
+
+    await server.handle({
+      type: "pty-data",
+      requestId: "server-pty-call",
+      payload: { data },
+    });
+    await server.handle({
+      type: "pty-exit",
+      requestId: "server-pty-call",
+      payload: { exitCode: 0 },
+    });
+
+    await expect(run).resolves.toMatchObject({ output: "a\nb", exitCode: 0 });
+  });
+
+  it("routes cancellation to only the selected request", async () => {    const aborted: string[] = [];
     const server = new RuntimeServer({
       write: () => undefined,
       streamChat: async (request, signal) => new ReadableStream({

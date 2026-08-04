@@ -38,6 +38,7 @@ const chatSchema = z.object({
     secret: optional(z.string()),
     baseUrl: optional(z.string().url()),
   })),
+  terminal: optional(z.boolean()),
   collectText: optional(z.boolean()),
 });
 
@@ -88,6 +89,20 @@ const commandSchema = z.discriminatedUnion("type", [
     connection: connectionSchema,
     instructions: optional(z.string()),
     prompt: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("pty-data"),
+    requestId: z.string().min(1),
+    payload: z.object({
+      data: z.array(z.number()),
+    }),
+  }),
+  z.object({
+    type: z.literal("pty-exit"),
+    requestId: z.string().min(1),
+    payload: z.object({
+      exitCode: z.number().int().nullable(),
+    }),
   }),
   z.object({ type: z.literal("shutdown") }),
 ]);

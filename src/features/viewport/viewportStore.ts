@@ -8,6 +8,7 @@ type ViewportStore = {
   drawerWidth: number;
   actions: {
     addTab: () => string;
+    addAiTab: () => void;
     closeTab: (id: string) => void;
     selectTab: (id: string) => void;
     setTabOrder: (ids: string[]) => void;
@@ -20,6 +21,8 @@ type ViewportStore = {
 const WIDTH_STORAGE_KEY = "poly_viewport_width";
 export const VIEWPORT_MIN_WIDTH = 320;
 export const VIEWPORT_MAX_WIDTH = 900;
+/** Fixed tab id for the read-only transcript of commands the AI runs. */
+export const AI_TERMINAL_TAB_ID = "ai-terminal";
 let nextTabId = 1;
 
 function loadWidth(): number {
@@ -49,6 +52,14 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       }));
       return id;
     },
+    addAiTab: () =>
+      set((state) => ({
+        tabs: state.tabs.includes(AI_TERMINAL_TAB_ID)
+          ? state.tabs
+          : [...state.tabs, AI_TERMINAL_TAB_ID],
+        activeTabId: AI_TERMINAL_TAB_ID,
+        drawerOpen: true,
+      })),
     closeTab: (id) =>
       set((state) => {
         const index = state.tabs.indexOf(id);
@@ -100,6 +111,11 @@ export function showViewportDrawer(): void {
 
 export function openViewportTerminal(): string {
   return useViewportStore.getState().actions.addTab();
+}
+
+/** Opens (or selects) the transcript tab for commands the AI has run. */
+export function openAiTerminalTab(): void {
+  useViewportStore.getState().actions.addAiTab();
 }
 
 export function closeViewportTab(id: string): void {

@@ -76,6 +76,12 @@ impl AiSidecar {
             .map_err(|_| "AI runtime stopped before replying".to_string())?
     }
 
+    /// Fire-and-forget relay for one-way messages (e.g. PTY output routed back
+    /// from the host). Unlike `request`, nothing waits for a reply.
+    pub async fn forward(&self, command: serde_json::Value) -> Result<(), String> {
+        self.send(command).await
+    }
+
     pub async fn cancel(&self, request_id: &str) -> Result<(), String> {
         self.send(serde_json::json!({ "type": "cancel", "requestId": request_id }))
             .await

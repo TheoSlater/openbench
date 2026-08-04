@@ -16,6 +16,7 @@ export type ChatJob = {
   instructions?: string;
   reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   webSearchProvider?: "local" | "exa" | "ollama" | "tavily";
+  terminalEnabled?: boolean;
   token: () => string | null;
   cancelled?: boolean;
 };
@@ -54,6 +55,7 @@ const ModelChatSession = memo(function ModelChatSession({
     instructions: job.instructions,
     reasoning: job.reasoning,
     webSearchProvider: job.webSearchProvider,
+    terminalEnabled: job.terminalEnabled,
     token: job.token,
   }), [job]);
   const started = useRef(false);

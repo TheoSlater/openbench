@@ -27,6 +27,7 @@ import type { ModelChoice } from "@/lib/models/model-choice";
 import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
 import { ChatRuntime, type ChatJob } from "@/features/chat/runtime/ChatRuntime";
 import { connectionsClient } from "@/features/connections/client";
+import { handleAiTerminalParts } from "@/features/viewport/aiTerminal";
 
 const titleStore: TitleStore = {
   findConversation: (id) => useChatStore.getState().conversations.find((c) => c.id === id),
@@ -151,6 +152,7 @@ export function useChatStream(
       model: job.model,
       provider: job.provider,
     });
+    handleAiTerminalParts(message.parts);
     const timing = timings.current.get(job.requestId);
     if (timing && entity.thinking && !timing.reasoningStartedAt) {
       timing.reasoningStartedAt = Date.now();
@@ -264,6 +266,7 @@ export function useChatStream(
     if (!uiMessages.length || uiMessages[uiMessages.length - 1]?.role !== "user") return;
 
     const webSearchEnabled = isFeatureAIActive("web_search");
+    const terminalEnabled = isFeatureAIActive("terminal");
     const webSearch = useSettingsStore.getState().general.webSearch;
     const voicePrompt = voiceModeRef.current
       ? `${systemPrompt}\n\n${VOICE_SYSTEM_PROMPT_SUFFIX}`
@@ -272,6 +275,7 @@ export function useChatStream(
       voicePrompt,
       webSearchEnabled,
       webSearchEnabled,
+      terminalEnabled,
     );
     const targets = runtime.kind === "coding-agent"
       ? [{
@@ -314,6 +318,8 @@ export function useChatStream(
         reasoning: voiceModeRef.current ? "none" : undefined,
         webSearchProvider:
           runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
+        terminalEnabled:
+          runtime.kind === "chat-model" ? terminalEnabled : undefined,
         token: getSessionToken,
       };
     });

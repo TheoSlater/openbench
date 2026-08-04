@@ -21,8 +21,59 @@ describe("AI sidecar protocol", () => {
     }))).toMatchObject({ type: "chat", requestId: "req-1" });
   });
 
-  it("normalizes Rust null optionals without weakening required fields", () => {
+  it("accepts an optional terminal-tool flag", () => {
     const parsed = parseCommand(JSON.stringify({
+      type: "chat",
+      requestId: "req-1",
+      terminal: true,
+      connection: {
+        id: "conn-1",
+        provider: "openai",
+        modelId: "gpt-5",
+        secret: "sk-private",
+      },
+      messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+    }));
+    expect(parsed).toMatchObject({ terminal: true });
+  });
+
+  it("accepts a pty-data relay command", () => {
+    const parsed = parseCommand(JSON.stringify({
+      type: "pty-data",
+      requestId: "call-1",
+      payload: { data: [104, 105] },
+    }));
+    expect(parsed).toMatchObject({
+      type: "pty-data",
+      requestId: "call-1",
+      payload: { data: [104, 105] },
+    });
+  });
+
+  it("accepts a pty-exit relay command with a nullable exit code", () => {
+    const parsed = parseCommand(JSON.stringify({
+      type: "pty-exit",
+      requestId: "call-1",
+      payload: { exitCode: 0 },
+    }));
+    expect(parsed).toMatchObject({ type: "pty-exit", payload: { exitCode: 0 } });
+
+    const unknown = parseCommand(JSON.stringify({
+      type: "pty-exit",
+      requestId: "call-2",
+      payload: { exitCode: null },
+    }));
+    expect(unknown).toMatchObject({ payload: { exitCode: null } });
+  });
+
+  it("rejects a pty command without a payload", () => {
+    expect(() => parseCommand(JSON.stringify({
+      type: "pty-data",
+      requestId: "call-1",
+    }))).toThrow();
+  });
+
+  it("normalizes Rust null optionals without weakening required fields", () => {    const parsed = parseCommand(JSON.stringify({
       type: "agent",
       requestId: "req-agent",
       responseMessageId: null,

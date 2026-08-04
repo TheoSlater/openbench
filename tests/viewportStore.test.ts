@@ -1,7 +1,9 @@
 import {
+  AI_TERMINAL_TAB_ID,
   closeViewport,
   closeViewportTab,
   hideViewportDrawer,
+  openAiTerminalTab,
   openViewportTerminal,
   selectViewportTab,
   setViewportTabOrder,
@@ -131,5 +133,25 @@ describe("viewport drawer state", () => {
     const state = useViewportStore.getState();
     expect(state.tabs).toHaveLength(0);
     expect(state.drawerOpen).toBe(false);
+  });
+
+  it("opens one AI transcript tab and reselects it on repeat calls", () => {
+    openAiTerminalTab();
+    openAiTerminalTab();
+
+    const state = useViewportStore.getState();
+    expect(state.tabs).toEqual([AI_TERMINAL_TAB_ID]);
+    expect(state.activeTabId).toBe(AI_TERMINAL_TAB_ID);
+    expect(state.drawerOpen).toBe(true);
+  });
+
+  it("keeps the AI transcript tab alongside real terminals", () => {
+    const terminal = openViewportTerminal();
+
+    openAiTerminalTab();
+
+    const state = useViewportStore.getState();
+    expect(state.tabs).toEqual([terminal, AI_TERMINAL_TAB_ID]);
+    expect(state.activeTabId).toBe(AI_TERMINAL_TAB_ID);
   });
 });

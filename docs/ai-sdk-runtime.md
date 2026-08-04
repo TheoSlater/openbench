@@ -46,7 +46,10 @@ Provider packages load only when selected. One registry function constructs mode
 
 `streamText` produces AI SDK `UIMessageChunk` records. `@ai-sdk/react` consumes them through one module-level Tauri listener and request-specific streams. Independent `requestId` values isolate parallel models, background chats, aborts, and retries. React updates are throttled to 50 ms so tokens do not cause one render each.
 
-Regular chat exposes a Zod-validated AI SDK `web_search` tool. AI SDK assembles tool deltas and runs sequential steps with `stopWhen: isStepCount(10)`. Search supports local DuckDuckGo HTML, Exa, Tavily, and Ollama-backed search. Results become standard tool/source parts and existing PolyUI citation state. No filesystem or shell tool exists in regular chat.
+Regular chat exposes two Zod-validated AI SDK tools. AI SDK assembles tool deltas and runs sequential steps with `stopWhen: isStepCount(10)`:
+
+- `web_search` — local DuckDuckGo HTML, Exa, Tavily, and Ollama-backed search. Results become standard tool/source parts and existing PolyUI citation state.
+- `terminal` (opt-in per conversation, off by default) — runs a shell command in the app's real terminal window and returns combined output, exit code, and duration. The command does not run in the sidecar: the frontend receives a `data-terminal` start part, opens the AI terminal tab, and calls `pty_spawn_command` so the shell runs inside the host PTY the user can watch and interrupt. Rust relays the captured PTY output and exit status back to the sidecar as `pty-data` / `pty-exit` commands keyed by the tool's `toolCallId`; a `PtyBroker` buffers that data until the tool call registers and resolves the model's `execute` with the result. No filesystem tool exists in regular chat.
 
 SQLite stays authoritative. `src/lib/ai/messages.ts` is the only mapping boundary:
 

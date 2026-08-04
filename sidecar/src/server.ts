@@ -11,6 +11,7 @@ import {
 import { generate, streamChat } from "./runtime";
 import { closeAgentProviders, streamAgent } from "./agents";
 import { ApprovalBroker } from "./approvals";
+import { ptyBroker } from "./terminal";
 
 export type RuntimeServerDeps = {
   createModel?: typeof createModel;
@@ -71,6 +72,12 @@ export class RuntimeServer {
           command.approved,
           command.reason,
         )) throw new Error("No approval is pending");
+        return;
+      case "pty-data":
+        ptyBroker.append(command.requestId, new Uint8Array(command.payload.data));
+        return;
+      case "pty-exit":
+        ptyBroker.finish(command.requestId, command.payload.exitCode);
         return;
       case "list-models":
         await this.withRequest(command.requestId, [command.connection.secret], async (signal) => {

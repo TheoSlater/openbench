@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Reorder } from "motion/react";
-import { PanelRightIcon, Plus, SquareTerminal } from "lucide-react";
+import { Bot, PanelRightIcon, Plus, SquareTerminal } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settingsStore";
 import {
+  AI_TERMINAL_TAB_ID,
   closeViewport,
   closeViewportTab,
   hideViewportDrawer,
@@ -17,6 +18,9 @@ import {
 import { useDrawerResize } from "../hooks/useDrawerResize";
 import { DrawerTab } from "./DrawerTab";
 import { TerminalViewport } from "./TerminalViewport";
+import { AiTerminalViewport } from "./AiTerminalViewport";
+
+const isAiTab = (id: string) => id === AI_TERMINAL_TAB_ID;
 
 export function ViewportDrawer() {
   const tabs = useViewportStore((state) => state.tabs);
@@ -30,10 +34,11 @@ export function ViewportDrawer() {
   const { dragging, startResize } = useDrawerResize(width, setDrawerWidth);
   const visible = open && tabs.length > 0;
 
-  // The terminal is the only thing the drawer hosts, and it is beta-gated.
+  // The terminal is beta-gated; the AI terminal tab is not (it only appears
+  // when the AI runs a command through its own feature flag), so keep it.
   useEffect(() => {
-    if (!betaFeatures && tabs.length) closeViewport();
-  }, [betaFeatures, tabs.length]);
+    if (!betaFeatures && tabs.some((tab) => !isAiTab(tab))) closeViewport();
+  }, [betaFeatures, tabs]);
 
   return (
     <aside
@@ -65,8 +70,8 @@ export function ViewportDrawer() {
               <DrawerTab
                 key={id}
                 id={id}
-                icon={<SquareTerminal />}
-                label="Terminal"
+                icon={isAiTab(id) ? <Bot /> : <SquareTerminal />}
+                label={isAiTab(id) ? "AI" : "Terminal"}
                 active={activeTabId === id}
                 dragging={draggedTabId === id}
                 reduceMotion={reduceMotion}
@@ -108,7 +113,7 @@ export function ViewportDrawer() {
             activeTabId === id ? "block" : "hidden",
           )}
         >
-          <TerminalViewport />
+          {isAiTab(id) ? <AiTerminalViewport /> : <TerminalViewport />}
         </section>
       ))}
     </aside>
