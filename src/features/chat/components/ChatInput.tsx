@@ -505,16 +505,16 @@ export const ChatInput = memo(function ChatInput({
             <Box className="mt-2 flex items-center justify-between gap-2 px-0 pb-0">
               <Box className="flex items-center gap-2">
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
+                  <DropdownMenuTrigger
+                    render={<Button
                       variant="outline"
                       size="icon"
                       aria-label="Add attachment"
                       disabled={isStreaming}
                       className="size-9 rounded-full"
-                    >
+                    />}
+                  >
                       <Plus size={18} />
-                    </Button>
                   </DropdownMenuTrigger>
 
                   <DropdownMenuContent align="start" className="min-w-48">
@@ -562,16 +562,16 @@ export const ChatInput = memo(function ChatInput({
 
                 {moreFeatures.length > 0 && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
+                  <DropdownMenuTrigger
+                    render={<Button
                       variant="outline"
                       size="icon"
                       aria-label="More actions"
                       disabled={isStreaming}
                       className="size-9 rounded-full"
-                    >
+                    />}
+                  >
                       <MoreHorizontal size={18} />
-                    </Button>
                   </DropdownMenuTrigger>
 
                   <DropdownMenuContent align="start" className="min-w-48">

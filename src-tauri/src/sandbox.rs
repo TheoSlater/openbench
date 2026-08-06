@@ -26,6 +26,7 @@ const SANDBOX_MEMORY_LIMIT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const SANDBOX_PIDS_LIMIT: u32 = 512;
 const SANDBOX_LABEL: &str = "io.polyui.sandbox=true";
 const SANDBOX_NETWORK_POLICY: &str = "bridge-egress; preview-target-guarded";
+const HEADLESS_NETWORK_POLICY: &str = "none; fixed read-only allowlist";
 
 const BOOTSTRAP: &str = r#"
 set -eu
@@ -55,6 +56,7 @@ pub struct SandboxManager {
 
 struct ManagerState {
     sessions: HashMap<String, SandboxSession>,
+    headless: HashMap<String, HeadlessSession>,
     cache: HostToolCache,
 }
 
@@ -69,6 +71,12 @@ struct SandboxSession {
     active_commands: u32,
 }
 
+struct HeadlessSession {
+    root: PathBuf,
+    last_activity: Instant,
+    active_commands: u32,
+}
+
 #[derive(Clone)]
 struct Runtime {
     program: PathBuf,
@@ -78,6 +86,9 @@ struct Runtime {
 pub struct SandboxCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+    pub headless: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -147,6 +158,7 @@ impl SandboxManager {
         fs::create_dir_all(&cache_dir)
             .map_err(|error| format!("sandbox tool cache unavailable: {error}"))?;
         let owner = Uuid::new_v4().simple().to_string();
+        thread::spawn(reap_headless_workspaces);
         if let Ok(runtime) = discover_runtime() {
             let reaper_owner = owner.clone();
             thread::spawn(move || match runtime.reap_orphans(&reaper_owner) {
@@ -162,6 +174,7 @@ impl SandboxManager {
             owner,
             state: Arc::new(Mutex::new(ManagerState {
                 sessions: HashMap::new(),
+                headless: HashMap::new(),
                 cache,
             })),
         };
@@ -181,7 +194,7 @@ impl SandboxManager {
             return Err("Sandbox command must be between 1 and 2000 characters.".into());
         }
         let cwd = normalize_cwd(cwd)?;
-        status("Checking sandbox runtime…");
+        status("Checking command policy…");
         // ponytail: one global lock keeps lifecycle/cache updates atomic; use
         // per-sandbox locks if parallel tool calls need higher throughput.
         let mut state = self
@@ -189,15 +202,79 @@ impl SandboxManager {
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
         let created = if !state.sessions.contains_key(sandbox_id) {
-            let runtime = discover_runtime()?;
-            let session = create_session(&runtime, &self.owner, status)?;
-            state.sessions.insert(sandbox_id.to_string(), session);
-            true
+            if state.headless.contains_key(sandbox_id) {
+                let plan = {
+                    let session = state.headless.get(sandbox_id).expect("headless inserted");
+                    headless_command(session, &cwd, command)?
+                };
+                if let Some(plan) = plan {
+                    let session = state
+                        .headless
+                        .get_mut(sandbox_id)
+                        .expect("headless inserted");
+                    ensure_headless_workspace_room(session)?;
+                    touch_headless_session(session);
+                    status("Reusing restricted runner…");
+                    return Ok(plan);
+                }
+                if state
+                    .headless
+                    .get(sandbox_id)
+                    .map(|session| session.active_commands > 0)
+                    .unwrap_or(false)
+                {
+                    return Err(
+                        "Restricted runner busy; stop its command before starting a full sandbox."
+                            .into(),
+                    );
+                }
+                status("Starting full sandbox…");
+                let runtime = discover_runtime()?;
+                let session = state
+                    .headless
+                    .remove(sandbox_id)
+                    .expect("headless session present");
+                cleanup_headless_session(session)?;
+                let session = create_session(&runtime, &self.owner, status)?;
+                state.sessions.insert(sandbox_id.to_string(), session);
+                true
+            } else if is_headless_candidate(command) {
+                status("Using restricted headless runner…");
+                let session = create_headless_session()?;
+                let plan = match headless_command(&session, &cwd, command) {
+                    Ok(plan) => plan,
+                    Err(error) => {
+                        let _ = cleanup_headless_session(session);
+                        return Err(error);
+                    }
+                };
+                if let Some(plan) = plan {
+                    if let Err(error) = ensure_headless_workspace_room(&session) {
+                        let _ = cleanup_headless_session(session);
+                        return Err(error);
+                    }
+                    state.headless.insert(sandbox_id.to_string(), session);
+                    return Ok(plan);
+                }
+                cleanup_headless_session(session)?;
+                let runtime = discover_runtime()?;
+                let session = create_session(&runtime, &self.owner, status)?;
+                state.sessions.insert(sandbox_id.to_string(), session);
+                true
+            } else {
+                status("Checking sandbox runtime…");
+                let runtime = discover_runtime()?;
+                let session = create_session(&runtime, &self.owner, status)?;
+                state.sessions.insert(sandbox_id.to_string(), session);
+                true
+            }
         } else {
             status("Reusing sandbox…");
             false
         };
-        let ManagerState { sessions, cache } = &mut *state;
+        let ManagerState {
+            sessions, cache, ..
+        } = &mut *state;
         status("Checking workspace…");
         let session = sessions.get_mut(sandbox_id).expect("sandbox inserted");
         touch_session(session);
@@ -224,13 +301,17 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
-        let session = state
-            .sessions
-            .get_mut(sandbox_id)
-            .ok_or_else(|| "Sandbox session not found.".to_string())?;
-        session.active_commands = session.active_commands.saturating_add(1);
-        touch_session(session);
-        Ok(())
+        if let Some(session) = state.sessions.get_mut(sandbox_id) {
+            session.active_commands = session.active_commands.saturating_add(1);
+            touch_session(session);
+            return Ok(());
+        }
+        if let Some(session) = state.headless.get_mut(sandbox_id) {
+            session.active_commands = session.active_commands.saturating_add(1);
+            touch_headless_session(session);
+            return Ok(());
+        }
+        Err("Sandbox session not found.".into())
     }
 
     pub fn command_finished(&self, sandbox_id: &str) -> Result<(), String> {
@@ -238,13 +319,17 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
-        let session = state
-            .sessions
-            .get_mut(sandbox_id)
-            .ok_or_else(|| "Sandbox session not found.".to_string())?;
-        session.active_commands = session.active_commands.saturating_sub(1);
-        touch_session(session);
-        Ok(())
+        if let Some(session) = state.sessions.get_mut(sandbox_id) {
+            session.active_commands = session.active_commands.saturating_sub(1);
+            touch_session(session);
+            return Ok(());
+        }
+        if let Some(session) = state.headless.get_mut(sandbox_id) {
+            session.active_commands = session.active_commands.saturating_sub(1);
+            touch_headless_session(session);
+            return Ok(());
+        }
+        Err("Sandbox session not found.".into())
     }
 
     pub fn workspace_usage(&self, sandbox_id: &str) -> Result<u64, String> {
@@ -252,11 +337,18 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
-        let session = state
+        let root = state
             .sessions
             .get(sandbox_id)
+            .map(|session| session.workspace.clone())
+            .or_else(|| {
+                state
+                    .headless
+                    .get(sandbox_id)
+                    .map(|session| session.root.clone())
+            })
             .ok_or_else(|| "Sandbox session not found.".to_string())?;
-        workspace_size(&session.workspace, MAX_WORKSPACE_BYTES)
+        workspace_size(&root, MAX_WORKSPACE_BYTES)
             .map_err(|error| format!("sandbox workspace size unavailable: {error}"))
     }
 
@@ -269,41 +361,29 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
+        if let Some(session) = state.sessions.get(sandbox_id) {
+            return container_diagnostics(sandbox_id, session);
+        }
         let session = state
-            .sessions
+            .headless
             .get(sandbox_id)
             .ok_or_else(|| "Sandbox session not found.".to_string())?;
-        let workspace_bytes = workspace_size(&session.workspace, MAX_WORKSPACE_BYTES)
+        let workspace_bytes = workspace_size(&session.root, MAX_WORKSPACE_BYTES)
             .map_err(|error| format!("sandbox workspace size unavailable: {error}"))?;
-        let mut capabilities: Vec<_> = session.capabilities.iter().cloned().collect();
-        capabilities.sort();
-        let mut imported_tools: Vec<_> = session.imported.iter().cloned().collect();
-        imported_tools.sort();
-        let mut ports: Vec<_> = session
-            .forwarders
-            .iter()
-            .map(|(container_port, forwarder)| SandboxPort {
-                sandbox_id: sandbox_id.to_string(),
-                container_port: *container_port,
-                host_port: forwarder.host_port,
-                url: format!("http://127.0.0.1:{}", forwarder.host_port),
-            })
-            .collect();
-        ports.sort_by_key(|port| port.container_port);
         Ok(SandboxDiagnostics {
             sandbox_id: sandbox_id.to_string(),
             state: "ready",
-            runtime: runtime_name(&session.runtime.program),
-            container_name: session.container.clone(),
-            capabilities,
-            imported_tools,
-            ports,
+            runtime: "host-restricted".into(),
+            container_name: "none (headless)".into(),
+            capabilities: vec!["read-only".into()],
+            imported_tools: vec![],
+            ports: vec![],
             workspace_bytes,
             workspace_limit_bytes: MAX_WORKSPACE_BYTES,
-            memory_limit_bytes: SANDBOX_MEMORY_LIMIT_BYTES,
-            cpu_limit: SANDBOX_CPU_LIMIT,
-            pids_limit: SANDBOX_PIDS_LIMIT,
-            network_policy: SANDBOX_NETWORK_POLICY,
+            memory_limit_bytes: 0,
+            cpu_limit: 0,
+            pids_limit: 0,
+            network_policy: HEADLESS_NETWORK_POLICY,
             active_commands: session.active_commands,
             last_activity_age_ms: session.last_activity.elapsed().as_millis() as u64,
         })
@@ -314,6 +394,10 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
+        if let Some(session) = state.headless.get_mut(sandbox_id) {
+            touch_headless_session(session);
+            return Ok(vec![]);
+        }
         let session = state
             .sessions
             .get_mut(sandbox_id)
@@ -357,6 +441,10 @@ impl SandboxManager {
             .state
             .lock()
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
+        if let Some(session) = state.headless.get_mut(sandbox_id) {
+            touch_headless_session(session);
+            return Ok(());
+        }
         let session = state
             .sessions
             .get_mut(sandbox_id)
@@ -388,31 +476,48 @@ done
 
     pub fn destroy(&self, sandbox_id: &str) -> Result<(), String> {
         validate_session_id(sandbox_id)?;
-        let session = self
-            .state
-            .lock()
-            .map_err(|_| "Sandbox state lock poisoned.".to_string())?
-            .sessions
-            .remove(sandbox_id);
+        let (session, headless) = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
+            (
+                state.sessions.remove(sandbox_id),
+                state.headless.remove(sandbox_id),
+            )
+        };
         if let Some(session) = session {
             let _ = self.app.emit("sandbox-destroyed", sandbox_id);
             cleanup_session(session)?;
+        }
+        if let Some(session) = headless {
+            let _ = self.app.emit("sandbox-destroyed", sandbox_id);
+            cleanup_headless_session(session)?;
         }
         Ok(())
     }
 
     pub fn destroy_all(&self) -> Result<(), String> {
-        let sessions = {
+        let (sessions, headless) = {
             let mut state = self
                 .state
                 .lock()
                 .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
-            std::mem::take(&mut state.sessions)
+            (
+                std::mem::take(&mut state.sessions),
+                std::mem::take(&mut state.headless),
+            )
         };
         let mut first_error = None;
         for (sandbox_id, session) in sessions {
             let _ = self.app.emit("sandbox-destroyed", &sandbox_id);
             if let Err(error) = cleanup_session(session) {
+                first_error.get_or_insert(error);
+            }
+        }
+        for (sandbox_id, session) in headless {
+            let _ = self.app.emit("sandbox-destroyed", &sandbox_id);
+            if let Err(error) = cleanup_headless_session(session) {
                 first_error.get_or_insert(error);
             }
         }
@@ -428,7 +533,7 @@ done
     }
 
     fn reap_idle(&self) {
-        let expired = {
+        let (expired, expired_headless) = {
             let Ok(mut state) = self.state.lock() else {
                 return;
             };
@@ -438,9 +543,21 @@ done
                 .filter(|(_, session)| should_reap_session(session))
                 .map(|(id, _)| id.clone())
                 .collect();
-            ids.into_iter()
+            let expired = ids
+                .into_iter()
                 .filter_map(|id| state.sessions.remove(&id).map(|session| (id, session)))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            let ids: Vec<_> = state
+                .headless
+                .iter()
+                .filter(|(_, session)| should_reap_headless_session(session))
+                .map(|(id, _)| id.clone())
+                .collect();
+            let expired_headless = ids
+                .into_iter()
+                .filter_map(|id| state.headless.remove(&id).map(|session| (id, session)))
+                .collect::<Vec<_>>();
+            (expired, expired_headless)
         };
         for (sandbox_id, session) in expired {
             if let Err(error) = cleanup_session(session) {
@@ -450,7 +567,55 @@ done
             }
             let _ = self.app.emit("sandbox-destroyed", &sandbox_id);
         }
+        for (sandbox_id, session) in expired_headless {
+            if let Err(error) = cleanup_headless_session(session) {
+                crate::startup_log::log_error(format!(
+                    "idle headless cleanup failed for {sandbox_id}: {error}"
+                ));
+            }
+            let _ = self.app.emit("sandbox-destroyed", &sandbox_id);
+        }
     }
+}
+
+fn container_diagnostics(
+    sandbox_id: &str,
+    session: &SandboxSession,
+) -> Result<SandboxDiagnostics, String> {
+    let workspace_bytes = workspace_size(&session.workspace, MAX_WORKSPACE_BYTES)
+        .map_err(|error| format!("sandbox workspace size unavailable: {error}"))?;
+    let mut capabilities: Vec<_> = session.capabilities.iter().cloned().collect();
+    capabilities.sort();
+    let mut imported_tools: Vec<_> = session.imported.iter().cloned().collect();
+    imported_tools.sort();
+    let mut ports: Vec<_> = session
+        .forwarders
+        .iter()
+        .map(|(container_port, forwarder)| SandboxPort {
+            sandbox_id: sandbox_id.to_string(),
+            container_port: *container_port,
+            host_port: forwarder.host_port,
+            url: format!("http://127.0.0.1:{}", forwarder.host_port),
+        })
+        .collect();
+    ports.sort_by_key(|port| port.container_port);
+    Ok(SandboxDiagnostics {
+        sandbox_id: sandbox_id.to_string(),
+        state: "ready",
+        runtime: runtime_name(&session.runtime.program),
+        container_name: session.container.clone(),
+        capabilities,
+        imported_tools,
+        ports,
+        workspace_bytes,
+        workspace_limit_bytes: MAX_WORKSPACE_BYTES,
+        memory_limit_bytes: SANDBOX_MEMORY_LIMIT_BYTES,
+        cpu_limit: SANDBOX_CPU_LIMIT,
+        pids_limit: SANDBOX_PIDS_LIMIT,
+        network_policy: SANDBOX_NETWORK_POLICY,
+        active_commands: session.active_commands,
+        last_activity_age_ms: session.last_activity.elapsed().as_millis() as u64,
+    })
 }
 
 impl HostToolCache {
@@ -729,6 +894,35 @@ fn create_session(
     })
 }
 
+fn create_headless_session() -> Result<HeadlessSession, String> {
+    let token = Uuid::new_v4().simple().to_string();
+    let root = std::env::temp_dir().join(format!("polyui-headless-{token}"));
+    let result = (|| {
+        fs::create_dir(&root)
+            .map_err(|error| format!("headless workspace unavailable: {error}"))?;
+        set_private_permissions(&root)?;
+        for directory in [
+            root.join("workspace"),
+            root.join("home/sandbox"),
+            root.join("tmp"),
+        ] {
+            fs::create_dir_all(&directory)
+                .map_err(|error| format!("headless workspace unavailable: {error}"))?;
+            set_private_permissions(&directory)?;
+        }
+        Ok::<(), String>(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&root);
+        return Err(error);
+    }
+    Ok(HeadlessSession {
+        root,
+        last_activity: Instant::now(),
+        active_commands: 0,
+    })
+}
+
 fn cleanup_session(session: SandboxSession) -> Result<(), String> {
     let container = session.container.clone();
     let runtime_error = session
@@ -743,8 +937,21 @@ fn cleanup_session(session: SandboxSession) -> Result<(), String> {
         .map_or(Ok(()), Err)
 }
 
+fn cleanup_headless_session(session: HeadlessSession) -> Result<(), String> {
+    fs::remove_dir_all(&session.root)
+        .map_err(|error| format!("headless workspace cleanup failed: {error}"))
+}
+
 fn ensure_workspace_room(session: &SandboxSession) -> Result<(), String> {
-    let size = workspace_size(&session.workspace, MAX_WORKSPACE_BYTES)
+    ensure_workspace_room_at(&session.workspace)
+}
+
+fn ensure_headless_workspace_room(session: &HeadlessSession) -> Result<(), String> {
+    ensure_workspace_room_at(&session.root)
+}
+
+fn ensure_workspace_room_at(root: &Path) -> Result<(), String> {
+    let size = workspace_size(root, MAX_WORKSPACE_BYTES)
         .map_err(|error| format!("sandbox workspace size unavailable: {error}"))?;
     if size > MAX_WORKSPACE_BYTES {
         return Err(workspace_limit_message());
@@ -760,7 +967,15 @@ fn touch_session(session: &mut SandboxSession) {
     session.last_activity = Instant::now();
 }
 
+fn touch_headless_session(session: &mut HeadlessSession) {
+    session.last_activity = Instant::now();
+}
+
 fn should_reap_session(session: &SandboxSession) -> bool {
+    session.active_commands == 0 && session.last_activity.elapsed() >= IDLE_TTL
+}
+
+fn should_reap_headless_session(session: &HeadlessSession) -> bool {
     session.active_commands == 0 && session.last_activity.elapsed() >= IDLE_TTL
 }
 
@@ -832,6 +1047,295 @@ fn command_for(session: &SandboxSession, cwd: &str, command: &str) -> SandboxCom
             "-lc".into(),
             script,
         ],
+        cwd: None,
+        env: vec![],
+        headless: false,
+    }
+}
+
+fn is_headless_candidate(command: &str) -> bool {
+    let Some(tokens) = headless_tokens(command) else {
+        return false;
+    };
+    headless_program(tokens.first().map(String::as_str).unwrap_or_default()).is_some()
+        && headless_shape(&tokens)
+}
+
+fn headless_command(
+    session: &HeadlessSession,
+    cwd: &str,
+    command: &str,
+) -> Result<Option<SandboxCommand>, String> {
+    let Some(tokens) = headless_tokens(command) else {
+        return Ok(None);
+    };
+    if !headless_shape(&tokens) {
+        return Ok(None);
+    }
+    let name = tokens.first().map(String::as_str).unwrap_or_default();
+    let Some(program) = headless_program(name) else {
+        return Ok(None);
+    };
+    let Some(physical_cwd) = headless_cwd(session, cwd) else {
+        return Ok(None);
+    };
+    let args = match name {
+        "pwd" if tokens.len() == 1 => vec!["%s\n".into(), cwd.into()],
+        "true" | "false" if tokens.len() == 1 => vec![],
+        "echo" | "printf" if tokens.len() <= 9 => tokens[1..].to_vec(),
+        "node" | "python3" if tokens.len() == 2 && tokens[1] == "--version" => {
+            vec!["--version".into()]
+        }
+        "git" if tokens.len() == 2 && tokens[1] == "--version" => vec!["--version".into()],
+        "git"
+            if (tokens.len() == 2 && tokens[1] == "status")
+                || (tokens.len() == 3 && tokens[1] == "status" && tokens[2] == "--short") =>
+        {
+            tokens[1..].to_vec()
+        }
+        "ls" => match headless_ls_args(session, cwd, &tokens[1..]) {
+            Ok(args) => args,
+            Err(_) => return Ok(None),
+        },
+        "cat" | "head" | "tail" | "wc" => {
+            match headless_file_args(session, cwd, &tokens[1..], true) {
+                Ok(args) => args,
+                Err(_) => return Ok(None),
+            }
+        }
+        "grep" | "rg" => match headless_search_args(session, cwd, &tokens[1..]) {
+            Ok(args) => args,
+            Err(_) => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    Ok(Some(SandboxCommand {
+        program,
+        args,
+        cwd: Some(physical_cwd),
+        env: headless_environment(session),
+        headless: true,
+    }))
+}
+
+fn headless_shape(tokens: &[String]) -> bool {
+    let Some(name) = tokens.first() else {
+        return false;
+    };
+    matches!(
+        name.as_str(),
+        "pwd"
+            | "true"
+            | "false"
+            | "echo"
+            | "printf"
+            | "node"
+            | "python3"
+            | "git"
+            | "ls"
+            | "cat"
+            | "head"
+            | "tail"
+            | "wc"
+            | "grep"
+            | "rg"
+    ) && !name.contains('/')
+}
+
+fn headless_tokens(command: &str) -> Option<Vec<String>> {
+    if command.is_empty()
+        || command.chars().any(|character| {
+            character.is_ascii_control() || ";|&><`$(){}[]*?\\'\"".contains(character)
+        })
+    {
+        return None;
+    }
+    let tokens = shell_words(command);
+    (!tokens.is_empty() && tokens.len() <= 16).then_some(tokens)
+}
+
+fn headless_program(name: &str) -> Option<PathBuf> {
+    let name = match name {
+        "pwd" => "printf",
+        "true" | "false" | "echo" | "printf" | "node" | "python3" | "git" | "ls" | "cat"
+        | "head" | "tail" | "wc" | "grep" | "rg" => name,
+        _ => return None,
+    };
+    restricted_host_program(name)
+}
+
+fn restricted_host_program(name: &str) -> Option<PathBuf> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return None;
+    }
+    [Path::new("/usr/bin"), Path::new("/bin")]
+        .into_iter()
+        .map(|directory| directory.join(name))
+        .find(|path| {
+            fs::metadata(path)
+                .map(|metadata| metadata.is_file() && executable(&metadata))
+                .unwrap_or(false)
+        })
+}
+
+fn headless_ls_args(
+    session: &HeadlessSession,
+    cwd: &str,
+    tokens: &[String],
+) -> Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let mut path = None;
+    for token in tokens {
+        if token.starts_with('-') {
+            if !matches!(
+                token.as_str(),
+                "-1" | "-l" | "-la" | "-al" | "--color=never"
+            ) {
+                return Err("headless ls option rejected".into());
+            }
+            args.push(token.clone());
+        } else if path.is_none() {
+            path = Some(headless_path_arg(session, cwd, token)?);
+        } else {
+            return Err("headless ls accepts one path".into());
+        }
+    }
+    if let Some(path) = path {
+        args.push(path);
+    }
+    Ok(args)
+}
+
+fn headless_file_args(
+    session: &HeadlessSession,
+    cwd: &str,
+    tokens: &[String],
+    require_path: bool,
+) -> Result<Vec<String>, String> {
+    if require_path && tokens.is_empty() {
+        return Err("headless file command requires a path".into());
+    }
+    tokens
+        .iter()
+        .map(|token| {
+            if token.starts_with('-') {
+                return Err("headless file option rejected".into());
+            }
+            headless_path_arg(session, cwd, token)
+        })
+        .collect()
+}
+
+fn headless_search_args(
+    session: &HeadlessSession,
+    cwd: &str,
+    tokens: &[String],
+) -> Result<Vec<String>, String> {
+    let Some(pattern) = tokens.first().filter(|_| tokens.len() >= 2) else {
+        return Err("headless search requires a pattern".into());
+    };
+    if pattern.starts_with('-') {
+        return Err("headless search option rejected".into());
+    }
+    let mut args = vec![pattern.clone()];
+    args.extend(headless_file_args(session, cwd, &tokens[1..], false)?);
+    Ok(args)
+}
+
+fn headless_environment(session: &HeadlessSession) -> Vec<(String, String)> {
+    vec![
+        (
+            "HOME".into(),
+            session.root.join("home/sandbox").display().to_string(),
+        ),
+        ("USER".into(), "sandbox".into()),
+        ("LOGNAME".into(), "sandbox".into()),
+        ("PATH".into(), "/usr/bin:/bin".into()),
+        ("LANG".into(), "C".into()),
+        ("LC_ALL".into(), "C".into()),
+        (
+            "TMPDIR".into(),
+            session.root.join("tmp").display().to_string(),
+        ),
+        (
+            "XDG_CONFIG_HOME".into(),
+            session
+                .root
+                .join("home/sandbox/.config")
+                .display()
+                .to_string(),
+        ),
+        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
+        ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
+        (
+            "GIT_CEILING_DIRECTORIES".into(),
+            session.root.display().to_string(),
+        ),
+        ("GIT_OPTIONAL_LOCKS".into(), "0".into()),
+        ("GIT_TERMINAL_PROMPT".into(), "0".into()),
+    ]
+}
+
+fn headless_cwd(session: &HeadlessSession, cwd: &str) -> Option<PathBuf> {
+    let path = headless_physical_path(&session.root, Path::new(cwd))?;
+    path.is_dir().then_some(path)
+}
+
+fn headless_path_arg(session: &HeadlessSession, cwd: &str, raw: &str) -> Result<String, String> {
+    if raw.is_empty() || raw == "-" || raw.contains('\0') {
+        return Err("headless path rejected".into());
+    }
+    let path = Path::new(raw);
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("headless path cannot contain '..'".into());
+    }
+    let virtual_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        Path::new(cwd).join(path)
+    };
+    if headless_physical_path(&session.root, &virtual_path).is_none() {
+        return Err("headless path must stay inside the sandbox workspace".into());
+    }
+    Ok(relative_virtual_path(Path::new(cwd), &virtual_path))
+}
+
+fn headless_physical_path(root: &Path, path: &Path) -> Option<PathBuf> {
+    for (virtual_root, physical_root) in [
+        (Path::new("/workspace"), root.join("workspace")),
+        (Path::new("/home/sandbox"), root.join("home/sandbox")),
+        (Path::new("/tmp"), root.join("tmp")),
+    ] {
+        if path == virtual_root || path.starts_with(virtual_root) {
+            return Some(physical_root.join(path.strip_prefix(virtual_root).ok()?));
+        }
+    }
+    None
+}
+
+fn relative_virtual_path(base: &Path, target: &Path) -> String {
+    let base: Vec<_> = base.components().collect();
+    let target: Vec<_> = target.components().collect();
+    let common = base
+        .iter()
+        .zip(&target)
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut result: Vec<String> = (0..base.len().saturating_sub(common))
+        .map(|_| "..".into())
+        .collect();
+    result.extend(
+        target[common..]
+            .iter()
+            .map(|component| component.as_os_str().to_string_lossy().into_owned()),
+    );
+    if result.is_empty() {
+        ".".into()
+    } else {
+        result.join("/")
     }
 }
 
@@ -1188,6 +1692,41 @@ fn reap_orphan_workspaces(protected: &HashSet<String>) {
             }
         }
     }
+}
+
+fn reap_headless_workspaces() {
+    let root = std::env::temp_dir();
+    let Ok(entries) = fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !is_headless_workspace_name(name) {
+            continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() || file_type.is_symlink() {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified()) else {
+            continue;
+        };
+        if modified.elapsed().map_or(false, |age| age >= ORPHAN_TTL) {
+            let _ = fs::remove_dir_all(path);
+        }
+    }
+}
+
+fn is_headless_workspace_name(name: &str) -> bool {
+    let Some(token) = name.strip_prefix("polyui-headless-") else {
+        return false;
+    };
+    token.len() == 32 && token.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn is_sandbox_workspace_name(name: &str) -> bool {
@@ -1636,10 +2175,12 @@ pub fn sandbox_diagnostics(
 #[cfg(test)]
 mod tests {
     use super::{
-        capability, command_for, first_command_name, is_loopback_or_special, is_private_host_range,
-        is_sandbox_workspace_name, listening_ports, normalize_cwd, preview_target_allowed,
-        should_reap_orphan, should_reap_session, stale_timestamp, workspace_size, HostToolEntry,
-        Runtime, SandboxSession, IDLE_TTL, IMAGE, SANDBOX_LABEL,
+        capability, cleanup_headless_session, command_for, create_headless_session,
+        first_command_name, headless_command, headless_tokens, is_headless_workspace_name,
+        is_loopback_or_special, is_private_host_range, is_sandbox_workspace_name, listening_ports,
+        normalize_cwd, preview_target_allowed, should_reap_orphan, should_reap_session,
+        stale_timestamp, workspace_size, HeadlessSession, HostToolEntry, Runtime, SandboxSession,
+        IDLE_TTL, IMAGE, SANDBOX_LABEL,
     };
     use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
@@ -1765,6 +2306,78 @@ mod tests {
     }
 
     #[test]
+    fn headless_runner_allows_fixed_read_only_commands() {
+        let session = create_headless_session().unwrap();
+        let result = (|| {
+            for command in ["pwd", "ls -la", "cat relative-file", "git status --short"] {
+                let plan = headless_command(&session, "/workspace", command)
+                    .unwrap()
+                    .expect(command);
+                assert!(plan.headless);
+                assert!(plan.cwd.as_ref().unwrap().starts_with(&session.root));
+                assert!(plan
+                    .env
+                    .iter()
+                    .all(|(key, _)| key != "POLYUI_API_KEY" && key != "OPENAI_API_KEY"));
+                assert!(plan
+                    .args
+                    .iter()
+                    .all(|argument| !argument.contains(session.root.to_string_lossy().as_ref())));
+            }
+            for command in [
+                "sh -c whoami",
+                "cat /etc/passwd",
+                "cat ../outside",
+                "rm file",
+                "node -e print(1)",
+                "ls | cat",
+                "echo hi > file",
+            ] {
+                assert!(
+                    headless_command(&session, "/workspace", command)
+                        .unwrap()
+                        .is_none(),
+                    "{command}"
+                );
+            }
+            Ok::<(), String>(())
+        })();
+        let cleanup = cleanup_headless_session(session);
+        assert!(cleanup.is_ok(), "headless cleanup failed: {cleanup:?}");
+        result.unwrap();
+    }
+
+    #[test]
+    fn headless_parser_rejects_shell_syntax() {
+        for command in ["echo $(whoami)", "echo `whoami`", "ls && pwd", "cat a;b"] {
+            assert!(headless_tokens(command).is_none(), "{command}");
+        }
+    }
+
+    #[test]
+    fn headless_workspaces_use_exact_names() {
+        assert!(is_headless_workspace_name(
+            "polyui-headless-0123456789abcdef0123456789abcdef"
+        ));
+        assert!(!is_headless_workspace_name("polyui-headless-other"));
+        assert!(!is_headless_workspace_name(
+            "polyui-headless-0123456789abcdef0123456789abcdef-copy"
+        ));
+    }
+
+    #[test]
+    fn active_headless_pty_blocks_idle_reaping() {
+        let mut session = HeadlessSession {
+            root: PathBuf::from("/tmp/polyui-headless-test"),
+            last_activity: Instant::now() - IDLE_TTL - Duration::from_secs(1),
+            active_commands: 0,
+        };
+        assert!(super::should_reap_headless_session(&session));
+        session.active_commands = 1;
+        assert!(!super::should_reap_headless_session(&session));
+    }
+
+    #[test]
     fn blocks_preview_targets_that_can_reach_the_host() {
         for address in [
             "127.0.0.1",
@@ -1811,6 +2424,9 @@ mod tests {
             .any(|args| { args[0] == "--user" && args[1] == "sandbox" }));
         assert!(command.args.iter().any(|arg| arg == "polyui-sandbox-test"));
         assert!(command.args.iter().any(|arg| arg == "/bin/bash"));
+        assert!(!command.headless);
+        assert!(command.cwd.is_none());
+        assert!(command.env.is_empty());
         assert!(!command
             .args
             .iter()

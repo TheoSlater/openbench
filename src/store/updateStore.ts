@@ -14,6 +14,7 @@ export type UpdateStatus =
 type UpdateState = {
   status: UpdateStatus;
   version: string;
+  stale: boolean;
   progress: number;
   downloadUrl: string | null;
   assetName: string | null;
@@ -40,6 +41,7 @@ export const useUpdateStore = create<UpdateState & { actions: UpdateActions }>()
   (set, get) => ({
     status: "idle",
     version: "",
+    stale: false,
     progress: 0,
     downloadUrl: null,
     assetName: null,
@@ -62,12 +64,13 @@ export const useUpdateStore = create<UpdateState & { actions: UpdateActions }>()
           }>("check_for_updates");
 
           if (!info.has_update || !info.download_url || !info.asset_name) {
-            set({ status: "idle" });
+            set({ status: "idle", stale: false });
             return;
           }
 
           set({
             status: "available",
+            stale: true,
             version: info.version,
             downloadUrl: info.download_url,
             assetName: info.asset_name,
@@ -152,7 +155,7 @@ export function simulateUpdateProgress() {
 
 export function clearUpdateState() {
   useUpdateStore.setState({
-    status: "idle", version: "", progress: 0,
+    status: "idle", version: "", stale: false, progress: 0,
     downloadUrl: null, assetName: null, filePath: null, error: null,
   });
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
+import {
+  filterPartsForRuntime,
+  fromUIMessage,
+  toUIMessage,
+  type PolyUIMessage,
+} from "@/lib/ai/messages";
 import type { Message } from "@/types/chat";
 
 const entity: Message = {
@@ -143,5 +148,31 @@ describe("AI SDK message persistence boundary", () => {
     });
 
     expect(restored.runtimeParts).toEqual([approval, response]);
+  });
+
+  it("keeps generative UI parts for chat-model history", () => {
+    const message = {
+      id: "assistant-weather",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "displayWeather",
+        toolCallId: "weather-call",
+        state: "output-available",
+        input: { location: "London" },
+        output: {
+          location: "London",
+          query: "weather London",
+          results: [{
+            title: "London weather",
+            url: "https://example.com/weather",
+            highlights: ["Sunny"],
+          }],
+        },
+      }],
+    } as PolyUIMessage;
+
+    expect(filterPartsForRuntime(message, "chat-model").parts).toEqual(message.parts);
+    expect(filterPartsForRuntime(message, "coding-agent").parts).toEqual([]);
   });
 });

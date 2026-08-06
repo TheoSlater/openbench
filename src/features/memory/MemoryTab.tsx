@@ -285,9 +285,10 @@ export function MemoryTab() {
             action={
               <Select
                 value={settingsReady.provider}
-                onValueChange={(value) =>
-                  saveSettings({ provider: value, locality: value === "disabled" ? "local" : "remote" })
-                }
+                onValueChange={(value) => {
+                  if (!value) return;
+                  saveSettings({ provider: value, locality: value === "disabled" ? "local" : "remote" });
+                }}
               >
                 <SelectTrigger size="sm">
                   <SelectValue />
@@ -324,10 +325,10 @@ export function MemoryTab() {
             action={<Switch checked={settingsReady.allowTemporaryRecall} disabled={!settingsReady.enabled || saving} onChange={(e) => saveSettings({ allowTemporaryRecall: e.target.checked })} />}
           />
           <SettingCard title="Memory retrieval limit" description={`${settingsReady.retrievalLimit} memories maximum`}>
-            <Slider min={1} max={20} value={settingsReady.retrievalLimit} disabled={!settingsReady.enabled || saving} onChange={(_, value) => saveSettings({ retrievalLimit: value as number })} />
+            <Slider min={1} max={20} value={settingsReady.retrievalLimit} disabled={!settingsReady.enabled || saving} onValueChange={(value) => saveSettings({ retrievalLimit: value })} />
           </SettingCard>
           <SettingCard title="Memory token budget" description={`${settingsReady.tokenBudget} approximate tokens`}>
-            <Slider min={100} max={2000} step={50} value={settingsReady.tokenBudget} disabled={!settingsReady.enabled || saving} onChange={(_, value) => saveSettings({ tokenBudget: value as number })} />
+            <Slider min={100} max={2000} step={50} value={settingsReady.tokenBudget} disabled={!settingsReady.enabled || saving} onValueChange={(value) => saveSettings({ tokenBudget: value })} />
           </SettingCard>
           <SettingCard
             title="Show superseded memories"
@@ -431,4 +432,3 @@ function EditMemoryDialog({ record, ownerId, onClose, onSaved }: { record: Memor
     </Modal>
   );
 }
-

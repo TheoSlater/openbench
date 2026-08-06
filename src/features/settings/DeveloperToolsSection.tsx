@@ -2,10 +2,12 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useNotify } from "@/hooks/useNotify";
 import { idleManager } from "@/lib/idle";
 import { loggedInvoke } from "@/lib/utils/utils";
+import { devLog } from "@/features/debug-overlay/devLog";
 import { useDevStore } from "@/store/devStore";
 import { clearUpdateState, simulateUpdateProgress } from "@/store/updateStore";
 import { SettingsSection, SettingRow } from "./SettingsShell";
@@ -20,6 +22,12 @@ export function DeveloperToolsSection() {
   const [sql, setSql] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
   const [result, setResult] = useState<SqlResult>(null);
+  const debugOverlayEnabled = useDevStore((state) => state.debugOverlay.enabled);
+
+  const handleDebugOverlayToggle = (checked: boolean) => {
+    useDevStore.getState().actions.setDebugOverlay({ enabled: checked });
+    devLog("info", "overlay", `debug overlay ${checked ? "enabled" : "disabled"}`);
+  };
 
   const handleExecuteSql = async () => {
     if (!sql.trim()) return;
@@ -61,6 +69,16 @@ export function DeveloperToolsSection() {
         title="Developer tools"
         description="Diagnostics and test controls for development builds."
       >
+        <SettingRow
+          title="Debug overlay"
+          description="Realtime HUD with frontend/backend FPS, CPU, memory, and API call statuses."
+          action={
+            <Switch
+              checked={debugOverlayEnabled}
+              onCheckedChange={handleDebugOverlayToggle}
+            />
+          }
+        />
         <SettingRow title="SQL runner" description="Run raw SQL against local app database.">
           <div className="flex flex-col gap-3">
             <Textarea

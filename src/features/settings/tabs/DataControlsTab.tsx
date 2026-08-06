@@ -75,6 +75,7 @@ export function DataControlsTab() {
           attachments: m.attachments,
           thinking: m.thinking,
           thinkingDuration: m.thinkingDuration,
+          thinkingTimings: m.thinkingTimings,
         })),
       }));
 
@@ -144,7 +145,7 @@ export function DataControlsTab() {
           <Button
             size="sm"
             variant="outline"
-            color="warning"
+            className="text-warning"
             onClick={() => setArchiveOpen(true)}
             startIcon={<Archive size={14} />}
           >

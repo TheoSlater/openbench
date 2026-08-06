@@ -1,137 +1,201 @@
 <p align="center">
-  <img src="public/polyui-icon.png" alt="PolyUI logo" width="144" />
+  <img src="public/polyui-icon.png" alt="PolyUI app icon" width="112" />
 </p>
 
 <h1 align="center">PolyUI</h1>
 
-![GitHub repo size](https://img.shields.io/github/repo-size/monolabsdev/poly-ui)
-![GitHub language count](https://img.shields.io/github/languages/count/monolabsdev/poly-ui)
-![GitHub top language](https://img.shields.io/github/languages/top/monolabsdev/poly-ui)
-![GitHub last commit](https://img.shields.io/github/last-commit/monolabsdev/poly-ui?color=red)
-![GitHub stars](https://img.shields.io/github/stars/monolabsdev/poly-ui?style=social)
-<div>
+<p align="center">
+  A clean desktop client for local models, cloud providers, and coding agents.
+</p>
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F8O123TMDU)
+<p align="center">
+  <a href="https://github.com/monolabsdev/poly-ui/releases/latest">
+    <img alt="Latest PolyUI release" src="https://img.shields.io/github/v/release/monolabsdev/poly-ui?style=flat-square&label=release" />
+  </a>
+  <a href="https://github.com/monolabsdev/poly-ui/releases">
+    <img alt="PolyUI downloads" src="https://img.shields.io/github/downloads/monolabsdev/poly-ui/total?style=flat-square&label=downloads" />
+  </a>
+  <a href="https://github.com/monolabsdev/poly-ui/stargazers">
+    <img alt="PolyUI GitHub stars" src="https://img.shields.io/github/stars/monolabsdev/poly-ui?style=flat-square&label=stars" />
+  </a>
+  <a href="LICENSE">
+    <img alt="MIT license" src="https://img.shields.io/github/license/monolabsdev/poly-ui?style=flat-square" />
+  </a>
+</p>
 
-</div>
+<p align="center">
+  <a href="https://github.com/monolabsdev/poly-ui/releases/latest">Download</a>
+  ·
+  <a href="https://linear.app/poly-ui/view/roadmap-fa502b4506c7">Roadmap</a>
+  ·
+  <a href="https://github.com/monolabsdev/poly-ui/issues">Issues</a>
+  ·
+  <a href="https://ko-fi.com/F8O123TMDU">Support</a>
+</p>
 
-PolyUI is a desktop AI chat app that runs entirely offline. One calm window for your models - use Ollama, OpenAI-compatible APIs, and more. Built for private, everyday conversations with local LLMs.
+<p align="center">
+  <img src="public/PolyUI_Demo.png" alt="PolyUI displaying an AI conversation in the desktop application" />
+</p>
 
-![polyui demo](public/PolyUI_Demo.png)
+PolyUI brings local models, bring-your-own-key cloud providers, and local coding agents into one focused desktop application.
 
-## Key features of PolyUI
+Use fully local models through Ollama, connect hosted providers when needed, or work with Claude Code and Codex using their existing command-line logins. PolyUI keeps conversations and application data on your device while giving you explicit control over providers and tools that communicate externally.
 
-- 🚀 **Effortless Setup**: Install via the setup file. You'll need Ollama installed first.
-- 🤝 **Ollama Integration**: Use ollama models effortlessly through this application.
-- ✒️🔢 **Full Markdown and LaTeX Support**: Elevate the LLM experience with comprehensive Markdown and LaTeX capabilities. (uses LaTeX via KaTeX)
-- 💭 **Multi-model conversations**: Chat with multiple local LLMs simultaneously with real-time, side-by-side streaming responses.
-- 🧍 **Guest mode**: Skip signup and chat without saving anything to disk.
-- 📚 **Archived conversations**: Keep your chat history organised by archiving old conversations.
-- 🤖 **Install models**: Install Ollama models directly from the app.
-- 📜 **System prompts**: Choose from 4 different AI personas or use a custom system prompt.
-- 🔐 **Account Authentication**: Create local accounts for secure sign-in.
-- 🔒 **Privacy first**: Everything stays on your machine. Nothing leaves without your say-so.
+## Highlights
 
-## How to Install 🚀
+* **Local and hosted models** — Connect Ollama, OpenAI, Anthropic, Google Gemini, OpenRouter, LM Studio, Vercel AI Gateway, or another OpenAI-compatible server.
+* **Claude Code and Codex** — Run coding sessions against a local workspace using your existing CLI authentication.
+* **Private by default** — Conversations remain in PolyUI's local SQLite database, while provider credentials are stored in the operating system keychain.
+* **Parallel conversations** — Stream responses from multiple models independently without blocking the rest of the application.
+* **Integrated tools** — Use web search and an optional terminal tool with visible activity and structured results.
+* **Controlled agent access** — Coding sessions begin in read-only mode. File and command mutations require an editable workspace mode and explicit approval.
+* **Rich responses** — Render Markdown, syntax-highlighted code, tables, citations, reasoning, and LaTeX through KaTeX.
+* **Native desktop packaging** — Available for Windows, macOS, and Linux without requiring Docker, Kubernetes, or a browser-hosted interface.
 
-### Installation via releases
-PolyUI can be installed from the [releases](https://github.com/monolabsdev/poly-ui/releases) page. Download the file that matches your operating system and CPU:
+> [!IMPORTANT]
+> PolyUI can run fully offline when connected to Ollama or another local model server. Hosted providers, web search, and other network-backed features require an internet connection and send requests to the service you configure.
 
-### Command line install
+## Install
+
+Download the latest version from [GitHub Releases](https://github.com/monolabsdev/poly-ui/releases/latest).
+
+| Platform                  | Package                    |
+| ------------------------- | -------------------------- |
+| macOS                     | Apple Silicon `.dmg`       |
+| Windows                   | x64 setup `.exe` or `.msi` |
+| Debian and Ubuntu         | x64 or arm64 `.deb`        |
+| Fedora, RHEL and openSUSE | x64 or arm64 `.rpm`        |
+
+Use `x64` for most Intel and AMD computers. Use `arm64` for ARM-based Linux devices and Apple Silicon Macs.
+
+### Command-line installation
 
 Linux and macOS:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/monolabsdev/poly-ui/main/scripts/install.sh | sh
 ```
 
 Windows PowerShell:
+
 ```powershell
 irm https://raw.githubusercontent.com/monolabsdev/poly-ui/main/scripts/install.ps1 | iex
 ```
 
-- **macOS** (Apple Silicon): download `PolyUI-*-macos-arm64.dmg`.
-- **Windows**: download `PolyUI-*-windows-x64-setup.exe` or `PolyUI-*-windows-x64.msi`.
-- **Windows with Ollama setup**: download `PolyUI-*-windows-x64-ollama-setup.exe`.
-- **Linux Debian/Ubuntu**: download `PolyUI-*-linux-x64.deb` or `PolyUI-*-linux-arm64.deb`, then install with:
-  ```bash
-  sudo apt install ./PolyUI-*-linux-*.deb
-  ```
-- **Linux Fedora/RHEL/openSUSE**: download `PolyUI-*-linux-x64.rpm` or `PolyUI-*-linux-arm64.rpm`, then install with:
-  ```bash
-  sudo rpm -i PolyUI-*-linux-*.rpm
-  ```
-- **Other Linux distributions**: download `PolyUI-*-linux-x64.AppImage` or `PolyUI-*-linux-arm64.AppImage`, then run:
-  ```bash
-  chmod +x PolyUI-*-linux-*.AppImage
-  ./PolyUI-*-linux-*.AppImage
-  ```
-
-Use `x64` for most Intel/AMD PCs. Use `arm64` for ARM Linux devices.
-
-### Using the Dev Branch 🌙
-> [!WARNING]
-> The `:dev` branch contains the latest unstable features and changes. Use it at your own risk as it may have bugs or incomplete features.
+These scripts detect your operating system and architecture, download the matching package from the latest GitHub release, and run the appropriate installer.
 
 > [!NOTE]
-> This repo includes both AI-generated and hand-written code.
+> Ollama is optional. Install it only when you want to run local Ollama models.
 
-### Setup (dev)
-Make sure you've got the essentials installed:
-- Git
-- Bun
-- Tauri prerequisites (Rust, system deps, etc)
+> [!NOTE]
+> AppImage packages are temporarily unavailable because the current Bun sidecar executable is incompatible with the AppImage `linuxdeploy` packaging process. Use the `.deb` or `.rpm` package on Linux.
 
-**Clone the repo** and switch to the dev branch:
+## Development
+
+### Requirements
+
+Before building PolyUI, install:
+
+* [Git](https://git-scm.com/)
+* [Bun](https://bun.sh/) 1.3.14
+* The Rust toolchain
+* The [Tauri 2 system prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
+
+### Run locally
 
 ```bash
-git clone https://github.com/monolabsdev/openbench-ai.git
-cd openbench-ai
-git checkout dev
-```
+git clone https://github.com/monolabsdev/poly-ui.git
+cd poly-ui
 
-Install dependencies:
-```bash
 bun install
-```
-
-### 🧪 Running the dev server
-
-```bash
+bun run sidecar:build
 bun run tauri dev
 ```
 
-### 📦 Building for Production
+The `main` branch contains the current stable source. To inspect unreleased development work:
 
-Production builds compile the pinned AI SDK runtime into a target-specific Bun sidecar before Tauri packaging. See [AI SDK runtime architecture](docs/ai-sdk-runtime.md) for security, package versions, and platform size impact.
+```bash
+git switch dev
+```
 
-To build the default installer:
+> [!WARNING]
+> The `dev` branch may contain unfinished features, incomplete migrations, or breaking changes.
+
+### Test
+
+```bash
+bun run test
+bun run sidecar:typecheck
+bun run sidecar:test
+```
+
+### Build
+
+Build the standard production packages:
+
 ```bash
 bun run tauri build
 ```
-To compile and build the Ollama + PolyUI installer:
+
+Build the Windows installer that also sets up Ollama:
+
 ```bash
 bun run ollama-setup
 ```
 
+Production builds compile PolyUI's pinned AI SDK runtime into a target-specific Bun sidecar before Tauri creates the application package.
 
-## ❓ Frequently Asked Questions
+## Architecture
 
-###  How is PolyUI different from Open WebUI?
+PolyUI uses React and Tauri for its desktop interface, Rust for native application services and credential handling, and a private Bun sidecar for the Vercel AI SDK runtime.
 
-PolyUI is built for simplicity. No Python, Docker, or Kubernetes required — just install and run.
+The sidecar communicates with the Rust host through its standard input and output. It does not expose a local HTTP server or open a loopback port.
 
-## What's next? 🌟
-Check out our [roadmap](https://linear.app/poly-ui/view/roadmap-fa502b4506c7?layout=list&ordering=priority&grouping=workflowState&subGrouping=none&showCompletedIssues=all&showSubIssues=true&showTriageIssues=true)
+Provider secrets are retrieved from the operating system keychain for individual requests. They are not stored in frontend state, browser storage, conversation records, URLs, or sidecar logs.
+
+See [AI SDK runtime architecture](docs/ai-sdk-runtime.md) for provider support, security boundaries, coding-agent permissions, packaging details, and runtime version pins.
+
+## Frequently asked questions
+
+### Is Ollama required?
+
+No. Ollama is only required for Ollama-hosted local models. PolyUI can also connect directly to supported cloud providers, AI Gateway, LM Studio, and custom OpenAI-compatible servers.
+
+### Can PolyUI run completely offline?
+
+Yes, when you use a local model server and avoid network-backed tools. Cloud providers and web search require an internet connection.
+
+### How is PolyUI different from Open WebUI?
+
+PolyUI is a packaged desktop application focused on a lightweight, native-feeling experience. It does not require you to operate a Python service, Docker container, or Kubernetes deployment.
+
+### How do Claude Code and Codex work?
+
+PolyUI uses the locally installed Claude Code and Codex command-line tools together with their existing login state. Coding sessions operate inside a workspace you select and begin with read-only access.
+
+## Contributing
+
+Bug reports, focused pull requests, documentation improvements, and tested fixes are welcome.
+
+Before making a substantial architectural or product change, open an [issue](https://github.com/monolabsdev/poly-ui/issues) describing the problem and proposed approach.
+
+When submitting code:
+
+1. Keep changes focused.
+2. Add or update relevant tests.
+3. Verify the frontend, Rust application, and AI sidecar where applicable.
+4. Explain user-visible behaviour and security implications in the pull request.
+
+## Roadmap
+
+Current work and planned features are tracked on the [public PolyUI roadmap](https://linear.app/poly-ui/view/roadmap-fa502b4506c7).
+
+## Support
+
+Support continued development through [Ko-fi](https://ko-fi.com/F8O123TMDU).
 
 ## License
-This project contains licensed code. See [LICENSE](LICENSE.md).
 
-## Star History
+PolyUI is available under the [MIT License](LICENSE).
 
-<a href="https://www.star-history.com/?repos=monolabsdev%2Fpoly-ui&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=monolabsdev/poly-ui&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=monolabsdev/poly-ui&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=monolabsdev/poly-ui&type=date&legend=top-left" />
- </picture>
-</a>
+Copyright © 2026 Theo Slater.

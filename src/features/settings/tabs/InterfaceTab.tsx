@@ -97,9 +97,9 @@ export function InterfaceTab() {
             min={0.5}
             max={2}
             step={0.1}
-            onChange={(_, value) =>
+            onValueChange={(value) =>
               actions.updatePerformance({
-                appZoom: Array.isArray(value) ? value[0] : value,
+                appZoom: value,
               })
             }
           />

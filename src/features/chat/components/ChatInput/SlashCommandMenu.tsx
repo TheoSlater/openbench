@@ -67,11 +67,13 @@ export function SlashCommandMenu({
                     {feature.warning ? (
                       <TooltipProvider>
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="ml-2 shrink-0 flex items-center">
+                          <TooltipTrigger
+                            render={
+                              <span className="ml-2 flex shrink-0 items-center">
                               <AlertTriangle size={12} className="text-warning" />
-                            </span>
-                          </TooltipTrigger>
+                              </span>
+                            }
+                          />
                           <TooltipContent side="right">
                             {feature.warning}
                           </TooltipContent>

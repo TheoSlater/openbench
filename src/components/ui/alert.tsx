@@ -24,21 +24,24 @@ function Alert({
   variant,
   severity,
   ...props
-}: React.ComponentProps<"div"> & Omit<VariantProps<typeof alertVariants>, "variant"> & {
-  variant?: "default" | "destructive" | "outlined"
-  severity?: "error" | "warning" | "info" | "success"
-}) {
+}: React.ComponentProps<"div"> &
+  Omit<VariantProps<typeof alertVariants>, "variant"> & {
+    variant?: "default" | "destructive" | "outlined"
+    severity?: "error" | "warning" | "info" | "success"
+  }) {
   return (
     <div
       data-slot="alert"
       role="alert"
       className={cn(
-        alertVariants({ variant: variant === "destructive" || severity === "error" ? "destructive" : "default" }),
+        alertVariants({
+          variant: variant === "destructive" || severity === "error" ? "destructive" : "default",
+        }),
         variant === "outlined" && "bg-transparent",
         severity === "warning" && "border-warning/30 text-warning",
         severity === "success" && "border-success/30 text-success",
         severity === "info" && "border-info/30 text-info",
-        className,
+        className
       )}
       {...props}
     />

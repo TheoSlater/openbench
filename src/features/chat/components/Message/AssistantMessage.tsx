@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNotify } from "@/hooks/useNotify";
 
-import { ThinkingDisclosure } from "./ThinkingDisclosure";
+import { ThinkingDisclosure, formatThinkingDuration, useLiveSeconds } from "./ThinkingDisclosure";
 import { MemoryDisclosure } from "./MemoryDisclosure";
 import { WebSearchDisclosure } from "./WebSearchDisclosure";
 import { Source, SourceTrigger, SourceContent } from "@/components/ui/source";
@@ -31,6 +31,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from "@/components/ui/reasoning";
+import { TextShimmer } from "@/components/ui/text-shimmer";
 
 import type { MessageProps } from "./types";
 import {
@@ -48,12 +49,15 @@ type ResponsePart = NonNullable<MessageProps["runtimeParts"]>[number];
 const InlineReasoning = memo(function InlineReasoning({
   text,
   isStreaming,
+  duration,
 }: {
   text: string;
   isStreaming?: boolean;
+  duration?: number;
 }) {
   const { processedThinking } = useMessageMarkdown("", text, isStreaming);
   const [expanded, setExpanded] = useState(true);
+  const seconds = useLiveSeconds(duration, isStreaming ?? false);
 
   useEffect(() => {
     setExpanded(Boolean(isStreaming));
@@ -62,8 +66,20 @@ const InlineReasoning = memo(function InlineReasoning({
   if (!processedThinking.trim()) return null;
 
   return (
-    <Reasoning open={expanded} onOpenChange={setExpanded}>
-      <ReasoningTrigger>Reasoning</ReasoningTrigger>
+    <Reasoning
+      open={expanded}
+      onOpenChange={setExpanded}
+      isStreaming={isStreaming}
+    >
+      <ReasoningTrigger>
+        {isStreaming ? (
+          <TextShimmer duration={2} spread={15}>
+            Thinking…
+          </TextShimmer>
+        ) : (
+          formatThinkingDuration(seconds)
+        )}
+      </ReasoningTrigger>
       <ReasoningContent markdown>{processedThinking}</ReasoningContent>
     </Reasoning>
   );
@@ -73,14 +89,17 @@ const OrderedResponse = memo(function OrderedResponse({
   parts,
   status,
   isStreaming,
+  thinkingTimings,
 }: {
   parts: ResponsePart[];
   status?: string;
   isStreaming?: boolean;
+  thinkingTimings?: number[];
 }) {
   const nodes: ReactNode[] = [];
   let activity: ResponsePart[] = [];
   let activityIndex = 0;
+  let reasoningIndex = 0;
 
   const flushActivity = () => {
     if (!activity.length) return;
@@ -113,9 +132,11 @@ const OrderedResponse = memo(function OrderedResponse({
         <InlineReasoning
           key={`reasoning-${index}`}
           text={part.text}
-          isStreaming={isStreaming}
+          isStreaming={isStreaming && index === parts.length - 1}
+          duration={thinkingTimings?.[reasoningIndex]}
         />,
       );
+      reasoningIndex += 1;
       return;
     }
     activity.push(part);
@@ -134,6 +155,7 @@ export function AssistantMessage(props: MessageProps) {
     model,
     thinking,
     thinkingDuration,
+    thinkingTimings,
     isThinking,
     isStreaming,
     status,
@@ -254,6 +276,7 @@ export function AssistantMessage(props: MessageProps) {
             parts={runtimeParts ?? []}
             status={status}
             isStreaming={isStreaming}
+            thinkingTimings={thinkingTimings}
           />
         ) : (
           <>
@@ -354,13 +377,13 @@ export function AssistantMessage(props: MessageProps) {
           )}
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton
+            <DropdownMenuTrigger
+              render={<IconButton
                 size="small"
                 className="size-7 rounded-full"
-              >
+              />}
+            >
                 <MoreHorizontal size={14} />
-              </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {memoryUiEnabled && (

@@ -21,4 +21,6 @@ function CircularProgress({
   )
 }
 
-export { CircularProgress, CircularProgress as Spinner }
+const Spinner = CircularProgress
+
+export { CircularProgress, Spinner }

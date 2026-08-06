@@ -6,6 +6,46 @@ import {
 } from "@/components/ui/reasoning";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 
+export function formatThinkingDuration(seconds: number): string {
+  if (seconds < 1) return "Thought for less than a second";
+  const floored = Math.floor(seconds);
+  if (seconds < 60)
+    return `Thought for ${floored} second${floored === 1 ? "" : "s"}`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `Thought for ${mins} minute${mins === 1 ? "" : "s"} ${secs} second${secs === 1 ? "" : "s"}`;
+}
+
+/** Ticks while `active`, then freezes to `frozen` once inactive. */
+export function useLiveSeconds(frozen: number | undefined, active: boolean) {
+  const [seconds, setSeconds] = useState(frozen ?? 0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (frozen !== undefined && !active) {
+      setSeconds(frozen);
+    }
+  }, [frozen, active]);
+
+  useEffect(() => {
+    if (!active) {
+      startRef.current = null;
+      return;
+    }
+    if (startRef.current === null) {
+      startRef.current = Date.now() - seconds * 1000;
+    }
+    const interval = setInterval(() => {
+      if (startRef.current !== null) {
+        setSeconds((Date.now() - startRef.current) / 1000);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [active]);
+
+  return seconds;
+}
+
 interface ThinkingDisclosureProps {
   thinking?: string;
   isThinking: boolean;
@@ -24,14 +64,7 @@ export const ThinkingDisclosure = React.memo(
   }: ThinkingDisclosureProps) => {
     const hasThinking = Boolean(processedThinking.trim() || thinking?.trim());
     const [expanded, setExpanded] = useState(isThinking || hasThinking);
-    const [seconds, setSeconds] = useState(thinkingDuration ?? 0);
-    const startTimeRef = useRef<number | null>(null);
-
-    useEffect(() => {
-      if (thinkingDuration !== undefined && !isThinking) {
-        setSeconds(thinkingDuration);
-      }
-    }, [thinkingDuration, isThinking]);
+    const seconds = useLiveSeconds(thinkingDuration, isThinking);
 
     useEffect(() => {
       if (isThinking) {
@@ -41,28 +74,9 @@ export const ThinkingDisclosure = React.memo(
       }
     }, [hasThinking, isThinking, status]);
 
-    useEffect(() => {
-      if (!isThinking) return;
-      if (startTimeRef.current === null) {
-        startTimeRef.current = Date.now() - seconds * 1000;
-      }
-      const interval = setInterval(() => {
-        if (startTimeRef.current !== null) {
-          setSeconds((Date.now() - startTimeRef.current) / 1000);
-        }
-      }, 1000);
-      return () => clearInterval(interval);
-    }, [isThinking]);
-
     const displayIndicator = useMemo(() => {
       if (isThinking) return "Thinking…";
-      if (seconds < 1) return "Thought for less than a second";
-      const floored = Math.floor(seconds);
-      if (seconds < 60)
-        return `Thought for ${floored} second${floored === 1 ? "" : "s"}`;
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `Thought for ${mins} minute${mins === 1 ? "" : "s"} ${secs} second${secs === 1 ? "" : "s"}`;
+      return formatThinkingDuration(seconds);
     }, [isThinking, seconds]);
 
     if (!hasThinking && !isThinking) return null;

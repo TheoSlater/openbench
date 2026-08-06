@@ -7,8 +7,8 @@ describe("auth gate", () => {
   it("cannot be dismissed without signing in or continuing as guest", () => {
     // The gate renders over the app. If Escape or an outside click could close
     // it, an unauthenticated user would land straight in the UI behind it.
-    expect(source).toContain("onEscapeKeyDown");
-    expect(source).toContain("onInteractOutside");
+    expect(source).toContain("disablePointerDismissal");
+    expect(source).toContain("details.cancel()");
     expect(source).toContain("showCloseButton={false}");
     expect(source).toContain("skipAuth");
   });

@@ -40,6 +40,7 @@ import { ADVANCED_SETTINGS_VIEW_ID } from "@/features/settings/settingsRegistry"
 import { GlobalConfirmDialog } from "./components/ui/GlobalConfirmDialog";
 import { useDevStore } from "@/store/devStore";
 import { getDevComponentGalleryAction } from "@/features/dev/componentGalleryAction";
+import { DebugOverlay } from "@/features/debug-overlay/DebugOverlay";
 import { useViewportStore } from "@/features/viewport/viewportStore";
 import { listen } from "@tauri-apps/api/event";
 import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
@@ -241,6 +242,7 @@ function App() {
 
   const features = useFeatures();
   const devMode = useDevStore((state) => state.devMode);
+  const debugOverlayEnabled = useDevStore((state) => state.debugOverlay.enabled);
   const registeredActions = useRegisteredCommandPaletteActions();
   const settingsCommands = useSettingsCommands({
     openSettings: handleOpenSettings,
@@ -332,6 +334,7 @@ function App() {
       <Suspense fallback={null}>
         <AuthModalLazy />
       </Suspense>
+      {devMode && debugOverlayEnabled ? <DebugOverlay /> : null}
       <Suspense fallback={null}>
         <ReleaseNotesModalLazy />
       </Suspense>

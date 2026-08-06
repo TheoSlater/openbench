@@ -25,7 +25,12 @@ export function GeneralTab() {
         title="Language"
         description="UI language preference."
         action={
-          <Select value={general.language} onValueChange={(value) => actions.updateGeneral({ language: value })}>
+          <Select
+            value={general.language}
+            onValueChange={(value) => {
+              if (value) actions.updateGeneral({ language: value });
+            }}
+          >
             <SelectTrigger size="sm" className="min-w-36">
               <SelectValue />
             </SelectTrigger>

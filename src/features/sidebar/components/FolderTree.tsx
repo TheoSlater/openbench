@@ -75,7 +75,7 @@ export function FolderTree({
   return (
     <React.Fragment key={folder.id}>
       <SidebarMenuButton
-        asChild
+        render={<SidebarMenuRow />}
         isActive={activeFolderId === folder.id && !activeConversationId}
         tooltip={folder.name}
         onClick={() => {
@@ -87,7 +87,6 @@ export function FolderTree({
         style={{ paddingLeft: 8 + depth * 12 }}
       >
         {/* Row embeds its own action buttons, so it can't be a real <button>. */}
-        <SidebarMenuRow>
         <ChevronRight
           size={14}
           className={cn(
@@ -102,17 +101,17 @@ export function FolderTree({
         </span>
         <div className="folder-actions ml-auto flex opacity-0 transition-opacity duration-[var(--dur-fast)] ease-[var(--ease-soft)]">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
+            <DropdownMenuTrigger
+              render={<Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 aria-label={`Actions for ${folder.name}`}
                 onClick={(e) => e.stopPropagation()}
                 className={sidebarIconButtonClassName}
-              >
+              />}
+            >
                 <MoreHorizontal />
-              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -143,7 +142,6 @@ export function FolderTree({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        </SidebarMenuRow>
       </SidebarMenuButton>
       {isOpen && (
         <div className="ml-4 border-l border-border/60 pl-1">
@@ -159,7 +157,7 @@ export function FolderTree({
           {chats.map((chat) => (
             <SidebarMenuButton
               key={chat.id}
-              asChild
+              render={<SidebarMenuRow />}
               isActive={activeConversationId === chat.id}
               tooltip={chat.title || "Untitled"}
               onClick={() => {
@@ -170,7 +168,6 @@ export function FolderTree({
               className="pr-1"
               style={{ paddingLeft: 8 + depth * 12 }}
             >
-              <SidebarMenuRow>
               <ConversationItem
                 conv={chat}
                 activeConversationId={activeConversationId}
@@ -185,7 +182,6 @@ export function FolderTree({
                 handleArchive={conv.handleArchive}
                 handleStartDelete={conv.handleStartDelete}
               />
-              </SidebarMenuRow>
             </SidebarMenuButton>
           ))}
         </div>

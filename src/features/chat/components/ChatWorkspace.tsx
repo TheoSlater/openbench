@@ -114,7 +114,14 @@ export default function ChatWorkspace({
     if (activeConversationId) return activeConversationId;
     const created = await createConversation("New Chat", false, activeFolder?.id);
     if (selectedRuntime) {
-      await connectionsClient.setRuntime(created.id, selectedRuntime);
+      // A failed runtime bind (deleted workspace, expired session, ...) must
+      // not swallow the message the user is sending: still send, and let the
+      // next successful run rebind the conversation.
+      try {
+        await connectionsClient.setRuntime(created.id, selectedRuntime);
+      } catch (error) {
+        console.error("Failed to bind the selected runtime to the conversation:", error);
+      }
     }
     return created.id;
   }, [activeConversationId, activeFolder?.id, createConversation, selectedRuntime]);

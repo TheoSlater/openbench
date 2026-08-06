@@ -10,6 +10,7 @@ export interface MessageProps {
   model?: string;
   thinking?: string;
   thinkingDuration?: number;
+  thinkingTimings?: number[];
   isThinking?: boolean;
   isStreaming?: boolean;
   status?: "queued" | "streaming" | "complete" | "error" | "aborted";

@@ -3,10 +3,21 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
+
+function isGitDirty(): boolean {
+  try {
+    const out = execSync("git status --porcelain", { cwd: __dirname }).toString().trim();
+    return out.length > 0;
+  } catch {
+    // Not a git checkout (e.g. release tarball) — never dirty.
+    return false;
+  }
+}
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -27,6 +38,8 @@ export default defineConfig(async () => ({
     DEV: process.env.NODE_ENV !== "production",
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV || "development"),
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // Only dev builds surfaced via `__APP_DIRTY__`; release builds are always clean.
+    __APP_DIRTY__: JSON.stringify(process.env.NODE_ENV !== "production" && isGitDirty()),
   },
   resolve: {
     alias: {

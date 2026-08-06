@@ -8,7 +8,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArchivedChatsDialog } from "@/features/chat/components/ArchivedChatsDialog";
 import { useAuthStore } from "@/store/authStore";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -25,9 +24,8 @@ export function GuestFooter({ onOpenSettings }: { onOpenSettings: () => void }) 
       <>
         <DropdownMenu>
           <div className="flex justify-center">
-            <Tooltip>
-              <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger
+              render={
                 <Button
                   type="button"
                   variant="ghost"
@@ -41,10 +39,8 @@ export function GuestFooter({ onOpenSettings }: { onOpenSettings: () => void }) 
                     </AvatarFallback>
                   </Avatar>
                 </Button>
-              </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right">Guest mode</TooltipContent>
-            </Tooltip>
+              }
+            />
           </div>
           <DropdownMenuContent align="end" className="min-w-[160px]">
             <DropdownMenuItem onClick={onOpenSettings} className="gap-2">
@@ -96,8 +92,9 @@ export function GuestFooter({ onOpenSettings }: { onOpenSettings: () => void }) 
           </span>
         </Button>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
+          <DropdownMenuTrigger
+            render={
+              <Button
               type="button"
               variant="ghost"
               size="icon"
@@ -105,8 +102,9 @@ export function GuestFooter({ onOpenSettings }: { onOpenSettings: () => void }) 
               className={sidebarIconButtonClassName}
             >
               <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
+              </Button>
+            }
+          />
           <DropdownMenuContent align="end" className="min-w-[160px]">
             <DropdownMenuItem onClick={onOpenSettings} className="gap-2">
               <Settings size={14} />

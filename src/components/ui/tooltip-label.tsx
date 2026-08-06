@@ -21,7 +21,7 @@ export function TooltipLabel({
   if (!title) return children;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger render={children} />
       <TooltipContent side={placement}>{title}</TooltipContent>
     </Tooltip>
   );

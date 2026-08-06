@@ -60,7 +60,7 @@ export function LinkContextMenu({ href, children }: LinkContextMenuProps) {
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{trigger}</ContextMenuTrigger>
+      <ContextMenuTrigger render={trigger} />
       <ContextMenuContent className="min-w-44">
         <ContextMenuItem
           onSelect={() => {

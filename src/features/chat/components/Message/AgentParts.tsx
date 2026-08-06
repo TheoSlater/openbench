@@ -13,6 +13,10 @@ import { TextShimmer } from "@/components/ui/text-shimmer";
 import type { Message } from "@/types/chat";
 import type { AgentEvent } from "@/lib/ai/types";
 import { respondToToolApproval } from "@/features/chat/runtime/ChatRuntime";
+import {
+  GenerativeTool,
+  type GenerativeToolName,
+} from "./GenerativeTool";
 
 type Part = NonNullable<Message["runtimeParts"]>[number];
 type Permission = Extract<AgentEvent, { kind: "permission" }> & { requestId: string };
@@ -22,8 +26,15 @@ type ToolPart = Part & {
   toolName?: string;
   state: string;
   input?: unknown;
+  output?: unknown;
+  errorText?: string;
   approval?: { id: string; isAutomatic?: boolean };
 };
+
+const GENERATIVE_TOOL_NAMES = new Set<GenerativeToolName>([
+  "displayWeather",
+  "getStockPrice",
+]);
 
 const toolName = (part: Part) => part.type === "dynamic-tool"
   ? part.toolName
@@ -59,10 +70,11 @@ export const AgentParts = memo(function AgentParts({
   status?: string;
   compact?: boolean;
 }) {
-  const { permissions, plans, tools } = useMemo(() => {
+  const { permissions, plans, tools, generativeTools } = useMemo(() => {
     const permissionMap = new Map<string, Permission>();
     const planMap = new Map<string, PlanEvent>();
     const tools: ToolPart[] = [];
+    const generativeTools: ToolPart[] = [];
     for (const part of parts ?? []) {
       if (part.type === "data-agent") {
         const event = part.data as AgentEvent & { requestId?: string };
@@ -72,13 +84,19 @@ export const AgentParts = memo(function AgentParts({
           planMap.set(event.id, event as PlanEvent);
         }
       } else if (toolName(part)) {
-        tools.push(part as ToolPart);
+        const tool = part as ToolPart;
+        if (GENERATIVE_TOOL_NAMES.has(toolName(tool) as GenerativeToolName)) {
+          generativeTools.push(tool);
+        } else {
+          tools.push(tool);
+        }
       }
     }
     return {
       permissions: [...permissionMap.values()].filter((event) => event.status === "pending"),
       plans: [...planMap.values()],
       tools,
+      generativeTools,
     };
   }, [parts]);
 
@@ -93,10 +111,24 @@ export const AgentParts = memo(function AgentParts({
     }
   }, [running, status]);
 
-  if (!permissions.length && !plans.length && !tools.length) return null;
+  if (!permissions.length && !plans.length && !tools.length && !generativeTools.length) return null;
 
   return (
     <div className={`${compact ? "" : "mb-3"} flex flex-col gap-2`}>
+      {generativeTools.map((tool) => {
+        const name = toolName(tool);
+        if (!GENERATIVE_TOOL_NAMES.has(name as GenerativeToolName)) return null;
+        return (
+          <GenerativeTool
+            key={tool.toolCallId}
+            toolName={name as GenerativeToolName}
+            state={tool.state}
+            input={tool.input}
+            output={tool.output}
+            errorText={tool.errorText}
+          />
+        );
+      })}
       {tools.length > 0 && (
         <Reasoning
           open={expanded}

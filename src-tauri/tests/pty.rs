@@ -18,6 +18,8 @@ fn ai_command_path_has_no_host_shell_fallback() {
     assert!(!ai_path.contains("new_default_prog"));
     assert!(!ai_path.contains("dirs::home_dir"));
     assert!(ai_path.contains("sandboxes.spawn_command"));
+    assert!(ai_path.contains("sandbox_command.headless"));
+    assert!(ai_path.contains("builder.env_clear()"));
     assert!(source.contains("#[tauri::command(async)]\npub async fn pty_spawn_command"));
     assert!(ai_path.contains("spawn_blocking"));
     assert!(source.contains("kind: \"status\""));

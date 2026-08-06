@@ -68,6 +68,7 @@ export async function streamChat(
       const registry = createToolRegistry({
         webSearch: command.webSearch,
         terminal: command.terminal,
+        generativeUI: true,
         sandboxId: command.conversationId ?? command.requestId,
         fetch: deps.fetch,
         terminalBroker: deps.terminalBroker,

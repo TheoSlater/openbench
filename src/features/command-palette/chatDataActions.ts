@@ -134,6 +134,7 @@ export async function importConversations(notify: NotifyApi) {
           provider: message.provider,
           thinking: message.thinking,
           thinkingDuration: message.thinkingDuration,
+          thinkingTimings: message.thinkingTimings,
           webSearch: message.webSearch,
         });
       }

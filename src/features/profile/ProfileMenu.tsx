@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/authStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -98,29 +99,26 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({
     return (
       <Box className="px-1.5 pb-0.5">
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            {guestButton}
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger render={guestButton} />
           <DropdownMenuContent align="end" className="min-w-56">
-            <DropdownMenuLabel>
-              <Box className="flex min-w-0 flex-col">
-                <Typography
-                  weight="medium"
-                  noWrap
-                >
-                  Guest
-                </Typography>
-              </Box>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => onOpenSettings?.("profile")}>
-              <Settings size={16} />
-              <span>Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => setIsArchivedOpen(true)}>
-              <Archive size={16} />
-              <span>Archived Chats</span>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>
+                <Box className="flex min-w-0 flex-col">
+                  <Typography weight="medium" noWrap>
+                    Guest
+                  </Typography>
+                </Box>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => onOpenSettings?.("profile")}>
+                <Settings size={16} />
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => setIsArchivedOpen(true)}>
+                <Archive size={16} />
+                <span>Archived Chats</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => actions.openAuth()}>
               <LogIn size={16} />
@@ -186,47 +184,38 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({
   return (
     <Box className="px-1.5 pb-0.5">
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          {button}
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger render={button} />
         <DropdownMenuContent align="end" className="min-w-60">
-          <DropdownMenuLabel className="p-1.5">
-            <Box className="flex min-w-0 items-center gap-2">
-              <Avatar className="size-7 shrink-0">
-                {user.avatarUrl ? (
-                  <AvatarImage src={user.avatarUrl} alt={user.fullName || user.email} />
-                ) : (
-                  <AvatarFallback seed={avatarSeed}>{initials}</AvatarFallback>
-                )}
-              </Avatar>
-              <Box className="flex min-w-0 flex-1 flex-col">
-                <Typography
-                  weight="medium"
-                  noWrap
-                  variant="small"
-                >
-                  {user.fullName || "User"}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  noWrap
-                >
-                  {user.email}
-                </Typography>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="p-1.5">
+              <Box className="flex min-w-0 items-center gap-2">
+                <Avatar className="size-7 shrink-0">
+                  {user.avatarUrl ? (
+                    <AvatarImage src={user.avatarUrl} alt={user.fullName || user.email} />
+                  ) : (
+                    <AvatarFallback seed={avatarSeed}>{initials}</AvatarFallback>
+                  )}
+                </Avatar>
+                <Box className="flex min-w-0 flex-1 flex-col">
+                  <Typography weight="medium" noWrap variant="small">
+                    {user.fullName || "User"}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {user.email}
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
-          </DropdownMenuLabel>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => onOpenSettings?.("profile")}>
-            <Settings size={16} />
-            <span>Settings</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => setIsArchivedOpen(true)}>
-            <Archive size={16} />
-            <span>Archived Chats</span>
-          </DropdownMenuItem>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => onOpenSettings?.("profile")}>
+              <Settings size={16} />
+              <span>Settings</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-3 whitespace-nowrap" onClick={() => setIsArchivedOpen(true)}>
+              <Archive size={16} />
+              <span>Archived Chats</span>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-3 whitespace-nowrap"

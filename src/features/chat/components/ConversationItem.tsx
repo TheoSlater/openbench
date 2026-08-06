@@ -151,20 +151,19 @@ export const ConversationItem = React.memo(function ConversationItem({
           {shortTimeAgo(conv.updatedAt || conv.createdAt)}
         </span>
         <Box
-          // `has-data-[state=open]` keeps the trigger mounted while its menu is
-          // open, otherwise moving the pointer off the row would unmount the
-          // open dropdown. Touch devices have no hover, so show it there.
-          className="hidden shrink-0 group-hover/row:block group-focus-within/row:block has-data-[state=open]:block [@media(hover:none)]:block"
+          // Keep the trigger mounted while the menu is open so Base UI retains
+          // its anchor after the pointer leaves the row.
+          className="flex shrink-0 pointer-events-none opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
         >
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton
+            <DropdownMenuTrigger
+              render={<IconButton
                 size="small"
                 aria-label={`Actions for ${conv.title || "Untitled"}`}
                 onClick={(e) => e.stopPropagation()}
-              >
+              />}
+            >
                 <MoreHorizontal />
-              </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={(e) => handleStartRename?.(e, conv)}>

@@ -46,14 +46,18 @@ Provider packages load only when selected. One registry function constructs mode
 
 `streamText` produces AI SDK `UIMessageChunk` records. `@ai-sdk/react` consumes them through one module-level Tauri listener and request-specific streams. Independent `requestId` values isolate parallel models, background chats, aborts, and retries. React updates are throttled to 50 ms so tokens do not cause one render each.
 
-Regular chat exposes two Zod-validated AI SDK tools through the per-request registry. Tool schemas include descriptions, strict validation where supported, and input examples. The registry also applies active-tool filtering, stable tool order, tool choice, lifecycle callbacks, and sequential execution with `stopWhen: isStepCount(10)`:
+Regular chat exposes Zod-validated AI SDK tools through the per-request registry. Weather uses keyless Open-Meteo first and falls back to web search; stock uses web search. Tool schemas include descriptions, strict validation where supported, and input examples. The registry also applies active-tool filtering, stable tool order, tool choice, lifecycle callbacks, and sequential execution with `stopWhen: isStepCount(10)`:
 
 - `web_search` — local DuckDuckGo HTML, Exa, Tavily, and Ollama-backed search. Results become standard tool/source parts and existing PolyUI citation state.
 - `terminal` — requires explicit user approval before it starts. After approval, the frontend receives a `data-terminal` start part, opens the AI terminal tab, and calls `pty_spawn_command` so the shell runs inside the host PTY the user can watch and interrupt. Rust relays the captured PTY output and exit status back to the sidecar as `pty-data` / `pty-exit` commands keyed by the tool's `toolCallId`; a `PtyBroker` buffers that data until the tool call registers and resolves the model's `execute` with the result. No filesystem tool exists in regular chat.
+- `displayWeather` — geocodes the location and reads current temperature/wind from Open-Meteo without a key; falls back to web search when either request fails, then renders a weather card.
+- `getStockPrice` — searches the web for the symbol and renders a stock-results card.
 
 ### AI terminal sandbox
 
-The host PTY is only a relay. Every AI command runs as the unprivileged `sandbox` user in a disposable Docker/Podman container with a private `/workspace`, `/home/sandbox`, and `/tmp`; host execution is never a fallback. Containers are labeled for exact startup reaping, capped at 4 CPUs, 4 GiB RAM, 512 processes, and an 8 GiB workspace. Sessions are reused per conversation, resettable from the terminal, and reaped after 30 minutes idle.
+The host PTY is only a relay. Full AI commands run as the unprivileged `sandbox` user in a disposable Docker/Podman container with a private `/workspace`, `/home/sandbox`, and `/tmp`; host execution is never a fallback. Containers are labeled for exact startup reaping, capped at 4 CPUs, 4 GiB RAM, 512 processes, and an 8 GiB workspace. Sessions are reused per conversation, resettable from the terminal, and reaped after 30 minutes idle.
+
+Simple read-only commands can use a `host-restricted` headless runner when Docker/Podman is not needed. It accepts only fixed direct executables (`pwd`, `ls`, file reads, search, version checks, and `git status`), clears inherited environment variables, maps paths into a private disposable temp workspace, and exposes no ports. Shell syntax, writes, package managers, servers, compilers, arbitrary tools, and host paths still require Docker/Podman; there is no host-shell fallback.
 
 The default network mode is bridge egress so npm, apt, git, and development servers work. Preview forwarding binds only to PolyUI loopback listeners and rejects loopback, link-local/metadata, and private host targets; the inspected container address is the only private address allowed as a preview target. Diagnostics expose the active runtime, policy, limits, capabilities, ports, and usage without host paths or secrets.
 

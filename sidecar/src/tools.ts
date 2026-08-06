@@ -4,9 +4,18 @@ import {
   type PtyBroker,
   type TerminalStart,
 } from "./terminal";
-import { createWebSearchTool, type SearchConfig } from "./web-search";
+import {
+  createWebSearchTool,
+  type SearchConfig,
+} from "./web-search";
+import { createStockTool, createWeatherTool } from "./generative-tools";
 
-const DEFAULT_TOOL_ORDER = ["web_search", "terminal"] as const;
+const DEFAULT_TOOL_ORDER = [
+  "web_search",
+  "terminal",
+  "displayWeather",
+  "getStockPrice",
+] as const;
 
 export type ToolChoice =
   | "auto"
@@ -14,7 +23,11 @@ export type ToolChoice =
   | "none"
   | { type: "tool"; toolName: string };
 
-type RuntimeToolName = "web_search" | "terminal";
+type RuntimeToolName =
+  | "web_search"
+  | "terminal"
+  | "displayWeather"
+  | "getStockPrice";
 
 export type ToolRegistryOptions = {
   webSearch?: SearchConfig;
@@ -23,6 +36,7 @@ export type ToolRegistryOptions = {
   terminalBroker?: PtyBroker;
   terminalStart?: TerminalStart;
   sandboxId?: string;
+  generativeUI?: boolean;
   activeTools?: readonly string[];
   toolOrder?: readonly string[];
   toolChoice?: ToolChoice;
@@ -30,10 +44,16 @@ export type ToolRegistryOptions = {
 };
 
 export function createToolRegistry(options: ToolRegistryOptions) {
+  const search: SearchConfig = options.webSearch ?? {
+    provider: "local",
+    secret: undefined,
+    baseUrl: undefined,
+  };
+  const webSearch = options.webSearch
+    ? createWebSearchTool(options.webSearch, options.fetch)
+    : undefined;
   const tools = {
-    ...(options.webSearch
-      ? { web_search: createWebSearchTool(options.webSearch, options.fetch) }
-      : {}),
+    ...(webSearch ? { web_search: webSearch } : {}),
     ...(options.terminal
       ? {
         terminal: createTerminalTool({
@@ -41,6 +61,12 @@ export function createToolRegistry(options: ToolRegistryOptions) {
           onStart: options.terminalStart,
           sandboxId: options.sandboxId,
         }),
+      }
+      : {}),
+    ...(options.generativeUI
+      ? {
+        displayWeather: createWeatherTool({ fetch: options.fetch, search }),
+        getStockPrice: createStockTool({ fetch: options.fetch, search }),
       }
       : {}),
   };

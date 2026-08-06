@@ -101,6 +101,7 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
             provider TEXT,
             thinking TEXT,
             thinkingDuration REAL,
+            thinkingTimings TEXT,
             webSearch TEXT,
             status TEXT,
             errorMessage TEXT,
@@ -193,7 +194,13 @@ async fn ensure_conversations_schema(pool: &SqlitePool) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
 
-    for column in ["runtimeParts", "usage", "finishReason", "agentSessionId"] {
+    for column in [
+        "thinkingTimings",
+        "runtimeParts",
+        "usage",
+        "finishReason",
+        "agentSessionId",
+    ] {
         let exists = sqlx::query(&format!(
             "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = '{column}'"
         ))
