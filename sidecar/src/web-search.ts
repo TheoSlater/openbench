@@ -8,7 +8,7 @@ export type SearchResult = {
   highlights: string[];
 };
 
-type SearchConfig = NonNullable<ChatCommand["webSearch"]>;
+export type SearchConfig = NonNullable<ChatCommand["webSearch"]>;
 
 const truncate = (text: string) => text.trim().slice(0, 500);
 
@@ -126,10 +126,16 @@ export function createWebSearchTool(
   providerFetch: typeof fetch = fetch,
 ) {
   return tool({
-    description: "Search the web for current, factual information and return cited results.",
+    description: () =>
+      `Search the web for current, factual information using ${config.provider} and return cited results.`,
     inputSchema: z.object({
-      query: z.string().trim().min(2).max(500),
+      query: z.string().trim().min(2).max(500).describe("Search query"),
     }),
+    strict: true,
+    inputExamples: [
+      { input: { query: "latest PolyUI release" } },
+      { input: { query: "AI SDK tool calling" } },
+    ],
     execute: async ({ query }) => ({
       query,
       results: await searchWeb(query, config, providerFetch),

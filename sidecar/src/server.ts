@@ -9,13 +9,14 @@ import {
   type RuntimeRecord,
 } from "./protocol";
 import { generate, streamChat } from "./runtime";
-import { closeAgentProviders, streamAgent } from "./agents";
+import { closeAgentProviders, listAgentModels, streamAgent } from "./agents";
 import { ApprovalBroker } from "./approvals";
 import { ptyBroker } from "./terminal";
 
 export type RuntimeServerDeps = {
   createModel?: typeof createModel;
   listModels?: typeof listModels;
+  listAgentModels?: typeof listAgentModels;
   streamChat?: typeof streamChat;
   streamAgent?: typeof streamAgent;
   write: (record: RuntimeRecord, secrets?: string[]) => void;
@@ -25,6 +26,7 @@ export class RuntimeServer {
   private readonly active = new Map<string, AbortController>();
   private readonly makeModel: typeof createModel;
   private readonly discoverModels: typeof listModels;
+  private readonly discoverAgentModels: typeof listAgentModels;
   private readonly runChat: typeof streamChat;
   private readonly runAgent: typeof streamAgent;
   private readonly approvals: ApprovalBroker;
@@ -33,6 +35,7 @@ export class RuntimeServer {
   constructor(private readonly deps: RuntimeServerDeps) {
     this.makeModel = deps.createModel ?? createModel;
     this.discoverModels = deps.listModels ?? listModels;
+    this.discoverAgentModels = deps.listAgentModels ?? listAgentModels;
     this.runChat = deps.streamChat ?? streamChat;
     this.runAgent = deps.streamAgent ?? streamAgent;
     this.approvals = new ApprovalBroker((event, requestId) => deps.write({
@@ -75,14 +78,30 @@ export class RuntimeServer {
         return;
       case "pty-data":
         ptyBroker.append(command.requestId, new Uint8Array(command.payload.data));
+        this.deps.write({
+          type: "log",
+          level: "warn",
+          message: `PTY data received: ${command.requestId} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`,
+        });
         return;
       case "pty-exit":
         ptyBroker.finish(command.requestId, command.payload.exitCode);
+        this.deps.write({
+          type: "log",
+          level: "warn",
+          message: `PTY exit received: ${command.requestId} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`,
+        });
         return;
       case "list-models":
         await this.withRequest(command.requestId, [command.connection.secret], async (signal) => {
           const result = await this.discoverModels(command.connection, ((input, init) =>
             fetch(input, { ...init, signal: init?.signal ?? signal })) as typeof fetch);
+          this.deps.write({ type: "result", requestId: command.requestId, result });
+        });
+        return;
+      case "agent-models":
+        await this.withRequest(command.requestId, [], async () => {
+          const result = await this.discoverAgentModels(command.agent);
           this.deps.write({ type: "result", requestId: command.requestId, result });
         });
         return;

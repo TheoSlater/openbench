@@ -5,6 +5,7 @@ import {
   hideViewportDrawer,
   openAiTerminalTab,
   openViewportTerminal,
+  previewTabId,
   selectViewportTab,
   setViewportTabOrder,
   showViewportDrawer,
@@ -14,6 +15,7 @@ import {
 const resetViewportStore = () => {
   useViewportStore.setState({
     tabs: [],
+    previews: {},
     activeTabId: null,
     drawerOpen: false,
     drawerWidth: 440,
@@ -153,5 +155,29 @@ describe("viewport drawer state", () => {
     const state = useViewportStore.getState();
     expect(state.tabs).toEqual([terminal, AI_TERMINAL_TAB_ID]);
     expect(state.activeTabId).toBe(AI_TERMINAL_TAB_ID);
+  });
+
+  it("opens and removes a sandbox preview tab with its port", () => {
+    const preview = {
+      sandboxId: "conversation-1",
+      containerPort: 5173,
+      hostPort: 43123,
+      url: "http://127.0.0.1:43123",
+    };
+
+    useViewportStore.getState().actions.setPreview(preview);
+
+    expect(useViewportStore.getState().tabs).toEqual([previewTabId(43123)]);
+    expect(useViewportStore.getState().previews[43123]).toEqual(preview);
+
+    const terminal = openViewportTerminal();
+    selectViewportTab(terminal);
+    useViewportStore.getState().actions.setPreview({ ...preview, url: `${preview.url}/` });
+    expect(useViewportStore.getState().activeTabId).toBe(terminal);
+
+    closeViewportTab(previewTabId(43123));
+
+    expect(useViewportStore.getState().tabs).toEqual([terminal]);
+    expect(useViewportStore.getState().previews).toEqual({});
   });
 });

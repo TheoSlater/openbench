@@ -1,33 +1,114 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { destroyAiSandbox } from "@/lib/ai/transport";
+import { closePty } from "./pty";
 import { openAiTerminalTab } from "./viewportStore";
 
 export type PtyEvent = {
-  kind: "data" | "exit" | "error";
+  kind: "data" | "exit" | "error" | "status";
   data?: number[];
   message?: string;
+  exitCode?: number | null;
+};
+
+export type AiTerminalHistoryEntry = {
+  toolCallId: string;
+  sandboxId: string;
+  command: string;
+  cwd?: string;
+  startedAt: number;
+  durationMs?: number;
+  exitCode?: number | null;
+  status: "running" | "exited" | "failed" | "reset";
 };
 
 export type AiTerminalSession = {
   toolCallId: string;
+  sandboxId: string;
   command: string;
   cwd?: string;
-  /** Set once the host PTY session exists; input is only sent once attached. */
+  /** Set once the sandbox PTY session exists; input is only sent once attached. */
   ptyId: string | null;
   /** Every PTY event so far, replayed when the viewport attaches. */
   events: PtyEvent[];
+  /** Latest sandbox startup or execution step shown by the viewport. */
+  status?: string;
   error?: string;
+  startedAt: number;
+  durationMs?: number;
+  exitCode?: number | null;
+  history: AiTerminalHistoryEntry[];
+  resetting: boolean;
   done: boolean;
+};
+
+export type SandboxDiagnostics = {
+  sandboxId: string;
+  state: string;
+  runtime: string;
+  containerName: string;
+  capabilities: string[];
+  importedTools: string[];
+  ports: Array<{
+    sandboxId: string;
+    containerPort: number;
+    hostPort: number;
+    url: string;
+  }>;
+  workspaceBytes: number;
+  workspaceLimitBytes: number;
+  memoryLimitBytes: number;
+  cpuLimit: number;
+  pidsLimit: number;
+  networkPolicy: string;
+  activeCommands: number;
+  lastActivityAgeMs: number;
 };
 
 type Listener = (session: AiTerminalSession) => void;
 
 const listeners = new Set<Listener>();
 const sessions = new Map<string, AiTerminalSession>();
+const history: AiTerminalHistoryEntry[] = [];
 let current: AiTerminalSession | null = null;
+const MAX_HISTORY = 50;
+const MAX_OUTPUT_BYTES = 100_000;
+
+function historyEntry(session: AiTerminalSession): AiTerminalHistoryEntry {
+  return {
+    toolCallId: session.toolCallId,
+    sandboxId: session.sandboxId,
+    command: session.command,
+    cwd: session.cwd,
+    startedAt: session.startedAt,
+    durationMs: session.durationMs,
+    exitCode: session.exitCode,
+    status: session.error
+      ? "failed"
+      : session.resetting
+        ? "reset"
+        : session.done
+          ? "exited"
+          : "running",
+  };
+}
+
+function syncHistory(session: AiTerminalSession): void {
+  const next = historyEntry(session);
+  const index = history.findIndex((entry) => entry.toolCallId === session.toolCallId);
+  if (index < 0) history.push(next);
+  else history[index] = next;
+  if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+}
 
 /** Emits a fresh snapshot so React sees a new object identity each update. */
 function emit(session: AiTerminalSession): void {
-  const snapshot: AiTerminalSession = { ...session, events: [...session.events] };
+  if (current !== session) return;
+  syncHistory(session);
+  const snapshot: AiTerminalSession = {
+    ...session,
+    events: [...session.events],
+    history: history.map((entry) => ({ ...entry })),
+  };
   for (const listener of listeners) listener(snapshot);
 }
 
@@ -38,37 +119,104 @@ function emit(session: AiTerminalSession): void {
  */
 export function subscribeAiTerminal(listener: Listener): () => void {
   listeners.add(listener);
-  if (current) listener({ ...current, events: [...current.events] });
+  if (current) {
+    listener({
+      ...current,
+      events: [...current.events],
+      history: history.map((entry) => ({ ...entry })),
+    });
+  }
   return () => listeners.delete(listener);
 }
 
 export function getAiTerminalSession(): AiTerminalSession | null {
-  return current;
+  return current
+    ? { ...current, events: [...current.events], history: history.map((entry) => ({ ...entry })) }
+    : null;
+}
+
+export function getAiTerminalOutput(): string {
+  if (!current) return "";
+  const bytes = current.events
+    .filter((event) => event.kind === "data" && event.data)
+    .flatMap((event) => event.data ?? []);
+  return new TextDecoder().decode(Uint8Array.from(bytes)).slice(-MAX_OUTPUT_BYTES);
 }
 
 /** Clears sessions and dedupe state (used by tests and session cleanup). */
 export function resetAiTerminalState(): void {
   sessions.clear();
+  history.length = 0;
   current = null;
   seenToolCallIds.clear();
 }
 
+export async function stopAiCommand(): Promise<void> {
+  const session = current;
+  if (!session?.ptyId || session.done) return;
+  session.status = "Stopping command…";
+  emit(session);
+  try {
+    await invoke("sandbox_stop_processes", { sandboxId: session.sandboxId }).catch(() => undefined);
+    await closePty(session.ptyId);
+  } catch (error) {
+    session.error = String(error);
+    session.done = true;
+    session.durationMs = Date.now() - session.startedAt;
+    emit(session);
+  }
+}
+
+export async function resetAiSandbox(): Promise<void> {
+  const session = current;
+  if (!session) return;
+  const ptyId = session.ptyId;
+  session.resetting = true;
+  session.done = true;
+  session.status = "Resetting sandbox…";
+  emit(session);
+  if (ptyId) {
+    try {
+      await invoke("sandbox_stop_processes", { sandboxId: session.sandboxId }).catch(() => undefined);
+      await closePty(ptyId);
+    } catch {
+      // The PTY may have exited between the button press and close.
+    }
+  }
+  session.ptyId = null;
+  try {
+    await destroyAiSandbox(session.sandboxId);
+    session.durationMs = Date.now() - session.startedAt;
+    session.status = "Sandbox reset";
+    emit(session);
+  } catch (error) {
+    session.error = String(error);
+    session.status = "Sandbox reset failed";
+    emit(session);
+  }
+}
+
 /**
- * Spawns a real PTY session for the command: the host shell runs the command
- * in a proper terminal (visible to the user) and relays the captured output
- * back to the AI runtime keyed by the tool call id.
+ * Spawns a sandbox PTY session. Tauri owns the container boundary and relays
+ * captured output back to the AI runtime keyed by the tool call id.
  */
 export function runAiCommand(spec: {
   toolCallId: string;
+  sandboxId: string;
   command: string;
   cwd?: string;
 }): void {
   const session: AiTerminalSession = {
     toolCallId: spec.toolCallId,
+    sandboxId: spec.sandboxId,
     command: spec.command,
     cwd: spec.cwd,
     ptyId: null,
     events: [],
+    status: "Initializing sandbox…",
+    startedAt: Date.now(),
+    history: [],
+    resetting: false,
     done: false,
   };
   sessions.set(spec.toolCallId, session);
@@ -78,7 +226,27 @@ export function runAiCommand(spec: {
 
   const channel = new Channel<PtyEvent>();
   channel.onmessage = (event) => {
-    if (event.kind === "exit") session.done = true;
+    if (session.resetting) return;
+    if (event.kind === "status" && event.message) {
+      session.status = event.message;
+    }
+    if (event.kind === "error" && event.message) {
+      session.error = event.message;
+      session.done = true;
+      session.durationMs = Date.now() - session.startedAt;
+      session.status = "Sandbox failed";
+    }
+    if (event.kind === "exit") {
+      session.done = true;
+      session.durationMs = Date.now() - session.startedAt;
+      session.exitCode = event.exitCode;
+      session.status =
+        event.exitCode === undefined || event.exitCode === null
+          ? "Command exited"
+          : event.exitCode === 0
+            ? "Command finished"
+            : `Exited with code ${event.exitCode}`;
+    }
     session.events.push(event);
     emit(session);
   };
@@ -87,16 +255,24 @@ export function runAiCommand(spec: {
     rows: 24,
     command: spec.command,
     cwd: spec.cwd ?? null,
+    sandboxId: spec.sandboxId,
     relayRequestId: spec.toolCallId,
     onEvent: channel,
   })
     .then((ptyId) => {
+      if (session.resetting) {
+        void closePty(ptyId);
+        return;
+      }
       session.ptyId = ptyId;
+      session.status = "Running command…";
       emit(session);
     })
     .catch((error) => {
       session.done = true;
       session.error = String(error);
+      session.durationMs = Date.now() - session.startedAt;
+      session.status = "Sandbox failed";
       emit(session);
     });
 }
@@ -104,7 +280,7 @@ export function runAiCommand(spec: {
 type TerminalPart = {
   type: "data-terminal";
   id: string;
-  data?: { kind?: "start"; command?: string; cwd?: string };
+  data?: { kind?: "start"; command?: string; cwd?: string; sandboxId?: string };
 };
 
 const seenToolCallIds = new Set<string>();
@@ -127,6 +303,7 @@ export function handleAiTerminalParts(parts: ReadonlyArray<{ type: string }>): v
     if (part.data.kind !== "start") continue;
     runAiCommand({
       toolCallId: part.id,
+      sandboxId: part.data.sandboxId ?? part.id,
       command: part.data.command ?? "",
       cwd: part.data.cwd,
     });

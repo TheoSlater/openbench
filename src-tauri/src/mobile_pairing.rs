@@ -1027,6 +1027,7 @@ async fn start_mobile_chat(
             agent_kind,
             workspace_id,
             agent_session_id: None,
+            ..
         }),
     ) = (request.conversation_id.as_deref(), runtime.clone())
     {
@@ -1040,6 +1041,7 @@ async fn start_mobile_chat(
                     agent_kind: existing_kind,
                     workspace_id: existing_workspace,
                     agent_session_id: Some(_),
+                    ..
                 } if existing_installation == &installation_id
                     && existing_kind == &agent_kind
                     && existing_workspace == &workspace_id
@@ -1055,6 +1057,7 @@ async fn start_mobile_chat(
             agent_kind,
             workspace_id,
             agent_session_id,
+            model_id: runtime_model_id,
         }) => {
             if installation_id != agent_kind.as_str() {
                 return Err("Coding agent installation is invalid.".to_string());
@@ -1087,6 +1090,7 @@ async fn start_mobile_chat(
                         "accessMode": "workspace-write",
                         "executablePath": status.executable,
                         "sessionId": agent_session_id,
+                        "modelId": runtime_model_id,
                     },
                     "messages": messages,
                     "reasoning": "medium",
@@ -1272,6 +1276,7 @@ async fn list_mobile_runtimes(db: &sqlx::SqlitePool) -> Result<serde_json::Value
                     agent_kind: kind,
                     workspace_id: workspace.id.clone(),
                     agent_session_id: None,
+                    model_id: None,
                 },
             }));
         }

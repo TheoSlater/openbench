@@ -71,7 +71,7 @@ export interface ChatMessage {
   status?: "queued" | "streaming" | "complete" | "error" | "aborted";
   errorMessage?: string;
   webSearch?: WebSearchEvent;
-  /** Structured AI SDK parts not duplicated by content/thinking/attachments. */
+  /** Structured AI SDK parts; tool turns retain text/reasoning order here. */
   runtimeParts?: Array<UIMessage<unknown, PolyUIData>["parts"][number]>;
   usage?: {
     inputTokens?: number;

@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
 import type { Message } from "@/types/chat";
 import type { PolyUIMessage } from "@/lib/ai/messages";
 import { TauriChatTransport, type AgentTransport } from "@/lib/ai/transport";
@@ -32,6 +33,30 @@ type Props = {
   onError: (job: ChatJob, error: Error) => void;
 };
 
+type ApprovalHandler = (approved: boolean) => void;
+type ApprovalPart = {
+  state?: string;
+  approval?: { id: string; isAutomatic?: boolean };
+};
+
+const approvalHandlers = new Map<string, ApprovalHandler>();
+
+export function respondToToolApproval(approvalId: string, approved: boolean): boolean {
+  const handler = approvalHandlers.get(approvalId);
+  if (!handler) return false;
+  handler(approved);
+  return true;
+}
+
+function pendingApprovalIds(message: PolyUIMessage): string[] {
+  return message.parts.flatMap((part) => {
+    const value = part as ApprovalPart;
+    return value.state === "approval-requested" && value.approval && !value.approval.isAutomatic
+      ? [value.approval.id]
+      : [];
+  });
+}
+
 const ModelChatSession = memo(function ModelChatSession({
   job,
   onUpdate,
@@ -51,6 +76,7 @@ const ModelChatSession = memo(function ModelChatSession({
       workspaceId: job.agent.workspaceId,
       accessMode: job.agent.accessMode,
       sessionId: job.agent.sessionId,
+      modelId: job.agent.modelId,
     } : undefined,
     instructions: job.instructions,
     reasoning: job.reasoning,
@@ -62,13 +88,16 @@ const ModelChatSession = memo(function ModelChatSession({
   const {
     messages,
     sendMessage,
+    addToolApprovalResponse,
     stop,
   } = useChat<PolyUIMessage>({
     id: job.requestId,
     messages: initialMessages,
     transport,
     throttle: 50,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: ({ message, isAbort, isError }) => {
+      if (pendingApprovalIds(message).length) return;
       onFinish(job, message, { aborted: isAbort, failed: isError });
     },
     onError: (error) => onError(job, error),
@@ -84,6 +113,23 @@ const ModelChatSession = memo(function ModelChatSession({
     const assistant = messages[messages.length - 1];
     if (assistant?.role === "assistant") onUpdate(job, assistant);
   }, [job, messages, onUpdate]);
+
+  useEffect(() => {
+    const handlers = new Map<string, ApprovalHandler>();
+    const assistant = messages[messages.length - 1];
+    for (const approvalId of assistant ? pendingApprovalIds(assistant) : []) {
+      const handler = (approved: boolean) => {
+        addToolApprovalResponse({ id: approvalId, approved });
+      };
+      handlers.set(approvalId, handler);
+      approvalHandlers.set(approvalId, handler);
+    }
+    return () => {
+      for (const [approvalId, handler] of handlers) {
+        if (approvalHandlers.get(approvalId) === handler) approvalHandlers.delete(approvalId);
+      }
+    };
+  }, [addToolApprovalResponse, messages]);
 
   useEffect(() => {
     if (job.cancelled) void stop();

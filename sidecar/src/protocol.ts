@@ -39,6 +39,12 @@ const chatSchema = z.object({
     baseUrl: optional(z.string().url()),
   })),
   terminal: optional(z.boolean()),
+  toolChoice: optional(z.union([
+    z.enum(["auto", "required", "none"]),
+    z.object({ type: z.literal("tool"), toolName: z.string().min(1) }),
+  ])),
+  activeTools: optional(z.array(z.string().min(1))),
+  toolOrder: optional(z.array(z.string().min(1))),
   collectText: optional(z.boolean()),
 });
 
@@ -60,9 +66,19 @@ const agentSchema = z.object({
   reasoning: optional(z.enum(["none", "minimal", "low", "medium", "high", "xhigh"])),
 });
 
+const agentModelsSchema = z.object({
+  type: z.literal("agent-models"),
+  requestId: z.string().min(1),
+  agent: z.object({
+    kind: z.enum(["claude-code", "codex"]),
+    executablePath: optional(z.string().min(1)),
+  }),
+});
+
 const commandSchema = z.discriminatedUnion("type", [
   chatSchema,
   agentSchema,
+  agentModelsSchema,
   z.object({ type: z.literal("cancel"), requestId: z.string().min(1) }),
   z.object({
     type: z.literal("approval"),
@@ -110,6 +126,7 @@ const commandSchema = z.discriminatedUnion("type", [
 export type RuntimeCommand = z.infer<typeof commandSchema>;
 export type ChatCommand = z.infer<typeof chatSchema>;
 export type AgentCommand = z.infer<typeof agentSchema>;
+export type AgentModelsCommand = z.infer<typeof agentModelsSchema>;
 export type RuntimeConnection = ChatCommand["connection"];
 
 export type RuntimeRecord =

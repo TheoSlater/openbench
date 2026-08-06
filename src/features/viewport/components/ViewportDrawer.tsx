@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Reorder } from "motion/react";
-import { Bot, PanelRightIcon, Plus, SquareTerminal } from "lucide-react";
+import { Bot, Globe2, PanelRightIcon, Plus, SquareTerminal } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { IconButton } from "@/components/ui/icon-button";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settingsStore";
 import {
   AI_TERMINAL_TAB_ID,
+  SANDBOX_PREVIEW_TAB_PREFIX,
+  isPreviewTab,
   closeViewport,
   closeViewportTab,
   hideViewportDrawer,
@@ -14,16 +17,20 @@ import {
   selectViewportTab,
   setViewportTabOrder,
   useViewportStore,
+  previewForTab,
+  type SandboxPreview,
 } from "../viewportStore";
 import { useDrawerResize } from "../hooks/useDrawerResize";
 import { DrawerTab } from "./DrawerTab";
 import { TerminalViewport } from "./TerminalViewport";
 import { AiTerminalViewport } from "./AiTerminalViewport";
+import { SandboxPreviewViewport } from "./SandboxPreviewViewport";
 
 const isAiTab = (id: string) => id === AI_TERMINAL_TAB_ID;
 
 export function ViewportDrawer() {
   const tabs = useViewportStore((state) => state.tabs);
+  const previews = useViewportStore((state) => state.previews);
   const activeTabId = useViewportStore((state) => state.activeTabId);
   const open = useViewportStore((state) => state.drawerOpen);
   const width = useViewportStore((state) => state.drawerWidth);
@@ -34,10 +41,34 @@ export function ViewportDrawer() {
   const { dragging, startResize } = useDrawerResize(width, setDrawerWidth);
   const visible = open && tabs.length > 0;
 
-  // The terminal is beta-gated; the AI terminal tab is not (it only appears
-  // when the AI runs a command through its own feature flag), so keep it.
   useEffect(() => {
-    if (!betaFeatures && tabs.some((tab) => !isAiTab(tab))) closeViewport();
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const setPreview = useViewportStore.getState().actions.setPreview;
+    const clearPreviews = useViewportStore.getState().actions.clearSandboxPreviews;
+    void listen<SandboxPreview>("sandbox-port", ({ payload }) => setPreview(payload))
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((error) => console.error("Sandbox preview listener failed:", error));
+    let stopDestroyed: (() => void) | undefined;
+    void listen<string>("sandbox-destroyed", ({ payload }) => clearPreviews(payload))
+      .then((stop) => {
+        if (disposed) stop();
+        else stopDestroyed = stop;
+      })
+      .catch((error) => console.error("Sandbox lifecycle listener failed:", error));
+    return () => {
+      disposed = true;
+      unlisten?.();
+      stopDestroyed?.();
+    };
+  }, []);
+
+  // Human terminal is beta-gated; AI and sandbox preview tabs are always kept.
+  useEffect(() => {
+    if (!betaFeatures && tabs.some((tab) => !isAiTab(tab) && !isPreviewTab(tab))) closeViewport();
   }, [betaFeatures, tabs]);
 
   return (
@@ -70,8 +101,8 @@ export function ViewportDrawer() {
               <DrawerTab
                 key={id}
                 id={id}
-                icon={isAiTab(id) ? <Bot /> : <SquareTerminal />}
-                label={isAiTab(id) ? "AI" : "Terminal"}
+                icon={isAiTab(id) ? <Bot /> : isPreviewTab(id) ? <Globe2 /> : <SquareTerminal />}
+                label={isAiTab(id) ? "AI" : isPreviewTab(id) ? `Preview ${previews[Number(id.slice(SANDBOX_PREVIEW_TAB_PREFIX.length))]?.containerPort ?? ""}` : "Terminal"}
                 active={activeTabId === id}
                 dragging={draggedTabId === id}
                 reduceMotion={reduceMotion}
@@ -113,7 +144,13 @@ export function ViewportDrawer() {
             activeTabId === id ? "block" : "hidden",
           )}
         >
-          {isAiTab(id) ? <AiTerminalViewport /> : <TerminalViewport />}
+          {isAiTab(id) ? (
+            <AiTerminalViewport />
+          ) : isPreviewTab(id) ? (
+            <SandboxPreviewViewport preview={previewForTab(id)} />
+          ) : (
+            <TerminalViewport />
+          )}
         </section>
       ))}
     </aside>

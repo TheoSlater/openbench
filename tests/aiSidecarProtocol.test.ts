@@ -37,6 +37,28 @@ describe("AI sidecar protocol", () => {
     expect(parsed).toMatchObject({ terminal: true });
   });
 
+  it("accepts tool selection controls", () => {
+    const parsed = parseCommand(JSON.stringify({
+      type: "chat",
+      requestId: "req-tools",
+      toolChoice: "required",
+      activeTools: ["web_search"],
+      toolOrder: ["terminal", "web_search"],
+      connection: {
+        id: "conn-1",
+        provider: "openai",
+        modelId: "gpt-5",
+      },
+      messages: [],
+    }));
+
+    expect(parsed).toMatchObject({
+      toolChoice: "required",
+      activeTools: ["web_search"],
+      toolOrder: ["terminal", "web_search"],
+    });
+  });
+
   it("accepts a pty-data relay command", () => {
     const parsed = parseCommand(JSON.stringify({
       type: "pty-data",
@@ -92,6 +114,33 @@ describe("AI sidecar protocol", () => {
     }));
     expect(parsed).toMatchObject({ type: "agent", requestId: "req-agent" });
     expect(parsed).not.toHaveProperty("agent.sessionId", null);
+  });
+
+  it("accepts an agent-models command with an optional executable path", () => {
+    const parsed = parseCommand(JSON.stringify({
+      type: "agent-models",
+      requestId: "req-models",
+      agent: { kind: "codex", executablePath: "/usr/local/bin/codex" },
+    }));
+    expect(parsed).toMatchObject({
+      type: "agent-models",
+      agent: { kind: "codex", executablePath: "/usr/local/bin/codex" },
+    });
+
+    const withoutPath = parseCommand(JSON.stringify({
+      type: "agent-models",
+      requestId: "req-models-2",
+      agent: { kind: "claude-code" },
+    }));
+    expect(withoutPath).toMatchObject({ agent: { kind: "claude-code" } });
+  });
+
+  it("rejects an agent-models command for an unknown agent", () => {
+    expect(() => parseCommand(JSON.stringify({
+      type: "agent-models",
+      requestId: "req-models",
+      agent: { kind: "gemini-cli" },
+    }))).toThrow();
   });
 
   it.each(["apiKey", "api_key", "credential", "authorization"])(

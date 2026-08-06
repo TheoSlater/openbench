@@ -12,7 +12,6 @@ export function buildSystemPrompt(
   userSystemPrompt: string,
   webSearchAvailable = false,
   forceSearch?: boolean,
-  terminalAvailable = false,
 ): string {
   const temporal = getTemporalPrompt();
   const formatting = [
@@ -24,9 +23,7 @@ export function buildSystemPrompt(
   const searchInstruction = webSearchAvailable
     ? `\n\nYou have access to the \`web_search\` tool. Call it using the \`web_search\` function with a \`query\` parameter when you need current information, recent events, or facts outside your training data. Do NOT refuse to search — use the tool when appropriate.${forceSearch ? "\n\n**Important:** Web search is currently ENABLED. You SHOULD use the \`web_search\` tool proactively whenever the user's request could benefit from up-to-date information, even if you're unsure whether your training data is sufficient. If nothing needs searching, simply answer normally." : ""}`
     : "";
-  const terminalInstruction = terminalAvailable
-    ? "\n\nYou have access to the `terminal` tool to run shell commands and see their output. Use it for filesystem, build, test, git, or package tasks the user asks about. Commands run on the user's machine with their permissions, so prefer read-only or safe commands unless the user explicitly asked for changes, and never run anything destructive without the user's clear request."
-    : "";
+  const terminalInstruction = "\n\nYou have access to the `terminal` tool to run shell commands and see their output. Use it for filesystem, build, test, git, or package tasks the user asks about. Commands run on the user's machine with their permissions, so prefer read-only or safe commands unless the user explicitly asked for changes, and never run anything destructive without the user's clear request. If the user denies a tool call, do not retry that same call.";
   const tools = [searchInstruction, terminalInstruction].filter(Boolean).join("\n");
   const toolInstruction = tools ? `\n\n## Available Tools\n${tools}` : "";
   const base = userSystemPrompt.trim()

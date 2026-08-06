@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  getAiTerminalSession,
   handleAiTerminalParts,
   resetAiTerminalState,
   subscribeAiTerminal,
@@ -39,7 +40,7 @@ describe("AI terminal session bus", () => {
     handleAiTerminalParts([{
       type: "data-terminal",
       id: "c1",
-      data: { kind: "start", command: "ls", cwd: "/tmp" },
+      data: { kind: "start", command: "ls", cwd: "/tmp", sandboxId: "conv-1" },
     }]);
     await vi.waitFor(() => expect(seen).toEqual(["ls"]));
     unsubscribe();
@@ -47,6 +48,7 @@ describe("AI terminal session bus", () => {
     expect(invoke).toHaveBeenCalledWith("pty_spawn_command", expect.objectContaining({
       command: "ls",
       cwd: "/tmp",
+      sandboxId: "conv-1",
       relayRequestId: "c1",
     }));
     const state = useViewportStore.getState();
@@ -86,6 +88,51 @@ describe("AI terminal session bus", () => {
     const last = sessions.at(-1);
     expect(last?.ptyId).toBe("pty-1");
     expect(last?.events.map((event) => event.kind)).toEqual(["data", "exit"]);
+    unsubscribe();
+  });
+
+  it("shows sandbox startup status before the PTY attaches", async () => {
+    const seen: Array<string | undefined> = [];
+    const unsubscribe = subscribeAiTerminal((session) => seen.push(session.status));
+
+    handleAiTerminalParts([{
+      type: "data-terminal",
+      id: "status-call",
+      data: { kind: "start", command: "echo hi" },
+    }]);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
+
+    const channel = vi.mocked(invoke).mock.calls[0]?.[1]?.onEvent;
+    channel?.onmessage({ kind: "status", message: "Creating sandbox…" });
+
+    await vi.waitFor(() => expect(seen.at(-1)).toBe("Creating sandbox…"));
+    unsubscribe();
+  });
+
+  it("keeps late events from an older command out of the current tab", async () => {
+    const seen: string[] = [];
+    const unsubscribe = subscribeAiTerminal((session) => seen.push(session.toolCallId));
+
+    handleAiTerminalParts([{
+      type: "data-terminal",
+      id: "old-call",
+      data: { kind: "start", command: "neofetch" },
+    }]);
+    await Promise.resolve();
+    const oldChannel = vi.mocked(invoke).mock.calls[0]?.[1]?.onEvent;
+
+    handleAiTerminalParts([{
+      type: "data-terminal",
+      id: "new-call",
+      data: { kind: "start", command: "echo hello world" },
+    }]);
+    await Promise.resolve();
+
+    oldChannel?.onmessage({ kind: "data", data: [111, 108, 100] });
+    oldChannel?.onmessage({ kind: "exit" });
+
+    expect(getAiTerminalSession()?.toolCallId).toBe("new-call");
+    expect(seen.at(-1)).toBe("new-call");
     unsubscribe();
   });
 

@@ -105,7 +105,7 @@ describe("Tauri AI SDK transport", () => {
     controller.abort();
     await vi.waitFor(() => expect(bridge.calls).toContainEqual({
       command: "ai_runtime_cancel",
-      args: { requestId: "req-cancel" },
+      args: { requestId: "req-cancel", sandboxId: "conv" },
     }));
   });
 

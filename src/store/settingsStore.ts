@@ -11,7 +11,6 @@ export type GeneralSettings = {
   systemPrompt: string;
   webSearch: WebSearchSettings;
   webSearchEnabled: boolean;
-  terminalToolEnabled: boolean;
   experimentalFeatures: boolean;
   betaFeatures: boolean;
   previewFeatures: boolean;
@@ -122,7 +121,6 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
       systemPrompt: "",
       webSearch: createDefaultWebSearchSettings(),
       webSearchEnabled: false,
-      terminalToolEnabled: false,
       experimentalFeatures: false,
       betaFeatures: false,
       previewFeatures: false,

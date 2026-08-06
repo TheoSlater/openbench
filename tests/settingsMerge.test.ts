@@ -60,7 +60,6 @@ describe("mergeSettingsWithDefaults", () => {
   it("keeps opt-in surfaces off and web search local by default", () => {
     expect(defaults.general.webSearch.provider).toBe("local");
     expect(defaults.general.webSearchEnabled).toBe(false);
-    expect(defaults.general.terminalToolEnabled).toBe(false);
     expect(defaults.general.mobileWebAccess).toBe(false);
     expect(defaults.general.betaFeatures).toBe(false);
     expect(defaults.general.previewFeatures).toBe(false);

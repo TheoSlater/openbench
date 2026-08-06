@@ -1,11 +1,18 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { FileText, Terminal } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ui/reasoning";
+import { TextShimmer } from "@/components/ui/text-shimmer";
 import type { Message } from "@/types/chat";
 import type { AgentEvent } from "@/lib/ai/types";
+import { respondToToolApproval } from "@/features/chat/runtime/ChatRuntime";
 
 type Part = NonNullable<Message["runtimeParts"]>[number];
 type Permission = Extract<AgentEvent, { kind: "permission" }> & { requestId: string };
@@ -15,6 +22,7 @@ type ToolPart = Part & {
   toolName?: string;
   state: string;
   input?: unknown;
+  approval?: { id: string; isAutomatic?: boolean };
 };
 
 const toolName = (part: Part) => part.type === "dynamic-tool"
@@ -28,10 +36,28 @@ function summarize(input: unknown): string | undefined {
     .find((item): item is string => typeof item === "string");
 }
 
+const isTerminalTool = (name: string) =>
+  /exec|bash|shell|command/.test(name.toLowerCase());
+
+const isDoneState = (state: string) =>
+  ["output-available", "output-error", "input-error", "output-denied"].includes(state);
+
+const stateLabel = (state: string) => {
+  if (state === "output-available") return "done";
+  if (state === "output-error" || state === "input-error") return "error";
+  if (state === "approval-requested") return "approval";
+  if (state === "output-denied") return "denied";
+  return "running";
+};
+
 export const AgentParts = memo(function AgentParts({
   parts,
+  status,
+  compact = false,
 }: {
   parts?: Message["runtimeParts"];
+  status?: string;
+  compact?: boolean;
 }) {
   const { permissions, plans, tools } = useMemo(() => {
     const permissionMap = new Map<string, Permission>();
@@ -55,31 +81,82 @@ export const AgentParts = memo(function AgentParts({
       tools,
     };
   }, [parts]);
+
+  const running = tools.some((tool) => !isDoneState(tool.state));
+  const [expanded, setExpanded] = useState(!running);
+
+  useEffect(() => {
+    if (running) {
+      setExpanded(true);
+    } else if (["complete", "aborted", "error"].includes(status ?? "")) {
+      setExpanded(false);
+    }
+  }, [running, status]);
+
   if (!permissions.length && !plans.length && !tools.length) return null;
 
   return (
-    <div className="mb-3 flex flex-col gap-2">
-      {tools.map((tool) => {
-        const name = toolName(tool) ?? "Tool activity";
-        return (
-          <Card key={tool.toolCallId} className="shadow-none">
-            <CardHeader className="py-3">
-              <div className="flex items-start gap-3">
-                {name.includes("exec") || name.includes("bash")
-                  ? <Terminal className="mt-0.5 size-4" />
-                  : <FileText className="mt-0.5 size-4" />}
-                <div className="min-w-0 flex-1">
-                  <CardTitle className="truncate text-sm">{name}</CardTitle>
-                  {summarize(tool.input) ? (
-                    <CardDescription className="truncate">{summarize(tool.input)}</CardDescription>
-                  ) : null}
-                </div>
-                <Badge variant="secondary">{tool.state}</Badge>
-              </div>
-            </CardHeader>
-          </Card>
-        );
-      })}
+    <div className={`${compact ? "" : "mb-3"} flex flex-col gap-2`}>
+      {tools.length > 0 && (
+        <Reasoning
+          open={expanded}
+          onOpenChange={setExpanded}
+          isStreaming={running}
+          className={compact ? "" : "my-1"}
+        >
+          <ReasoningTrigger>
+            {running ? (
+              <TextShimmer duration={2} spread={15}>
+                Using a tool…
+              </TextShimmer>
+            ) : tools.length === 1 ? (
+              "Used a tool"
+            ) : (
+              "Used tools"
+            )}
+          </ReasoningTrigger>
+          <ReasoningContent className="border-none pt-1 pl-0">
+            <ul className="flex flex-col gap-1.5">
+              {tools.map((tool) => {
+                const name = toolName(tool) ?? "Tool activity";
+                return (
+                  <li key={tool.toolCallId} className="flex items-center gap-2">
+                    {isTerminalTool(name)
+                      ? <Terminal className="size-3.5 shrink-0" />
+                      : <FileText className="size-3.5 shrink-0" />}
+                    <span className="truncate font-medium text-foreground">{name}</span>
+                    {summarize(tool.input) ? (
+                      <span className="truncate text-muted-foreground">
+                        {summarize(tool.input)}
+                      </span>
+                    ) : null}
+                    <Badge variant="secondary" className="ml-auto shrink-0">
+                      {stateLabel(tool.state)}
+                    </Badge>
+                    {tool.state === "approval-requested" && tool.approval && !tool.approval.isAutomatic ? (
+                      <span className="flex shrink-0 gap-1">
+                        <Button
+                          size="sm"
+                          onClick={() => respondToToolApproval(tool.approval!.id, true)}
+                        >
+                          Allow
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => respondToToolApproval(tool.approval!.id, false)}
+                        >
+                          Deny
+                        </Button>
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </ReasoningContent>
+        </Reasoning>
+      )}
       {plans.map((plan) => (
         <Card key={plan.id} className="shadow-none">
           <CardHeader className="py-3">
@@ -125,3 +202,5 @@ export const AgentParts = memo(function AgentParts({
     </div>
   );
 });
+
+AgentParts.displayName = "AgentParts";

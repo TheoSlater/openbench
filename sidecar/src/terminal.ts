@@ -1,6 +1,5 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { UIMessageChunk } from "ai";
 
 export type TerminalResult = {
   command: string;
@@ -15,7 +14,7 @@ export type TerminalResult = {
 const MAX_OUTPUT_CHARS = 100_000;
 
 /** How long the AI waits for the terminal session to be attached and run. */
-const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
+const DEFAULT_SPAWN_TIMEOUT_MS = 180_000;
 
 /** Upper bound on finished-but-unawaited sessions kept for late registration. */
 const MAX_COMPLETED_SESSIONS = 100;
@@ -32,10 +31,9 @@ type PendingRun = {
   timer: ReturnType<typeof setTimeout>;
 };
 /**
- * Collects PTY output for a single tool call. The command itself does not run
- * in this process: the host opens the app's real terminal (PTY), shows it in
- * the xterm tab, and relays captured output back here as `pty-data` /
- * `pty-exit` protocol commands keyed by the tool's `toolCallId`.
+ * Collects sandbox PTY output for a single tool call. The command itself does
+ * not run in this process: Tauri opens a PTY attached to SandboxManager and
+ * relays captured output back here as `pty-data` / `pty-exit` commands.
  */
 export class PtyBroker {
   private readonly pending = new Map<string, PendingRun>();
@@ -46,6 +44,10 @@ export class PtyBroker {
 
   get pendingCount(): number {
     return this.pending.size;
+  }
+
+  get bufferedCount(): number {
+    return this.buffered.size;
   }
 
   hasPending(requestId: string): boolean {
@@ -184,50 +186,45 @@ export class PtyBroker {
 
 export const ptyBroker = new PtyBroker();
 
-export function createTerminalTool(options: { broker?: PtyBroker } = {}) {
+export type TerminalStart = (spec: {
+  toolCallId: string;
+  command: string;
+  cwd?: string;
+  sandboxId?: string;
+}) => void;
+
+export function createTerminalTool(options: {
+  broker?: PtyBroker;
+  onStart?: TerminalStart;
+  sandboxId?: string;
+} = {}) {
   const broker = options.broker ?? ptyBroker;
   return tool({
     description: [
-      "Run a shell command in the user's visible terminal window and return its",
-      "output once the command exits.",
-      "Use this when the user asks for filesystem inspection, builds, tests, package",
-      "management, git, or any task that needs a command line.",
-      "The command runs with the user's own permissions in a real terminal the user",
-      "can watch and interrupt, so prefer read-only or safe commands unless the user",
-      "explicitly asked for changes.",
-      "The result includes the combined output, exit code, and duration.",
+      "Run a shell command in PolyUI's isolated disposable Linux sandbox and return",
+      "its output once the command exits.",
+      "Use this for filesystem inspection, builds, tests, package management, git,",
+      "or any task that needs a command line. Sandbox starts at /workspace and",
+      "persists for this conversation. Missing common tools install automatically.",
+      "The result includes combined output, exit code, and duration.",
     ].join(" "),
     inputSchema: z.object({
-      command: z.string().trim().min(1).max(2000),
-      cwd: z.string().trim().min(1).max(1000).optional(),
+      command: z.string().trim().min(1).max(2000).describe("Shell command to run"),
+      cwd: z.string().trim().min(1).max(1000).optional().describe("Working directory"),
     }),
-    execute: async ({ command, cwd }, { toolCallId, abortSignal }) =>
-      broker.awaitRun(toolCallId, command, cwd, abortSignal),
-  });
-}
-
-export type TerminalTranscriptChunk = {
-  type: "data-terminal";
-  id: string;
-  data: { kind: "start"; command: string; cwd?: string };
-};
-
-/**
- * Turns terminal tool activity into `data-terminal` chunks so the frontend
- * can open the terminal window and start the command in its PTY.
- */
-export function withTerminalEvents(
-  stream: ReadableStream<UIMessageChunk>,
-): ReadableStream<UIMessageChunk> {
-  return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-      if (chunk.type !== "tool-input-available" || chunk.toolName !== "terminal") return;
-      const input = (chunk.input ?? {}) as { command?: unknown; cwd?: unknown };
-      if (typeof input.command !== "string") return;
-      const data: TerminalTranscriptChunk["data"] = { kind: "start", command: input.command };
-      if (typeof input.cwd === "string") data.cwd = input.cwd;
-      controller.enqueue({ type: "data-terminal", id: chunk.toolCallId, data });
+    inputExamples: [
+      { input: { command: "git status --short" } },
+      { input: { command: "npm test", cwd: "/workspace" } },
+    ],
+    execute: async ({ command, cwd }, { toolCallId, abortSignal }) => {
+      const start: Parameters<TerminalStart>[0] = {
+        toolCallId,
+        command,
+        cwd,
+      };
+      if (options.sandboxId) start.sandboxId = options.sandboxId;
+      options.onStart?.(start);
+      return broker.awaitRun(toolCallId, command, cwd, abortSignal);
     },
-  }));
+  });
 }

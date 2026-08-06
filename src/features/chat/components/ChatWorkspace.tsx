@@ -15,6 +15,7 @@ import { useViewStore, getViewComponent } from "@/lib/view-registry";
 import { useConfirmStore } from "@/store/confirmStore";
 import { connectionsClient } from "@/features/connections/client";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { runtimeLabel } from "@/features/runtime/runtime-options";
 import { useConnectionsStore } from "@/features/connections/store";
 import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/providers";
 
@@ -122,12 +123,7 @@ export default function ChatWorkspace({
     if (!activeConversationId) return;
     void connectionsClient.getRuntime(activeConversationId).then((runtime) => {
       if (!runtime) return;
-      const label = runtime.kind === "chat-model"
-        ? runtime.model_id
-        : runtime.kind === "coding-agent"
-          ? runtime.agent_kind === "codex" ? "Codex" : "Claude Code"
-          : "Choose runtime";
-      selectRuntime(runtime, label);
+      selectRuntime(runtime, runtimeLabel(runtime));
     });
   }, [activeConversationId, selectRuntime]);
 

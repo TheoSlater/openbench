@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import {
   Copy,
   MoreHorizontal,
@@ -26,6 +26,11 @@ import { ThinkingDisclosure } from "./ThinkingDisclosure";
 import { MemoryDisclosure } from "./MemoryDisclosure";
 import { WebSearchDisclosure } from "./WebSearchDisclosure";
 import { Source, SourceTrigger, SourceContent } from "@/components/ui/source";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ui/reasoning";
 
 import type { MessageProps } from "./types";
 import {
@@ -37,6 +42,88 @@ import { MemoryMenuItems } from "./MemoryMenuItems";
 import { MarkdownProse } from "./MarkdownProse";
 import { useSettingsStore } from "@/store/settingsStore";
 import { AgentParts } from "./AgentParts";
+
+type ResponsePart = NonNullable<MessageProps["runtimeParts"]>[number];
+
+const InlineReasoning = memo(function InlineReasoning({
+  text,
+  isStreaming,
+}: {
+  text: string;
+  isStreaming?: boolean;
+}) {
+  const { processedThinking } = useMessageMarkdown("", text, isStreaming);
+  const [expanded, setExpanded] = useState(true);
+
+  useEffect(() => {
+    setExpanded(Boolean(isStreaming));
+  }, [isStreaming]);
+
+  if (!processedThinking.trim()) return null;
+
+  return (
+    <Reasoning open={expanded} onOpenChange={setExpanded}>
+      <ReasoningTrigger>Reasoning</ReasoningTrigger>
+      <ReasoningContent markdown>{processedThinking}</ReasoningContent>
+    </Reasoning>
+  );
+});
+
+const OrderedResponse = memo(function OrderedResponse({
+  parts,
+  status,
+  isStreaming,
+}: {
+  parts: ResponsePart[];
+  status?: string;
+  isStreaming?: boolean;
+}) {
+  const nodes: ReactNode[] = [];
+  let activity: ResponsePart[] = [];
+  let activityIndex = 0;
+
+  const flushActivity = () => {
+    if (!activity.length) return;
+    nodes.push(
+      <AgentParts
+        key={`activity-${activityIndex++}`}
+        parts={activity}
+        status={status}
+        compact
+      />,
+    );
+    activity = [];
+  };
+
+  parts.forEach((part, index) => {
+    if (part.type === "text") {
+      flushActivity();
+      if (part.text) {
+        nodes.push(
+          <Box key={`text-${index}`} className="min-w-0">
+            <MarkdownProse content={part.text} streaming={isStreaming} />
+          </Box>,
+        );
+      }
+      return;
+    }
+    if (part.type === "reasoning") {
+      flushActivity();
+      nodes.push(
+        <InlineReasoning
+          key={`reasoning-${index}`}
+          text={part.text}
+          isStreaming={isStreaming}
+        />,
+      );
+      return;
+    }
+    activity.push(part);
+  });
+  flushActivity();
+
+  return <div className="flex flex-col gap-3">{nodes}</div>;
+});
 
 export function AssistantMessage(props: MessageProps) {
   const {
@@ -81,6 +168,9 @@ export function AssistantMessage(props: MessageProps) {
     status !== "aborted" &&
     !content.trim() &&
     Boolean(thinking?.trim());
+  const hasOrderedResponse = runtimeParts?.some(
+    (part) => part.type === "text" || part.type === "reasoning",
+  ) ?? false;
 
   return (
     <Box
@@ -149,15 +239,47 @@ export function AssistantMessage(props: MessageProps) {
 
         <MemoryDisclosure summaries={memoryUpdates} />
 
-        <ThinkingDisclosure
-          thinking={thinking}
-          isThinking={isThinking ?? false}
-          thinkingDuration={thinkingDuration}
-          processedThinking={processedThinking}
-          status={status}
-        />
+        {!hasOrderedResponse && (
+          <ThinkingDisclosure
+            thinking={thinking}
+            isThinking={isThinking ?? false}
+            thinkingDuration={thinkingDuration}
+            processedThinking={processedThinking}
+            status={status}
+          />
+        )}
 
-        <AgentParts parts={runtimeParts} />
+        {hasOrderedResponse ? (
+          <OrderedResponse
+            parts={runtimeParts ?? []}
+            status={status}
+            isStreaming={isStreaming}
+          />
+        ) : (
+          <>
+            {/* ── Markdown Core Message Body ── */}
+            {content ? (
+              <Box
+                id={`message-${messageIndex}`}
+                className="min-w-0"
+              >
+                {/* Streaming renders through the same markdown path as the final
+                    message. parseProgressive escapes half-written syntax, so the
+                    answer never re-flows when the stream ends. */}
+                <MarkdownProse content={processedContent} streaming={isStreaming} />
+              </Box>
+            ) : showEmptyFinalNotice ? (
+              <Box
+                id={`message-${messageIndex}`}
+                className="text-sm text-muted-foreground"
+              >
+                The model returned reasoning but no final response.
+              </Box>
+            ) : null}
+
+            <AgentParts parts={runtimeParts} status={status} />
+          </>
+        )}
 
         {webSearch && (
           <Box>
@@ -170,26 +292,6 @@ export function AssistantMessage(props: MessageProps) {
             />
           </Box>
         )}
-
-        {/* ── Markdown Core Message Body ── */}
-        {content ? (
-          <Box
-            id={`message-${messageIndex}`}
-            className="min-w-0"
-          >
-            {/* Streaming renders through the same markdown path as the final
-                message. parseProgressive escapes half-written syntax, so the
-                answer never re-flows when the stream ends. */}
-            <MarkdownProse content={processedContent} streaming={isStreaming} />
-          </Box>
-        ) : showEmptyFinalNotice ? (
-          <Box
-            id={`message-${messageIndex}`}
-            className="text-sm text-muted-foreground"
-          >
-            The model returned reasoning but no final response.
-          </Box>
-        ) : null}
 
         {/* ── Source Badges ── */}
         {!isStreaming && webSearch?.results && webSearch.results.length > 0 && (

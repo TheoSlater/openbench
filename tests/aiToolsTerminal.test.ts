@@ -6,7 +6,6 @@ import type { ChatCommand } from "../sidecar/src/protocol";
 import {
   PtyBroker,
   createTerminalTool,
-  withTerminalEvents,
 } from "../sidecar/src/terminal";
 
 const usage = {
@@ -28,6 +27,30 @@ const stream = (chunks: unknown[]) => new ReadableStream({
 });
 
 const bytes = (text: string) => new TextEncoder().encode(text);
+
+async function collect(stream: ReadableStream<UIMessageChunk>) {
+  const chunks: UIMessageChunk[] = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return chunks;
+}
+
+const commandForTerminal = (requestId: string): ChatCommand => ({
+  type: "chat",
+  requestId,
+  conversationId: "conv",
+  connection: {
+    id: "conn",
+    provider: "openai",
+    modelId: "model",
+    secret: "provider-key",
+  },
+  messages: [{
+    id: "user",
+    role: "user",
+    parts: [{ type: "text", text: "run a command" }],
+  }],
+  terminal: true,
+});
 
 describe("PtyBroker", () => {
   it("resolves a run with the relayed output and exit code", async () => {
@@ -102,7 +125,11 @@ describe("PtyBroker", () => {
 describe("createTerminalTool", () => {
   it("awaits the broker using its tool call id", async () => {
     const broker = new PtyBroker();
-    const terminalTool = createTerminalTool({ broker });
+    const starts: Array<{ toolCallId: string; command: string; cwd?: string }> = [];
+    const terminalTool = createTerminalTool({
+      broker,
+      onStart: (start) => starts.push(start),
+    });
 
     const promise = terminalTool.execute(
       { command: "ls", cwd: "/tmp" },
@@ -116,6 +143,7 @@ describe("createTerminalTool", () => {
       exitCode: 0,
       output: "a\nb",
     });
+    expect(starts).toEqual([{ toolCallId: "t1", command: "ls", cwd: "/tmp" }]);
   });
 
   it("rejects a missing command", async () => {
@@ -124,73 +152,117 @@ describe("createTerminalTool", () => {
   });
 });
 
-describe("withTerminalEvents", () => {
-  it("annotates terminal tool calls with a start chunk", async () => {
-    const input = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        controller.enqueue({
-          type: "tool-input-available",
-          toolCallId: "t1",
-          toolName: "terminal",
-          input: { command: "ls", cwd: "/tmp" },
-        });
-        controller.enqueue({
-          type: "tool-output-available",
-          toolCallId: "t1",
-          toolName: "terminal",
-          output: { command: "ls", output: "a\nb", exitCode: 0 },
-        });
-        controller.close();
-      },
-    });
-
-    const output = withTerminalEvents(input);
-    const chunks: UIMessageChunk[] = [];
-    const reader = output.getReader();
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      chunks.push(next.value);
-    }
-
-    expect(chunks).toEqual([
-      expect.objectContaining({ type: "tool-input-available" }),
-      {
-        type: "data-terminal",
-        id: "t1",
-        data: { kind: "start", command: "ls", cwd: "/tmp" },
-      },
-      expect.objectContaining({ type: "tool-output-available" }),
-    ]);
-  });
-
-  it("leaves other tools alone", async () => {
-    const input = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        controller.enqueue({
-          type: "tool-input-available",
-          toolCallId: "w1",
-          toolName: "web_search",
-          input: { query: "anything" },
-        });
-        controller.close();
-      },
-    });
-
-    const output = withTerminalEvents(input);
-    const chunks: UIMessageChunk[] = [];
-    const reader = output.getReader();
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      chunks.push(next.value);
-    }
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]).not.toHaveProperty("type", "data-terminal");
-  });
-});
-
 describe("terminal tool inside the chat loop", () => {
+  it("emits an approval request before executing", async () => {
+    const model = new MockLanguageModelV4({
+      doStream: {
+        stream: stream([
+          { type: "stream-start", warnings: [] },
+          { type: "tool-input-start", id: "approval-call", toolName: "terminal" },
+          { type: "tool-input-delta", id: "approval-call", delta: '{"command":"rm -i file"}' },
+          { type: "tool-input-end", id: "approval-call" },
+          {
+            type: "tool-call",
+            toolCallId: "approval-call",
+            toolName: "terminal",
+            input: '{"command":"rm -i file"}',
+          },
+          finish("tool-calls"),
+        ]),
+      },
+    });
+    const result = await streamChat({
+      ...commandForTerminal("req-approval"),
+    }, new AbortController().signal, { model, terminalBroker: new PtyBroker() });
+    const chunks = await collect(result);
+
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "tool-approval-request" }),
+    ]));
+    expect(chunks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "data-terminal" }),
+    ]));
+  });
+
+  it("starts the approved command and returns the model summary", async () => {
+    const broker = new PtyBroker();
+    const model = new MockLanguageModelV4({
+      doStream: [
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "approved-call", toolName: "terminal" },
+            { type: "tool-input-delta", id: "approved-call", delta: '{"command":"echo ok"}' },
+            { type: "tool-input-end", id: "approved-call" },
+            {
+              type: "tool-call",
+              toolCallId: "approved-call",
+              toolName: "terminal",
+              input: '{"command":"echo ok"}',
+            },
+            finish("tool-calls"),
+          ]),
+        },
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "summary" },
+            { type: "text-delta", id: "summary", delta: "Command completed." },
+            { type: "text-end", id: "summary" },
+            finish("stop"),
+          ]),
+        },
+      ],
+    });
+    const first = await streamChat({
+      ...commandForTerminal("req-approved"),
+      responseMessageId: "assistant-approved",
+    }, new AbortController().signal, { model, terminalBroker: broker });
+    const firstChunks = await collect(first);
+    const request = firstChunks.find((chunk) => chunk.type === "tool-approval-request");
+    if (!request || request.type !== "tool-approval-request") throw new Error("approval missing");
+
+    const second = await streamChat({
+      ...commandForTerminal("req-approved"),
+      responseMessageId: "assistant-approved",
+      messages: [
+        ...commandForTerminal("req-approved").messages,
+        {
+          id: "assistant-approved",
+          role: "assistant",
+          parts: [{
+            type: "dynamic-tool",
+            toolName: "terminal",
+            toolCallId: "approved-call",
+            state: "approval-responded",
+            input: { command: "echo ok" },
+            approval: {
+              id: request.approvalId,
+              approved: true,
+              signature: request.signature,
+            },
+          }],
+        },
+      ],
+    }, new AbortController().signal, { model, terminalBroker: broker });
+    const secondChunks: UIMessageChunk[] = [];
+    for await (const chunk of second) {
+      secondChunks.push(chunk);
+      if (chunk.type === "data-terminal") {
+        broker.append("approved-call", bytes("ok\n"));
+        broker.finish("approved-call", 0);
+      }
+    }
+
+    expect(secondChunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "data-terminal", id: "approved-call" }),
+      expect.objectContaining({ type: "tool-output-available", toolCallId: "approved-call" }),
+      expect.objectContaining({ type: "text-delta", delta: "Command completed." }),
+    ]));
+    expect(model.doStreamCalls).toHaveLength(2);
+  });
+
   it("waits for the PTY relay, reports output, and continues", async () => {
     const model = new MockLanguageModelV4({
       doStream: [
@@ -243,6 +315,7 @@ describe("terminal tool inside the chat loop", () => {
     const result = await streamChat(command, new AbortController().signal, {
       model,
       terminalBroker: broker,
+      terminalApproval: "not-applicable",
     });
     const chunks: UIMessageChunk[] = [];
     const reader = result.getReader();
@@ -264,7 +337,11 @@ describe("terminal tool inside the chat loop", () => {
       expect.objectContaining({
         type: "data-terminal",
         id: "call-1",
-        data: expect.objectContaining({ kind: "start", command: "printf ok" }),
+        data: expect.objectContaining({
+          kind: "start",
+          command: "printf ok",
+          sandboxId: "conv",
+        }),
       }),
       expect.objectContaining({
         type: "tool-output-available",

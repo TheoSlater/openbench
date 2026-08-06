@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { agentStatus } from "@/features/coding-agents/client";
+import { agentModels, agentStatus } from "@/features/coding-agents/client";
 import { connectionsClient } from "@/features/connections/client";
 import { useConnectionsStore } from "@/features/connections/store";
 import { getCurrentProviderAccountId } from "@/features/providers";
@@ -18,6 +18,7 @@ import {
   isExternalOption,
   isLocalOption,
   moveRuntimeHighlight,
+  runtimeLabel,
   type RuntimeOption,
 } from "@/features/runtime/runtime-options";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
@@ -46,8 +47,42 @@ const optionId = (runtime: RuntimeRef) =>
   runtime.kind === "chat-model"
     ? `model:${runtime.connection_id}:${runtime.model_id}`
     : runtime.kind === "coding-agent"
-      ? `agent:${runtime.agent_kind}`
+      ? runtime.model_id
+        ? `agent:${runtime.agent_kind}:${runtime.model_id}`
+        : `agent:${runtime.agent_kind}`
       : `unresolved:${runtime.reason}`;
+
+const AGENT_NAMES = { codex: "Codex", "claude-code": "Claude Code" } as const;
+
+function agentOptions(
+  kind: "codex" | "claude-code",
+  status: { installed: boolean; authenticated: boolean },
+  models?: { models: { id: string; name?: string }[]; defaultId?: string },
+): RuntimeOption[] {
+  const ready = status.installed && status.authenticated;
+  const listed = ready ? models?.models.filter((model) => model.id) ?? [] : [];
+  if (!listed.length) {
+    return [{
+      id: `agent:${kind}`,
+      family: "coding-agent",
+      group: "Coding agents",
+      title: AGENT_NAMES[kind],
+      connection: "Local CLI",
+      available: ready,
+      runtime: null,
+    }];
+  }
+  return listed.map((model) => ({
+    id: `agent:${kind}:${model.id}`,
+    family: "coding-agent",
+    group: "Coding agents",
+    title: model.name ?? model.id,
+    connection: AGENT_NAMES[kind],
+    available: ready,
+    runtime: null,
+    modelId: model.id,
+  }));
+}
 
 export function ModelSelector({
   onManageConnections,
@@ -88,25 +123,17 @@ export function ModelSelector({
         agentStatus("claude-code"),
         connectionsClient.recents(accountId),
       ]);
+      const [codexModels, claudeModels] = await Promise.all([
+        codex.installed && codex.authenticated
+          ? agentModels("codex").catch(() => null)
+          : null,
+        claude.installed && claude.authenticated
+          ? agentModels("claude-code").catch(() => null)
+          : null,
+      ]);
       setAgents([
-        {
-          id: "agent:codex",
-          family: "coding-agent",
-          group: "Coding agents",
-          title: "Codex",
-          connection: "Local CLI",
-          available: codex.installed && codex.authenticated,
-          runtime: null,
-        },
-        {
-          id: "agent:claude-code",
-          family: "coding-agent",
-          group: "Coding agents",
-          title: "Claude Code",
-          connection: "Local CLI",
-          available: claude.installed && claude.authenticated,
-          runtime: null,
-        },
+        ...agentOptions("codex", codex, codexModels ?? undefined),
+        ...agentOptions("claude-code", claude, claudeModels ?? undefined),
       ]);
       setRecentIds(new Set(recents.map(optionId)));
       await refreshModels;
@@ -168,7 +195,7 @@ export function ModelSelector({
     const chosen = await openDialog({
       directory: true,
       multiple: false,
-      title: `Choose a workspace for ${agent === "codex" ? "Codex" : "Claude Code"}`,
+      title: `Choose a workspace for ${AGENT_NAMES[agent]}`,
     });
     if (typeof chosen !== "string") return null;
     const path = chosen;
@@ -184,7 +211,8 @@ export function ModelSelector({
 
   const materialize = async (option: RuntimeOption): Promise<RuntimeRef | null> => {
     if (option.runtime) return option.runtime;
-    const agent = option.id === "agent:codex" ? "codex" : "claude-code";
+    if (option.family !== "coding-agent") return null;
+    const agent = option.id.startsWith("agent:codex") ? "codex" : "claude-code";
     const workspace = await workspaceFor(agent);
     if (!workspace) return null;
     return {
@@ -193,6 +221,7 @@ export function ModelSelector({
       agent_kind: agent,
       workspace_id: workspace.id,
       agent_session_id: null,
+      model_id: option.modelId ?? null,
     };
   };
 
@@ -200,7 +229,7 @@ export function ModelSelector({
     const runtime = await materialize(option);
     if (!runtime) return;
     if (activeConversationId) await connectionsClient.setRuntime(activeConversationId, runtime);
-    selectRuntime(runtime, option.title);
+    selectRuntime(runtime, runtimeLabel(runtime));
     setOpen(false);
   };
 

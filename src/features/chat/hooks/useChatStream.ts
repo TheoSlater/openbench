@@ -23,8 +23,9 @@ import { getCurrentProviderAccountId } from "@/features/providers";
 import { notifyMemoryUpdated } from "@/features/memory/useConversationMemoryCount";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { agentName, runtimeLabel } from "@/features/runtime/runtime-options";
 import type { ModelChoice } from "@/lib/models/model-choice";
-import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
+import { fromUIMessage, toUIMessage, filterPartsForRuntime, type PolyUIMessage } from "@/lib/ai/messages";
 import { ChatRuntime, type ChatJob } from "@/features/chat/runtime/ChatRuntime";
 import { connectionsClient } from "@/features/connections/client";
 import { handleAiTerminalParts } from "@/features/viewport/aiTerminal";
@@ -199,22 +200,24 @@ export function useChatStream(
     });
     if (job.agent && entity.agentSessionId) {
       // The user may have switched to another runtime while the agent was
-      // running; only persist the resumed session when the conversation is
-      // still bound to a coding agent, so a mid-stream switch wins.
+      // running; persist the resumed session only when the conversation is
+      // still bound to the same agent + workspace, so a mid-stream switch wins.
       const current = await connectionsClient.getRuntime(job.conversationId);
-      if (current?.kind === "coding-agent") {
+      const bound = current?.kind === "coding-agent"
+        && current.installation_id === job.agent.installationId
+        && current.agent_kind === job.agent.kind
+        && current.workspace_id === job.agent.workspaceId;
+      if (bound) {
         const runtime = {
           kind: "coding-agent" as const,
           installation_id: job.agent.installationId,
           agent_kind: job.agent.kind,
           workspace_id: job.agent.workspaceId,
           agent_session_id: entity.agentSessionId,
+          model_id: job.agent.modelId ?? null,
         };
         await connectionsClient.setRuntime(job.conversationId, runtime);
-        useRuntimeStore.getState().actions.select(
-          runtime,
-          job.agent.kind === "codex" ? "Codex" : "Claude Code",
-        );
+        useRuntimeStore.getState().actions.select(runtime, runtimeLabel(runtime));
       }
     }
     setStreamingMessage(job.messageId, null);
@@ -262,11 +265,12 @@ export function useChatStream(
     const source = conversationId === store.activeConversationId
       ? store.messages.filter((message) => message.conversationId === conversationId)
       : await getRepository().getMessages(conversationId, 50, 0);
-    const uiMessages = source.map(toUIMessage);
+    const uiMessages = source.map(toUIMessage).map((message) =>
+      filterPartsForRuntime(message, runtime.kind),
+    );
     if (!uiMessages.length || uiMessages[uiMessages.length - 1]?.role !== "user") return;
 
     const webSearchEnabled = isFeatureAIActive("web_search");
-    const terminalEnabled = isFeatureAIActive("terminal");
     const webSearch = useSettingsStore.getState().general.webSearch;
     const voicePrompt = voiceModeRef.current
       ? `${systemPrompt}\n\n${VOICE_SYSTEM_PROMPT_SUFFIX}`
@@ -275,11 +279,10 @@ export function useChatStream(
       voicePrompt,
       webSearchEnabled,
       webSearchEnabled,
-      terminalEnabled,
     );
     const targets = runtime.kind === "coding-agent"
       ? [{
-        model: runtime.agent_kind === "codex" ? "Codex" : "Claude Code",
+        model: runtime.model_id ?? agentName(runtime.agent_kind),
         provider: undefined,
       }]
       : models;
@@ -310,6 +313,7 @@ export function useChatStream(
           installationId: runtime.installation_id,
           accessMode: useRuntimeStore.getState().accessMode,
           sessionId: runtime.agent_session_id ?? undefined,
+          modelId: runtime.model_id ?? undefined,
         } : undefined,
         model,
         provider,
@@ -318,8 +322,7 @@ export function useChatStream(
         reasoning: voiceModeRef.current ? "none" : undefined,
         webSearchProvider:
           runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
-        terminalEnabled:
-          runtime.kind === "chat-model" ? terminalEnabled : undefined,
+        terminalEnabled: runtime.kind === "chat-model",
         token: getSessionToken,
       };
     });

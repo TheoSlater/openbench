@@ -1,4 +1,5 @@
 import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
+import type { AgentKind } from "@/generated/bindings/AgentKind";
 
 export type RuntimeGroup =
   | "Coding agents"
@@ -14,6 +15,8 @@ export type RuntimeOption = {
   connection: string;
   available: boolean;
   runtime: RuntimeRef | null;
+  /** Selected agent model id; absent lets the agent pick its default. */
+  modelId?: string;
 };
 
 const GROUP_ORDER: RuntimeGroup[] = [
@@ -72,12 +75,18 @@ export function moveRuntimeHighlight(
   return count ? (current + offset + count) % count : 0;
 }
 
+/** Display name for a coding agent, e.g. "Codex" or "Claude Code". */
+export function agentName(kind: AgentKind): string {
+  return kind === "codex" ? "Codex" : "Claude Code";
+}
+
 /** Display name for a runtime, for the header and toasts. */
 export function runtimeLabel(runtime: RuntimeRef | null): string {
   if (!runtime) return "";
   if (runtime.kind === "chat-model") return runtime.model_id;
   if (runtime.kind === "coding-agent") {
-    return runtime.agent_kind === "codex" ? "Codex" : "Claude Code";
+    const name = agentName(runtime.agent_kind);
+    return runtime.model_id ? `${name} · ${runtime.model_id}` : name;
   }
   return "";
 }
