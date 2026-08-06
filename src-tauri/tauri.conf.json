@@ -4,7 +4,7 @@
   "version": "0.22.0",
   "identifier": "com.tslater.polyui",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bun run sidecar:build && bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
