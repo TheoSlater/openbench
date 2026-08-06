@@ -1,21 +1,29 @@
 import {
   convertToModelMessages,
+  createUIMessageStream,
   generateText,
   isStepCount,
   streamText,
   toUIMessageStream,
   type LanguageModel,
+  type OnToolExecutionEndCallback,
+  type OnToolExecutionStartCallback,
   type UIMessageChunk,
 } from "ai";
 import type { ChatCommand } from "./protocol";
 import { createModel } from "./providers";
-import { createTerminalTool, ptyBroker, withTerminalEvents, type PtyBroker } from "./terminal";
-import { createWebSearchTool } from "./web-search";
+import { ptyBroker, type PtyBroker } from "./terminal";
+import { createToolRegistry } from "./tools";
+
+const TOOL_APPROVAL_SECRET = crypto.randomUUID();
 
 type RuntimeDeps = {
   model?: LanguageModel;
   fetch?: typeof fetch;
   terminalBroker?: PtyBroker;
+  terminalApproval?: "user-approval" | "not-applicable";
+  onToolExecutionStart?: OnToolExecutionStartCallback;
+  onToolExecutionEnd?: OnToolExecutionEndCallback;
 };
 
 function withSearchSources(
@@ -47,34 +55,71 @@ export async function streamChat(
   deps: RuntimeDeps = {},
 ): Promise<ReadableStream<UIMessageChunk>> {
   const model = deps.model ?? await createModel(command.connection, deps.fetch);
-  const tools = {
-    ...(command.webSearch
-      ? { web_search: createWebSearchTool(command.webSearch, deps.fetch) }
-      : {}),
-    ...(command.terminal ? { terminal: createTerminalTool({ broker: deps.terminalBroker ?? ptyBroker }) } : {}),
-  };
-  const result = streamText({
-    model,
-    instructions: command.instructions,
-    messages: await convertToModelMessages(command.messages),
-    abortSignal,
-    reasoning: command.reasoning,
-    tools,
-    stopWhen: isStepCount(10),
-  });
-  const uiStream = toUIMessageStream({
-    stream: result.stream,
-    tools,
+  return createUIMessageStream({
     originalMessages: command.messages,
-    generateMessageId: command.responseMessageId ? () => command.responseMessageId! : undefined,
-    sendReasoning: true,
-    sendSources: true,
-    messageMetadata: ({ part }) => part.type === "finish"
-      ? { usage: part.totalUsage, finishReason: part.finishReason }
-      : undefined,
     onError: (error) => error instanceof Error ? error.message : "Model request failed",
+    execute: async ({ writer }) => {
+      const previous = command.messages.at(-1);
+      writer.write({
+        type: "start",
+        messageId: command.responseMessageId
+          ?? (previous?.role === "assistant" ? previous.id : crypto.randomUUID()),
+      });
+      const registry = createToolRegistry({
+        webSearch: command.webSearch,
+        terminal: command.terminal,
+        sandboxId: command.conversationId ?? command.requestId,
+        fetch: deps.fetch,
+        terminalBroker: deps.terminalBroker,
+        terminalStart: ({ toolCallId, command: shellCommand, cwd, sandboxId }) => {
+          writer.write({
+            type: "data-terminal",
+            id: toolCallId,
+            data: {
+              kind: "start",
+              command: shellCommand,
+              ...(cwd ? { cwd } : {}),
+              ...(sandboxId ? { sandboxId } : {}),
+            },
+          });
+        },
+        activeTools: command.activeTools,
+        toolOrder: command.toolOrder,
+        toolChoice: command.toolChoice,
+        terminalApproval: deps.terminalApproval,
+      });
+      const messages = await convertToModelMessages(command.messages, {
+        tools: registry.tools,
+      });
+      const result = streamText({
+        model,
+        instructions: command.instructions,
+        messages,
+        abortSignal,
+        reasoning: command.reasoning,
+        tools: registry.tools,
+        activeTools: registry.activeTools,
+        toolOrder: registry.toolOrder,
+        toolChoice: registry.toolChoice,
+        toolApproval: registry.toolApproval,
+        experimental_toolApprovalSecret: TOOL_APPROVAL_SECRET,
+        onToolExecutionStart: deps.onToolExecutionStart,
+        onToolExecutionEnd: deps.onToolExecutionEnd,
+        stopWhen: isStepCount(10),
+      });
+      writer.merge(withSearchSources(toUIMessageStream({
+        stream: result.stream,
+        tools: registry.tools,
+        sendStart: false,
+        sendReasoning: true,
+        sendSources: true,
+        messageMetadata: ({ part }) => part.type === "finish"
+          ? { usage: part.totalUsage, finishReason: part.finishReason }
+          : undefined,
+        onError: (error) => error instanceof Error ? error.message : "Model request failed",
+      })));
+    },
   });
-  return withTerminalEvents(withSearchSources(uiStream));
 }
 
 export async function generate(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromUIMessage, toUIMessage } from "@/lib/ai/messages";
+import { fromUIMessage, toUIMessage, type PolyUIMessage } from "@/lib/ai/messages";
 import type { Message } from "@/types/chat";
 
 const entity: Message = {
@@ -42,6 +42,34 @@ describe("AI SDK message persistence boundary", () => {
     });
     expect(restored).toMatchObject(entity);
     expect(restored.runtimeParts).toHaveLength(1);
+  });
+
+  it("keeps text, reasoning, and tool parts in response order", () => {
+    const parts = [
+      { type: "text", text: "Sure! I will run that command for you." },
+      { type: "reasoning", text: "Checking the terminal first." },
+      {
+        type: "dynamic-tool",
+        toolName: "terminal",
+        toolCallId: "call-ordered",
+        state: "output-available",
+        input: { command: "pwd" },
+        output: { output: "/tmp" },
+      },
+      { type: "text", text: "The command completed." },
+    ] as const;
+    const restored = fromUIMessage({
+      id: "assistant-ordered",
+      role: "assistant",
+      parts,
+    } as PolyUIMessage, {
+      conversationId: "conv-1",
+      model: "model",
+      provider: "OpenAICompatible",
+    });
+
+    expect(restored.runtimeParts).toEqual(parts);
+    expect(toUIMessage(restored).parts).toEqual(parts);
   });
 
   it("restores web-search citations from standard tool and source parts", () => {
@@ -88,5 +116,32 @@ describe("AI SDK message persistence boundary", () => {
         highlights: ["Local first"],
       }],
     });
+  });
+
+  it("preserves tool approval parts", () => {
+    const approval = {
+      type: "dynamic-tool",
+      toolName: "terminal",
+      toolCallId: "call-approval",
+      state: "approval-requested",
+      input: { command: "git status --short" },
+      approval: { id: "approval-1" },
+    } as const;
+    const response = {
+      ...approval,
+      state: "approval-responded",
+      approval: { id: "approval-1", approved: false, reason: "Not now" },
+    } as const;
+    const restored = fromUIMessage({
+      id: "assistant-3",
+      role: "assistant",
+      parts: [approval, response],
+    } as PolyUIMessage, {
+      conversationId: "conv-1",
+      model: "model",
+      provider: "OpenAICompatible",
+    });
+
+    expect(restored.runtimeParts).toEqual([approval, response]);
   });
 });

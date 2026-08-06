@@ -17,6 +17,10 @@ const xtermTerminal = readFileSync(
   "src/features/viewport/components/XtermTerminalViewport.tsx",
   "utf8",
 );
+const terminalLoading = readFileSync(
+  "src/features/viewport/components/TerminalLoading.tsx",
+  "utf8",
+);
 const ptyClient = existsSync("src/features/viewport/pty.ts")
   ? readFileSync("src/features/viewport/pty.ts", "utf8")
   : "";
@@ -63,5 +67,11 @@ describe("viewport terminal tab", () => {
     expect(ptyClient).toContain('invoke("pty_write"');
     expect(ptyClient).toContain('invoke("pty_resize"');
     expect(ptyClient).toContain('invoke("pty_close"');
+  });
+
+  it("animates sandbox startup steps", () => {
+    expect(terminalLoading).toContain("TextShimmer");
+    expect(terminalLoading).toContain("key={label}");
+    expect(terminalLoading).toContain("slide-in-from-bottom-1");
   });
 });

@@ -7,6 +7,7 @@ const binding = (name: string) => readFileSync(join(directory, `${name}.ts`), "u
 
 describe("native runtime bindings", () => {
   const expected = [
+    "AgentInstallation",
     "AgentKind",
     "Connection",
     "ConnectionHealth",
@@ -15,10 +16,12 @@ describe("native runtime bindings", () => {
     "ConnectionSummary",
     "ConnectionValidation",
     "DiscoverySource",
+    "PathSource",
     "Provider",
     "RuntimeKind",
     "RuntimeRef",
     "UnresolvedReason",
+    "VerificationResult",
     "Workspace",
     "WorkspaceAvailability",
   ];

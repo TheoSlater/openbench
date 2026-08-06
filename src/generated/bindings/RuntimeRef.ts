@@ -8,7 +8,7 @@ import type { UnresolvedReason } from "./UnresolvedReason";
  * `kind` is the discriminant, mirrored into `conversations.runtime_kind`.
  * Keep the tag values in sync with [`RuntimeKind::as_str`].
  */
-export type RuntimeRef = { "kind": "chat-model", connection_id: string, model_id: string, } | { "kind": "coding-agent", installation_id: string, agent_kind: AgentKind, workspace_id: string, agent_session_id?: string | null, } | { "kind": "unresolved", reason: UnresolvedReason,
+export type RuntimeRef = { "kind": "chat-model", connection_id: string, model_id: string, } | { "kind": "coding-agent", installation_id: string, agent_kind: AgentKind, workspace_id: string, agent_session_id?: string | null, model_id?: string | null, } | { "kind": "unresolved", reason: UnresolvedReason,
 /**
  * What the old row recorded, for display. Never secret material.
  */

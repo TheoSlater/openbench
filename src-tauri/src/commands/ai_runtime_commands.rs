@@ -18,6 +18,9 @@ pub struct AiChatRequest {
     reasoning: Option<String>,
     web_search_provider: Option<String>,
     terminal: Option<bool>,
+    tool_choice: Option<serde_json::Value>,
+    active_tools: Option<Vec<String>>,
+    tool_order: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -27,6 +30,7 @@ struct AiAgentRequest {
     workspace_id: String,
     access_mode: String,
     session_id: Option<String>,
+    model_id: Option<String>,
 }
 
 async fn connection(
@@ -128,13 +132,22 @@ pub async fn ai_runtime_start(
         if !matches!(agent.access_mode.as_str(), "read-only" | "workspace-write") {
             return Err("Unknown workspace access mode".into());
         }
+        // The CLI may live outside PATH (~/.bun/bin, ~/.local/bin, ...). Resolve
+        // it the same way the setup cards do, so the sidecar does not fail to
+        // spawn an agent the UI claims is ready.
+        let executable = crate::commands::agent_commands::agent_cli_status(agent.kind.clone())
+            .await
+            .ok()
+            .and_then(|status| status.executable);
         serde_json::json!({
             "type": "agent",
             "agent": {
                 "kind": agent.kind,
                 "workspace": workspace.path,
                 "accessMode": agent.access_mode,
+                "executablePath": executable,
                 "sessionId": agent.session_id,
+                "modelId": agent.model_id,
             }
         })
     } else {
@@ -173,6 +186,9 @@ pub async fn ai_runtime_start(
         "reasoning": request.reasoning,
         "webSearch": web_search,
         "terminal": request.terminal,
+        "toolChoice": request.tool_choice,
+        "activeTools": request.active_tools,
+        "toolOrder": request.tool_order,
     });
     state
         .ai
@@ -184,11 +200,50 @@ pub async fn ai_runtime_start(
 }
 
 #[tauri::command]
+pub async fn ai_runtime_agent_models(
+    state: tauri::State<'_, AppState>,
+    request_id: String,
+    kind: String,
+) -> Result<serde_json::Value, String> {
+    if !matches!(kind.as_str(), "claude-code" | "codex") {
+        return Err("Unknown coding agent".into());
+    }
+    let status = crate::commands::agent_commands::agent_cli_status(kind.clone()).await?;
+    if !status.installed || !status.authenticated {
+        return Err(format!("{kind} is not ready"));
+    }
+    state
+        .ai
+        .request(
+            &request_id,
+            serde_json::json!({
+                "type": "agent-models",
+                "requestId": request_id,
+                "agent": {
+                    "kind": kind,
+                    "executablePath": status.executable,
+                },
+            }),
+        )
+        .await
+}
+
+#[tauri::command]
 pub async fn ai_runtime_cancel(
     state: tauri::State<'_, AppState>,
     request_id: String,
+    sandbox_id: Option<String>,
 ) -> Result<(), String> {
-    state.ai.cancel(&request_id).await
+    let cancel_error = state.ai.cancel(&request_id).await.err();
+    let sandbox_error =
+        sandbox_id.and_then(|sandbox_id| state.sandboxes.destroy(&sandbox_id).err());
+    match (cancel_error, sandbox_error) {
+        (None, None) => Ok(()),
+        (Some(error), None) | (None, Some(error)) => Err(error),
+        (Some(cancel), Some(sandbox)) => {
+            Err(format!("{cancel}; sandbox cleanup failed: {sandbox}"))
+        }
+    }
 }
 
 #[tauri::command]

@@ -30,13 +30,13 @@ export class RuntimeTransportManager {
     await this.listener;
   }
 
-  open(requestId: string): ReadableStream<UIMessageChunk> {
+  open(requestId: string, sandboxId?: string): ReadableStream<UIMessageChunk> {
     if (this.streams.has(requestId)) throw new Error(`Duplicate AI request: ${requestId}`);
     return new ReadableStream<UIMessageChunk>({
       start: (controller) => {
         this.streams.set(requestId, controller);
       },
-      cancel: () => this.cancel(requestId),
+      cancel: () => this.cancel(requestId, sandboxId),
     });
   }
 
@@ -63,20 +63,34 @@ export class RuntimeTransportManager {
     else controller.close();
   }
 
-  private async cancel(requestId: string): Promise<void> {
+  private async cancel(requestId: string, sandboxId?: string): Promise<void> {
     this.streams.delete(requestId);
-    await this.bridge.invoke("ai_runtime_cancel", { requestId });
+    await this.bridge.invoke("ai_runtime_cancel", {
+      requestId,
+      ...(sandboxId ? { sandboxId } : {}),
+    });
   }
 }
 
 export const aiRuntimeManager = new RuntimeTransportManager(tauriBridge);
+
+export function destroyAiSandbox(sandboxId: string): Promise<void> {
+  return tauriInvoke("sandbox_destroy", { sandboxId });
+}
 
 export type AgentTransport = {
   kind: "claude-code" | "codex";
   workspaceId: string;
   accessMode: "read-only" | "workspace-write";
   sessionId?: string;
+  modelId?: string;
 };
+
+export type ToolChoice =
+  | "auto"
+  | "required"
+  | "none"
+  | { type: "tool"; toolName: string };
 
 type TransportOptions = {
   manager?: RuntimeTransportManager;
@@ -90,6 +104,9 @@ type TransportOptions = {
   reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   webSearchProvider?: "local" | "exa" | "ollama" | "tavily";
   terminalEnabled?: boolean;
+  toolChoice?: ToolChoice;
+  activeTools?: string[];
+  toolOrder?: string[];
   token?: () => string | null;
 };
 
@@ -107,10 +124,13 @@ implements ChatTransport<UI_MESSAGE> {
   }: Parameters<ChatTransport<UI_MESSAGE>["sendMessages"]>[0]): Promise<
     ReadableStream<UIMessageChunk>
   > {
-    const stream = this.manager.open(this.options.requestId);
+    const stream = this.manager.open(this.options.requestId, this.options.conversationId);
     await this.manager.ready();
     const abort = () => {
-      void this.manager.invoke("ai_runtime_cancel", { requestId: this.options.requestId });
+      void this.manager.invoke("ai_runtime_cancel", {
+        requestId: this.options.requestId,
+        sandboxId: this.options.conversationId,
+      });
     };
     abortSignal?.addEventListener("abort", abort, { once: true });
     try {
@@ -127,6 +147,9 @@ implements ChatTransport<UI_MESSAGE> {
           reasoning: this.options.reasoning ?? null,
           webSearchProvider: this.options.webSearchProvider ?? null,
           terminal: this.options.terminalEnabled ?? null,
+          toolChoice: this.options.toolChoice ?? null,
+          activeTools: this.options.activeTools ?? null,
+          toolOrder: this.options.toolOrder ?? null,
         },
         token: this.options.token?.() ?? null,
       });

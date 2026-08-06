@@ -2,9 +2,18 @@ import { create } from "zustand";
 import { getRepository } from "@/lib/repositories";
 import { Message, Conversation, Attachment, WebSearchEvent, ConversationMetadata } from "@/types/chat";
 import { getNextQueuedMessage } from "@/lib/chat/queue";
+import { destroyAiSandbox } from "@/lib/ai/transport";
 
 async function getRepo() {
   return getRepository();
+}
+
+async function destroySandbox(id: string): Promise<void> {
+  try {
+    await destroyAiSandbox(id);
+  } catch (error) {
+    console.error("Failed to destroy AI sandbox:", error);
+  }
 }
 
 function mergeMessage(
@@ -354,6 +363,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           console.error("Failed to delete conversation:", error);
         }
       }
+      await destroySandbox(id);
 
       set((state) => {
         const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -386,6 +396,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           console.error("Failed to delete conversations:", error);
         }
       }
+      await Promise.all(ids.map(destroySandbox));
 
       set((state) => {
         const newConversations = state.conversations.filter((c) => !ids.includes(c.id));
@@ -418,6 +429,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           console.error("Failed to delete all conversations:", error);
         }
       }
+      await Promise.all(conversations.map((conversation) => destroySandbox(conversation.id)));
 
       set({
         conversations: [],

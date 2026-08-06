@@ -1069,6 +1069,7 @@ async fn runtime_family_can_change_in_place() {
         agent_kind: crate::runtime::AgentKind::Codex,
         workspace_id: "ws".into(),
         agent_session_id: None,
+        model_id: None,
     };
     repository::set_conversation_runtime(&pool, "conv", &agent)
         .await
@@ -1117,6 +1118,7 @@ async fn the_database_allows_a_family_change_that_bypasses_rust() {
         agent_kind: crate::runtime::AgentKind::Codex,
         workspace_id: "ws".into(),
         agent_session_id: None,
+        model_id: None,
     };
     sqlx::query("UPDATE conversations SET runtime_kind = ?2, runtime_ref = ?3 WHERE id = ?1")
         .bind("conv")
@@ -1155,6 +1157,7 @@ async fn an_unresolved_conversation_can_be_answered() {
         agent_kind: crate::runtime::AgentKind::ClaudeCode,
         workspace_id: "ws".into(),
         agent_session_id: Some("s-1".into()),
+        model_id: None,
     };
     repository::set_conversation_runtime(&pool, "conv", &answered)
         .await
@@ -1352,6 +1355,7 @@ async fn runtime_reference_round_trips_through_the_database() {
             agent_kind: crate::runtime::AgentKind::Codex,
             workspace_id: "ws-1".into(),
             agent_session_id: Some("sess-1".into()),
+            model_id: Some("gpt-5.1-codex".into()),
         },
         RuntimeRef::Unresolved {
             reason: UnresolvedReason::NoModel,

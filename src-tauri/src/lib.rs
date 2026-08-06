@@ -10,6 +10,7 @@ mod mobile_push;
 mod models;
 pub mod pty;
 mod runtime;
+pub mod sandbox;
 mod startup_log;
 mod updater;
 mod whisper_state;
@@ -44,10 +45,13 @@ use tokio::sync::Mutex;
 /// managed state.
 static AI_SIDECAR_FOR_EXIT: std::sync::OnceLock<Arc<crate::ai_sidecar::AiSidecar>> =
     std::sync::OnceLock::new();
+static SANDBOXES_FOR_EXIT: std::sync::OnceLock<Arc<crate::sandbox::SandboxManager>> =
+    std::sync::OnceLock::new();
 
 pub struct AppState {
     pub db: SqlitePool,
     pub ai: Arc<crate::ai_sidecar::AiSidecar>,
+    pub sandboxes: Arc<crate::sandbox::SandboxManager>,
     pub last_update_check: Mutex<Option<Instant>>,
     pub update_download_path: Mutex<Option<PathBuf>>,
     /// OS keychain. The database only ever holds a reference into this.
@@ -163,12 +167,19 @@ pub fn run() {
             let secret_store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore);
             let ai =
                 crate::ai_sidecar::AiSidecar::new(app.handle()).map_err(std::io::Error::other)?;
+            let sandboxes = Arc::new(
+                crate::sandbox::SandboxManager::new(app.handle()).map_err(std::io::Error::other)?,
+            );
             AI_SIDECAR_FOR_EXIT
                 .set(ai.clone())
                 .unwrap_or_else(|_| log::warn!("AI sidecar was registered twice"));
+            SANDBOXES_FOR_EXIT
+                .set(sandboxes.clone())
+                .unwrap_or_else(|_| log::warn!("sandbox manager was registered twice"));
             app.manage(AppState {
                 db: db.clone(),
                 ai,
+                sandboxes,
                 last_update_check: Mutex::new(None),
                 update_download_path: Mutex::new(None),
                 secret_store: secret_store.clone(),
@@ -255,6 +266,7 @@ pub fn run() {
             commands::connection_commands::set_conversation_runtime,
             commands::connection_commands::list_recent_runtimes,
             commands::ai_runtime_commands::ai_runtime_start,
+            commands::ai_runtime_commands::ai_runtime_agent_models,
             commands::ai_runtime_commands::ai_runtime_cancel,
             commands::ai_runtime_commands::ai_runtime_approval,
             commands::ai_runtime_commands::ai_runtime_models,
@@ -309,6 +321,10 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            sandbox::sandbox_destroy,
+            sandbox::sandbox_ports,
+            sandbox::sandbox_stop_processes,
+            sandbox::sandbox_diagnostics,
         ])
         .build(context);
     startup_log::log_phase("tauri app built");
@@ -336,6 +352,12 @@ pub fn run() {
             if let Some(ai) = AI_SIDECAR_FOR_EXIT.get() {
                 startup_log::log_phase("exit requested; stopping AI sidecar");
                 tauri::async_runtime::block_on(ai.shutdown());
+            }
+            if let Some(sandboxes) = SANDBOXES_FOR_EXIT.get() {
+                startup_log::log_phase("exit requested; destroying AI sandboxes");
+                if let Err(error) = sandboxes.destroy_all() {
+                    startup_log::log_error(format!("sandbox cleanup failed: {error}"));
+                }
             }
 
             startup_log::log_phase("exit requested; terminating process");

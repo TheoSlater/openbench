@@ -79,7 +79,16 @@ impl AiSidecar {
     /// Fire-and-forget relay for one-way messages (e.g. PTY output routed back
     /// from the host). Unlike `request`, nothing waits for a reply.
     pub async fn forward(&self, command: serde_json::Value) -> Result<(), String> {
-        self.send(command).await
+        let kind = command
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown");
+        crate::startup_log::log_event(format!("AI PTY relay send: {kind}"));
+        let result = self.send(command).await;
+        if let Err(error) = &result {
+            crate::startup_log::log_error(format!("AI PTY relay send failed: {error}"));
+        }
+        result
     }
 
     pub async fn cancel(&self, request_id: &str) -> Result<(), String> {

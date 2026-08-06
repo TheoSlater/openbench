@@ -77,12 +77,16 @@ pub enum RuntimeRef {
     /// A local coding-agent runtime. The agent owns the loop.
     ///
     /// The provider session id is absent until the agent has handed one back.
+    /// The model id is absent until one is chosen; the agent then picks its
+    /// default model.
     CodingAgent {
         installation_id: String,
         agent_kind: AgentKind,
         workspace_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         agent_session_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<String>,
     },
     /// Migrated from pre-rework data that no longer resolves. Displayed as a
     /// prompt to pick a runtime, never silently treated as a default.
@@ -180,6 +184,7 @@ mod tests {
             agent_kind: AgentKind::Codex,
             workspace_id: "ws-1".into(),
             agent_session_id: None,
+            model_id: None,
         }
     }
 
@@ -199,6 +204,7 @@ mod tests {
                 agent_kind: AgentKind::ClaudeCode,
                 workspace_id: "ws-1".into(),
                 agent_session_id: Some("sess-9".into()),
+                model_id: Some("sonnet".into()),
             },
             RuntimeRef::Unresolved {
                 reason: UnresolvedReason::NoModel,
@@ -220,10 +226,26 @@ mod tests {
     }
 
     #[test]
-    fn agent_session_id_is_omitted_when_absent() {
+    fn agent_session_id_and_model_id_are_omitted_when_absent() {
         let json = agent().to_column().unwrap();
         assert!(!json.contains("agent_session_id"), "{json}");
+        assert!(!json.contains("model_id"), "{json}");
         assert!(json.contains("\"kind\":\"coding-agent\""), "{json}");
+    }
+
+    #[test]
+    fn model_id_round_trips() {
+        let value = RuntimeRef::CodingAgent {
+            installation_id: "inst-1".into(),
+            agent_kind: AgentKind::ClaudeCode,
+            workspace_id: "ws-1".into(),
+            agent_session_id: None,
+            model_id: Some("sonnet".into()),
+        };
+        let payload = value.to_column().unwrap();
+        let back = RuntimeRef::from_columns(value.kind().as_str(), &payload).unwrap();
+        assert_eq!(back, value);
+        assert!(payload.contains("\"model_id\":\"sonnet\""), "{payload}");
     }
 
     #[test]

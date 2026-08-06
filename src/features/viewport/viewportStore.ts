@@ -1,14 +1,17 @@
 import { create } from "zustand";
 
 type ViewportStore = {
-  /** Terminal tab ids, in display order. */
+  /** Terminal and sandbox preview tab ids, in display order. */
   tabs: string[];
+  previews: Record<number, SandboxPreview>;
   activeTabId: string | null;
   drawerOpen: boolean;
   drawerWidth: number;
   actions: {
     addTab: () => string;
     addAiTab: () => void;
+    setPreview: (preview: SandboxPreview) => void;
+    clearSandboxPreviews: (sandboxId: string) => void;
     closeTab: (id: string) => void;
     selectTab: (id: string) => void;
     setTabOrder: (ids: string[]) => void;
@@ -18,11 +21,19 @@ type ViewportStore = {
   };
 };
 
+export type SandboxPreview = {
+  sandboxId: string;
+  containerPort: number;
+  hostPort: number;
+  url: string;
+};
+
 const WIDTH_STORAGE_KEY = "poly_viewport_width";
 export const VIEWPORT_MIN_WIDTH = 320;
 export const VIEWPORT_MAX_WIDTH = 900;
 /** Fixed tab id for the read-only transcript of commands the AI runs. */
 export const AI_TERMINAL_TAB_ID = "ai-terminal";
+export const SANDBOX_PREVIEW_TAB_PREFIX = "sandbox-preview-";
 let nextTabId = 1;
 
 function loadWidth(): number {
@@ -39,6 +50,7 @@ function loadWidth(): number {
 
 export const useViewportStore = create<ViewportStore>((set) => ({
   tabs: [],
+  previews: {},
   activeTabId: null,
   drawerOpen: false,
   drawerWidth: loadWidth(),
@@ -60,14 +72,60 @@ export const useViewportStore = create<ViewportStore>((set) => ({
         activeTabId: AI_TERMINAL_TAB_ID,
         drawerOpen: true,
       })),
+    setPreview: (preview) =>
+      set((state) => {
+        const id = previewTabId(preview.hostPort);
+        const existing = state.previews[preview.hostPort];
+        if (
+          existing?.sandboxId === preview.sandboxId &&
+          existing?.containerPort === preview.containerPort &&
+          existing?.hostPort === preview.hostPort &&
+          existing?.url === preview.url
+        ) {
+          return state;
+        }
+        const known = Boolean(existing);
+        return {
+          previews: { ...state.previews, [preview.hostPort]: preview },
+          tabs: state.tabs.includes(id) ? state.tabs : [...state.tabs, id],
+          activeTabId: known ? state.activeTabId : id,
+          drawerOpen: known ? state.drawerOpen : true,
+        };
+      }),
+    clearSandboxPreviews: (sandboxId) =>
+      set((state) => {
+        const ports = new Set(
+          Object.values(state.previews)
+            .filter((preview) => preview.sandboxId === sandboxId)
+            .map((preview) => preview.hostPort),
+        );
+        if (!ports.size) return state;
+        const tabs = state.tabs.filter((id) => !ports.has(Number(id.slice(SANDBOX_PREVIEW_TAB_PREFIX.length))));
+        return {
+          previews: Object.fromEntries(
+            Object.entries(state.previews).filter(([port]) => !ports.has(Number(port))),
+          ),
+          tabs,
+          activeTabId: ports.has(Number(state.activeTabId?.slice(SANDBOX_PREVIEW_TAB_PREFIX.length)))
+            ? tabs[tabs.length - 1] ?? null
+            : state.activeTabId,
+          drawerOpen: tabs.length > 0,
+        };
+      }),
     closeTab: (id) =>
       set((state) => {
         const index = state.tabs.indexOf(id);
         if (index < 0) return state;
         const tabs = state.tabs.filter((tab) => tab !== id);
+        const previews = isPreviewTab(id)
+          ? Object.fromEntries(
+            Object.entries(state.previews).filter(([port]) => previewTabId(Number(port)) !== id),
+          )
+          : state.previews;
         const neighbor = tabs[Math.min(tabs.length - 1, Math.max(0, index - 1))];
         return {
           tabs,
+          previews,
           activeTabId: state.activeTabId === id ? neighbor ?? null : state.activeTabId,
           drawerOpen: tabs.length > 0,
         };
@@ -88,7 +146,7 @@ export const useViewportStore = create<ViewportStore>((set) => ({
       localStorage.setItem(WIDTH_STORAGE_KEY, String(drawerWidth));
       set({ drawerWidth });
     },
-    clear: () => set({ tabs: [], activeTabId: null, drawerOpen: false }),
+    clear: () => set({ tabs: [], previews: {}, activeTabId: null, drawerOpen: false }),
   },
 }));
 
@@ -116,6 +174,20 @@ export function openViewportTerminal(): string {
 /** Opens (or selects) the transcript tab for commands the AI has run. */
 export function openAiTerminalTab(): void {
   useViewportStore.getState().actions.addAiTab();
+}
+
+export function previewTabId(hostPort: number): string {
+  return `${SANDBOX_PREVIEW_TAB_PREFIX}${hostPort}`;
+}
+
+export function isPreviewTab(id: string): boolean {
+  return id.startsWith(SANDBOX_PREVIEW_TAB_PREFIX);
+}
+
+export function previewForTab(id: string): SandboxPreview | undefined {
+  if (!isPreviewTab(id)) return undefined;
+  const port = Number(id.slice(SANDBOX_PREVIEW_TAB_PREFIX.length));
+  return useViewportStore.getState().previews[port];
 }
 
 export function closeViewportTab(id: string): void {

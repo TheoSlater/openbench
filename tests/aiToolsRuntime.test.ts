@@ -85,6 +85,40 @@ async function run(response: Response) {
 }
 
 describe("AI SDK tool loop", () => {
+  it("passes registry tool selection to the provider", async () => {
+    const selectedModel = new MockLanguageModelV4({
+      doStream: {
+        stream: stream([
+          { type: "stream-start", warnings: [] },
+          { type: "text-start", id: "text-1" },
+          { type: "text-delta", id: "text-1", delta: "answer" },
+          { type: "text-end", id: "text-1" },
+          finish("stop"),
+        ]),
+      },
+    });
+    const result = await streamChat({
+      type: "chat",
+      requestId: "req-selection",
+      conversationId: "conv",
+      connection: {
+        id: "conn",
+        provider: "openai",
+        modelId: "model",
+      },
+      messages: [{ id: "user", role: "user", parts: [{ type: "text", text: "answer" }] }],
+      webSearch: { provider: "local" },
+      terminal: true,
+      activeTools: ["web_search"],
+      toolOrder: ["terminal", "web_search"],
+    }, new AbortController().signal, { model: selectedModel });
+    for await (const chunk of result) void chunk;
+
+    expect(selectedModel.doStreamCalls[0]?.tools?.map((tool) => tool.name)).toEqual([
+      "web_search",
+    ]);
+  });
+
   it("assembles tool deltas, executes web search, cites, and continues", async () => {
     const { chunks, model, providerFetch } = await run(new Response(JSON.stringify({
       results: [{
