@@ -35,7 +35,7 @@ export function Source({ href, children }: SourceProps) {
 
   return (
     <SourceContext.Provider value={{ href, domain }}>
-      <HoverCard openDelay={150} closeDelay={0}>
+      <HoverCard>
         {children}
       </HoverCard>
     </SourceContext.Provider>
@@ -58,30 +58,34 @@ export function SourceTrigger({
 
   return (
     <LinkContextMenu href={href}>
-      <HoverCardTrigger asChild>
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(
-            "bg-muted text-muted-foreground hover:bg-muted-foreground/30 hover:text-primary inline-flex h-5 max-w-32 items-center gap-1 overflow-hidden rounded-full py-0 text-xs no-underline transition-colors duration-150",
-            showFavicon ? "pr-2 pl-1" : "px-1",
-            className
-          )}
-        >
-          {showFavicon && (
-            <img
-              src={`https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(
-                href
-              )}`}
-              alt="favicon"
-              width={14}
-              height={14}
-              className="size-3.5 rounded-full"
-            />
-          )}
-          <span className="truncate tabular-nums text-center font-normal">{labelToShow}</span>
-        </a>
+      <HoverCardTrigger
+        delay={150}
+        closeDelay={0}
+        render={
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "bg-muted text-muted-foreground hover:bg-muted-foreground/30 hover:text-primary inline-flex h-5 max-w-32 items-center gap-1 overflow-hidden rounded-full py-0 text-xs no-underline transition-colors duration-150",
+              showFavicon ? "pr-2 pl-1" : "px-1",
+              className
+            )}
+          />
+        }
+      >
+        {showFavicon && (
+          <img
+            src={`https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(
+              href
+            )}`}
+            alt="favicon"
+            width={14}
+            height={14}
+            className="size-3.5 rounded-full"
+          />
+        )}
+        <span className="truncate tabular-nums text-center font-normal">{labelToShow}</span>
       </HoverCardTrigger>
     </LinkContextMenu>
   )

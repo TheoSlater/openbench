@@ -154,7 +154,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
       open={open}
       onOpenChange={onOpenChange}
       title="Command palette"
-      className="mx-4 flex max-h-[min(560px,72vh)] w-full max-w-[600px] flex-col gap-0 bg-popover p-0 shadow-2xl sm:max-w-[600px]"
+      className="flex max-h-[min(560px,72vh)] w-full flex-col gap-0 bg-popover p-0 shadow-2xl sm:max-w-[600px]"
     >
       <Command
         shouldFilter={false}

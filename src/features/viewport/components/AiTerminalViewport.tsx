@@ -24,6 +24,10 @@ function formatBytes(value: number): string {
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
+function formatLimit(value: number, format: (value: number) => string): string {
+  return value > 0 ? format(value) : "—";
+}
+
 function formatAge(value: number): string {
   if (value < 1_000) return "now";
   if (value < 60_000) return `${Math.round(value / 1_000)}s`;
@@ -248,11 +252,11 @@ export function AiTerminalViewport() {
                     <span>Workspace</span>
                     <span className="text-right text-foreground">{formatBytes(diagnostics.workspaceBytes)} / {formatBytes(diagnostics.workspaceLimitBytes)}</span>
                     <span>Memory</span>
-                    <span className="text-right text-foreground">{formatBytes(diagnostics.memoryLimitBytes)}</span>
+                    <span className="text-right text-foreground">{formatLimit(diagnostics.memoryLimitBytes, formatBytes)}</span>
                     <span>CPU</span>
-                    <span className="text-right text-foreground">{diagnostics.cpuLimit} cores</span>
+                    <span className="text-right text-foreground">{diagnostics.cpuLimit > 0 ? `${diagnostics.cpuLimit} cores` : "—"}</span>
                     <span>Processes</span>
-                    <span className="text-right text-foreground">{diagnostics.activeCommands} / {diagnostics.pidsLimit}</span>
+                    <span className="text-right text-foreground">{diagnostics.activeCommands} / {diagnostics.pidsLimit > 0 ? diagnostics.pidsLimit : "—"}</span>
                     <span>Idle</span>
                     <span className="text-right text-foreground">{formatAge(diagnostics.lastActivityAgeMs)}</span>
                   </div>

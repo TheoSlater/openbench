@@ -243,7 +243,7 @@ export function MemorySettingsTab() {
                 min={1}
                 max={20}
                 disabled={!s.enabled || saving}
-                onValueChange={([value]) => saveSettings({ retrievalLimit: value })}
+                onValueChange={(value) => saveSettings({ retrievalLimit: value })}
               />
               <span className="w-6 text-right text-sm tabular-nums text-muted-foreground">
                 {s.retrievalLimit}
@@ -262,7 +262,7 @@ export function MemorySettingsTab() {
                 max={2000}
                 step={50}
                 disabled={!s.enabled || saving}
-                onValueChange={([value]) => saveSettings({ tokenBudget: value })}
+                onValueChange={(value) => saveSettings({ tokenBudget: value })}
               />
               <span className="w-10 text-right text-sm tabular-nums text-muted-foreground">
                 {s.tokenBudget}

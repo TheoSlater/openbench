@@ -98,17 +98,17 @@ export const Header = memo(function Header({
                   </Button>
                 ) : null}
                 <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
+                  <PopoverTrigger
+                    render={<Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       aria-label="Switch prompt preset"
                       title="Switch Prompt Preset"
                       className="size-7 rounded-full text-muted-foreground hover:text-foreground"
-                    >
+                    />}
+                  >
                       <ScrollText size={16} />
-                    </Button>
                   </PopoverTrigger>
                   <PopoverContent
                     align="start"

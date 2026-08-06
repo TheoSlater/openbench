@@ -228,7 +228,13 @@ export function ModelSelector({
   const applySelection = async (option: RuntimeOption) => {
     const runtime = await materialize(option);
     if (!runtime) return;
-    if (activeConversationId) await connectionsClient.setRuntime(activeConversationId, runtime);
+    if (activeConversationId) {
+      try {
+        await connectionsClient.setRuntime(activeConversationId, runtime);
+      } catch (error) {
+        console.error("Failed to bind the selected runtime to the conversation:", error);
+      }
+    }
     selectRuntime(runtime, runtimeLabel(runtime));
     setOpen(false);
   };
@@ -253,20 +259,20 @@ export function ModelSelector({
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
+        <PopoverTrigger
+          render={<Button
             variant="ghost"
             size="sm"
             aria-label={`Select model. Current: ${selectedLabel || "none"}`}
             aria-haspopup="listbox"
             aria-expanded={open}
             className="h-7 max-w-[220px] justify-start gap-1 border-transparent bg-transparent px-0 text-left text-sm shadow-none hover:bg-transparent hover:text-foreground/80"
-          >
+          />}
+        >
             <span className="truncate text-sm font-medium">
               {selectedLabel || "Select a model"}
             </span>
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="start"

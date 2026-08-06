@@ -18,7 +18,7 @@ export function activateRowOnKeyDown(event: React.KeyboardEvent<HTMLElement>) {
   }
 }
 
-/** Body for `SidebarMenuButton asChild`. Rows that embed their own buttons
+/** Body for custom `SidebarMenuButton` rows. Rows that embed their own buttons
  * (actions menu, rename controls) can't be a real <button> — HTML forbids
  * nesting them and React warns loudly — so the row renders as a div with
  * button semantics restored. */

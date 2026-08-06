@@ -18,12 +18,12 @@
     --z-tooltip: calc(var(--z-titlebar) + 40);
     --z-toast: calc(var(--z-titlebar) + 50);
     --background: oklch(1 0 0);
-    --foreground: oklch(0.148 0.004 228.8);
+    --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.148 0.004 228.8);
+    --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.148 0.004 228.8);
-    --primary: oklch(0.218 0.008 223.9);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
@@ -33,12 +33,12 @@
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: oklch(1 0 0);
-    --border: oklch(0.925 0.005 214.3);
-    --input: oklch(0.925 0.005 214.3);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
     /* 3:1 against --background is the WCAG 2.4.11 floor; the old 0.723 was ~2:1. */
-    --ring: oklch(0.54 0.02 214.4);
+    --ring: oklch(0.708 0 0);
     --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.148 0.004 228.8);
+    --sidebar-foreground: oklch(0.145 0 0);
     --chat-bubble-user: oklch(0.945 0.003 197.1);
     --success: oklch(0.72 0.18 149);
     --success-soft: oklch(0.72 0.18 149 / 10%);
@@ -98,11 +98,18 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
 }
 
 .dark {
     --background: oklch(0.145 0 0);
-    --foreground: oklch(0.987 0.002 197.1);
+    --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
     --card-foreground: oklch(0.985 0 0);
     --popover: oklch(0.205 0 0);
@@ -119,9 +126,9 @@
     --destructive-foreground: oklch(0 0 0);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.72 0 0);
+    --ring: oklch(0.556 0 0);
     --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.88 0.005 220);
+    --sidebar-foreground: oklch(0.985 0 0);
     --chat-bubble-user: oklch(0.21 0.006 228.8);
     --success: oklch(0.82 0.12 145);
     --success-soft: oklch(0.82 0.12 145 / 10%);
@@ -145,10 +152,17 @@
     --tok-variable: oklch(0.92 0.003 197.1);
     --tok-constant: oklch(0.84 0.15 82);
     --tok-jsxliterals: oklch(0.84 0.15 82);
-    --sidebar-accent: oklch(0.255 0.003 220);
-    --sidebar-accent-foreground: oklch(0.88 0.005 220);
-    --sidebar-border: oklch(1 0 0 / 8%);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
 }
 
 @theme inline {
@@ -197,8 +211,8 @@
     --radius-md: var(--radius-md);
     --radius-lg: var(--radius-lg);
     --radius-xl: var(--radius-xl);
-    --font-heading: 'Inter Variable', sans-serif;
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-heading: var(--font-sans);
+    --font-sans: 'Inter Variable', sans-serif;
     --font-mono: 'JetBrains Mono Variable', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -207,6 +221,13 @@
     --radius-2xl: var(--radius-2xl);
     --radius-3xl: var(--radius-3xl);
     --radius-4xl: var(--radius-4xl);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
 }
 
 html.reduce-motion {
@@ -587,36 +608,6 @@ code {
     animation: spin 1s linear infinite;
 }
 
-.animate-toast-in {
-    animation: toast-in var(--dur-fast) var(--ease-premium) forwards;
-}
-
-@keyframes toast-in {
-    from {
-        opacity: 0;
-        transform: translateY(20px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.animate-toast-out {
-    animation: toast-out var(--dur-fast) var(--ease-premium) forwards;
-}
-
-@keyframes toast-out {
-    from {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(20px) scale(0.98);
-    }
-}
-
 /* Fade in */
 .animate-fade-in {
     animation: fade-in var(--dur-base) var(--ease-premium) forwards;
@@ -821,7 +812,6 @@ html[data-chrome="borderless"] .poly-bg-surface {
 html.reduce-motion .animate-fade-in,
 html.reduce-motion .animate-slide-in,
 html.reduce-motion .animate-popover,
-html.reduce-motion .animate-toast-in,
 html.reduce-motion .animate-spin,
 html.reduce-motion .animate-thinking,
 html.reduce-motion .animate-pulse,

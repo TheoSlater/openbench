@@ -88,6 +88,7 @@ type ChatStore = {
       provider?: Message["provider"];
       thinking?: string;
       thinkingDuration?: number;
+      thinkingTimings?: number[];
       isThinking?: boolean;
       isStreaming?: boolean;
       status?: Message["status"];
@@ -315,6 +316,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         provider: message.provider,
         thinking: message.thinking,
         thinkingDuration: message.thinkingDuration,
+        thinkingTimings: message.thinkingTimings,
         isThinking: message.isThinking,
         isStreaming: message.isStreaming ?? false,
         status: message.status,

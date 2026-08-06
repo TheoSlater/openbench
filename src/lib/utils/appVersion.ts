@@ -19,6 +19,22 @@ export function compareAppVersions(a: string, b: string): number {
   return 0;
 }
 
+// Dev builds append -dirty when the working tree has uncommitted changes;
+// -stale means a newer release is available upstream.
+export function tagAppVersion(
+  version: string | null,
+  { dirty, stale }: { dirty: boolean; stale: boolean },
+): string | null {
+  if (!version) return null;
+  const flags = [
+    dirty ? "dirty" : null,
+    stale ? "stale" : null,
+  ]
+    .filter(Boolean)
+    .join("-");
+  return flags ? `${version}-${flags}` : version;
+}
+
 export function getBundledAppVersion(): string | null {
   try {
     return normalizeAppVersion(__APP_VERSION__);

@@ -26,6 +26,13 @@ import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import { agentName, runtimeLabel } from "@/features/runtime/runtime-options";
 import type { ModelChoice } from "@/lib/models/model-choice";
 import { fromUIMessage, toUIMessage, filterPartsForRuntime, type PolyUIMessage } from "@/lib/ai/messages";
+import {
+  closeReasonings,
+  createReasoningTimings,
+  observeReasoningParts,
+  reasoningDurations,
+  type ReasoningTiming,
+} from "@/lib/chat/reasoning-timing";
 import { ChatRuntime, type ChatJob } from "@/features/chat/runtime/ChatRuntime";
 import { connectionsClient } from "@/features/connections/client";
 import { handleAiTerminalParts } from "@/features/viewport/aiTerminal";
@@ -85,6 +92,7 @@ type Timing = {
   startedAt: number;
   reasoningStartedAt?: number;
   reasoningEndedAt?: number;
+  reasonings: Map<number, ReasoningTiming>;
 };
 
 export function useChatStream(
@@ -154,19 +162,24 @@ export function useChatStream(
       provider: job.provider,
     });
     handleAiTerminalParts(message.parts);
+    const now = Date.now();
     const timing = timings.current.get(job.requestId);
     if (timing && entity.thinking && !timing.reasoningStartedAt) {
-      timing.reasoningStartedAt = Date.now();
+      timing.reasoningStartedAt = now;
     }
     if (timing?.reasoningStartedAt && entity.content && !timing.reasoningEndedAt) {
-      timing.reasoningEndedAt = Date.now();
+      timing.reasoningEndedAt = now;
     }
+    if (timing) observeReasoningParts(timing.reasonings, message.parts, now);
     patchStreamingMessage(job.messageId, {
       ...entity,
       id: job.messageId,
       status: "streaming",
       isStreaming: true,
       isThinking: Boolean(entity.thinking && !entity.content),
+      thinkingTimings: timing
+        ? reasoningDurations(timing.reasonings, now)
+        : undefined,
     });
   }, [patchStreamingMessage]);
 
@@ -184,14 +197,23 @@ export function useChatStream(
       provider: job.provider,
     });
     const timing = timings.current.get(job.requestId);
+    const finishedAt = Date.now();
+    if (timing) {
+      observeReasoningParts(timing.reasonings, message.parts, finishedAt);
+      closeReasonings(timing.reasonings, finishedAt);
+    }
+    const durations = timing
+      ? reasoningDurations(timing.reasonings, finishedAt)
+      : [];
     const reasoningDuration = timing?.reasoningStartedAt
-      ? ((timing.reasoningEndedAt ?? Date.now()) - timing.reasoningStartedAt) / 1000
+      ? ((timing.reasoningEndedAt ?? finishedAt) - timing.reasoningStartedAt) / 1000
       : undefined;
     await addMessage({
       ...entity,
       id: job.messageId,
       content: sanitizeOutput(entity.content),
       thinkingDuration: reasoningDuration,
+      thinkingTimings: durations.length ? durations : undefined,
       isThinking: false,
       isStreaming: false,
       status: state.aborted ? "aborted" : state.failed ? "error" : "complete",
@@ -238,6 +260,7 @@ export function useChatStream(
       role: "assistant",
       content: sanitizeOutput(current?.content ?? ""),
       thinking: current?.thinking,
+      thinkingTimings: current?.thinkingTimings,
       runtimeParts: current?.runtimeParts,
       model: job.model,
       provider: job.provider,
@@ -290,7 +313,10 @@ export function useChatStream(
       const requestId = crypto.randomUUID();
       const messageId = crypto.randomUUID();
       settled.current.delete(requestId);
-      timings.current.set(requestId, { startedAt: Date.now() });
+      timings.current.set(requestId, {
+        startedAt: Date.now(),
+        reasonings: createReasoningTimings(),
+      });
       setStreamingMessage(messageId, {
         id: messageId,
         conversationId,

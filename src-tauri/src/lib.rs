@@ -3,6 +3,7 @@ mod auth;
 mod commands;
 mod connections;
 mod db;
+mod debug_overlay;
 mod error;
 mod memory;
 mod mobile_pairing;
@@ -17,6 +18,7 @@ mod whisper_state;
 mod window_state_recovery;
 
 use crate::commands::db_commands::execute_sql;
+use crate::debug_overlay::{debug_log, debug_overlay_enable, DebugOverlayState};
 use crate::commands::dictation_commands::{
     download_whisper_model, get_whisper_models_status, native_dictation_audio_level,
     preload_whisper_model, release_tts_engine, release_whisper_model, select_whisper_model,
@@ -214,6 +216,8 @@ pub fn run() {
             })?;
             app.manage(WhisperState::new(app_data_dir));
             startup_log::log_phase("whisper state initialized");
+            app.manage(DebugOverlayState::default());
+            startup_log::log_phase("debug overlay state initialized");
 
             if let Some(_window) = app.get_webview_window("main") {
                 startup_log::log_phase("main window created");
@@ -313,6 +317,8 @@ pub fn run() {
             log_startup_error,
             log_startup_phase,
             startup_log_path,
+            debug_overlay_enable,
+            debug_log,
             mobile_pairing_start,
             mobile_pairing_stop,
             mobile_pairing_status,

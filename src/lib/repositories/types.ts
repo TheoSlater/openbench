@@ -45,6 +45,7 @@ export type MessageRow = {
   provider?: Message["provider"];
   thinking?: string;
   thinkingDuration?: number;
+  thinkingTimings?: string;
   webSearch?: string;
   status?: Message["status"];
   errorMessage?: string;
@@ -67,6 +68,7 @@ export function mapRowToMessage(row: MessageRow): Message {
     provider: row.provider,
     thinking: row.thinking,
     thinkingDuration: row.thinkingDuration,
+    thinkingTimings: row.thinkingTimings ? JSON.parse(row.thinkingTimings) : undefined,
     webSearch: row.webSearch ? JSON.parse(row.webSearch) : undefined,
     status: row.status,
     errorMessage: row.errorMessage,

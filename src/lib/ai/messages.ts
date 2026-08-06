@@ -82,14 +82,19 @@ function toolName(part: Part): string | undefined {
   return undefined;
 }
 
-const POLY_TOOL_NAMES = new Set(["web_search", "terminal"]);
+const POLY_TOOL_NAMES = new Set([
+  "web_search",
+  "terminal",
+  "displayWeather",
+  "getStockPrice",
+]);
 
 /**
  * History crosses runtime families when the header selector rebinds a
  * conversation in place (chat-model → coding-agent or back). The other
  * family's parts would become tool-call messages the provider cannot map:
- * a poly `web_search`/`terminal` call sent to Claude Code or Codex, or a
- * Claude `Bash` call sent to OpenAI. Strip the foreign family's parts.
+ * a PolyUI tool call sent to Claude Code or Codex, or a Claude `Bash` call
+ * sent to OpenAI. Strip the foreign family's parts.
  */
 export function filterPartsForRuntime(
   message: PolyUIMessage,

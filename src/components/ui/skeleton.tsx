@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils"
 
-const variantClasses: Record<string, string> = {
+const variantClasses = {
   text: "rounded-sm",
   rounded: "rounded-md",
   circular: "rounded-full",
-}
+} as const
 
 function Skeleton({
   className,
@@ -14,7 +14,7 @@ function Skeleton({
   style,
   ...props
 }: React.ComponentProps<"div"> & {
-  variant?: "text" | "rounded" | "circular"
+  variant?: keyof typeof variantClasses
   width?: number | string
   height?: number | string
 }) {
@@ -24,7 +24,7 @@ function Skeleton({
       className={cn(
         "animate-pulse bg-muted",
         variant ? variantClasses[variant] : "rounded-2xl",
-        className,
+        className
       )}
       style={{ width, height, ...style }}
       {...props}

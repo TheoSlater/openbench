@@ -332,7 +332,12 @@ pub async fn save_workspace(
     workspace.path = path.display().to_string();
     workspace.availability = crate::connections::WorkspaceAvailability::Available;
     workspace.last_validated_at = Some(now());
-    crate::connections::repository::upsert_workspace(&state.db, &workspace).await?;
+    let persisted_id = crate::connections::repository::upsert_workspace(&state.db, &workspace)
+        .await?;
+    // `upsert_workspace` reuses an existing row's id when one already exists
+    // for this (account, path). Return the persisted id so callers that bind
+    // runtimes against it never point at a row that does not exist.
+    workspace.id = persisted_id;
     Ok(workspace)
 }
 

@@ -245,14 +245,14 @@ export const AuthModal: React.FC = () => {
   }, []);
 
   return (
-    <Dialog open={isOpen}>
+    <Dialog
+      open={isOpen}
+      disablePointerDismissal
+      // Base UI replaces Radix onEscapeKeyDown and onInteractOutside with a
+      // cancelable onOpenChange event.
+      onOpenChange={(_, details) => details.cancel()}
+    >
       <DialogContent
-        // An auth gate, not a dismissible dialog: the only ways out are
-        // signing in or "Continue as guest". Escape and outside clicks were
-        // already inert under the old hand-rolled modal, which passed no
-        // onClose — this keeps that contract explicit.
-        onEscapeKeyDown={(event) => event.preventDefault()}
-        onInteractOutside={(event) => event.preventDefault()}
         showCloseButton={false}
         // Offset by the title bar so the panel sits optically centred in the
         // content area rather than the whole window.

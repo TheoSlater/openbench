@@ -370,9 +370,9 @@ export function SpeechTab() {
         action={
           <Select
             value={tts.engine}
-            onValueChange={(value) =>
-              actions.updateTts({ engine: value as typeof tts.engine })
-            }
+            onValueChange={(value) => {
+              if (value) actions.updateTts({ engine: value as typeof tts.engine });
+            }}
           >
             <SelectTrigger size="sm" className={selectClassName}>
               <SelectValue />
@@ -407,14 +407,15 @@ export function SpeechTab() {
               <Select
                 value={tts.browser.voiceURI || (voices[0]?.voiceURI ?? "")}
                 disabled={voices.length === 0}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
+                  if (!value) return;
                   actions.updateTts({
                     browser: {
                       ...tts.browser,
                       voiceURI: value,
                     },
-                  })
-                }
+                  });
+                }}
               >
                 <SelectTrigger size="sm" className={selectClassName}>
                   <SelectValue placeholder="Loading voices..." />
@@ -439,11 +440,9 @@ export function SpeechTab() {
                 min={0.5}
                 max={2.0}
                 step={0.1}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value.toFixed(1)}x`}
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateTts({
-                    browser: { ...tts.browser, speed: value as number },
+                    browser: { ...tts.browser, speed: value },
                   })
                 }
               />
@@ -461,11 +460,9 @@ export function SpeechTab() {
                 min={0.5}
                 max={2.0}
                 step={0.1}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value.toFixed(1)}`}
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateTts({
-                    browser: { ...tts.browser, pitch: value as number },
+                    browser: { ...tts.browser, pitch: value },
                   })
                 }
               />
@@ -487,11 +484,9 @@ export function SpeechTab() {
                 min={0.5}
                 max={2.0}
                 step={0.1}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value.toFixed(1)}x`}
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateTts({
-                    supertonic: { ...tts.supertonic, speed: value as number },
+                    supertonic: { ...tts.supertonic, speed: value },
                   })
                 }
               />
@@ -506,10 +501,9 @@ export function SpeechTab() {
                 min={3}
                 max={20}
                 step={1}
-                valueLabelDisplay="auto"
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateTts({
-                    supertonic: { ...tts.supertonic, totalStep: value as number },
+                    supertonic: { ...tts.supertonic, totalStep: value },
                   })
                 }
               />
@@ -524,11 +518,9 @@ export function SpeechTab() {
                 min={0}
                 max={1}
                 step={0.05}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value.toFixed(2)}s`}
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateTts({
-                    supertonic: { ...tts.supertonic, silenceDuration: value as number },
+                    supertonic: { ...tts.supertonic, silenceDuration: value },
                   })
                 }
               />
@@ -591,9 +583,9 @@ export function SpeechTab() {
             action={
               <Select
                 value={dictation.language}
-                onValueChange={(value) =>
-                  actions.updateDictation({ language: value })
-                }
+                onValueChange={(value) => {
+                  if (value) actions.updateDictation({ language: value });
+                }}
               >
                 <SelectTrigger size="sm" className={selectClassName}>
                   <SelectValue />
@@ -632,9 +624,7 @@ export function SpeechTab() {
                 min={0.5}
                 max={2.0}
                 step={0.1}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${value.toFixed(1)}x`}
-                onChange={(_, value) =>
+                onValueChange={(value) =>
                   actions.updateDictation({ vadSensitivity: value as number })
                 }
               />

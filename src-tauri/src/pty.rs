@@ -227,7 +227,18 @@ fn spawn_ai_command(
             relay_pty_failure(&sidecar, relay_request_id.as_deref(), &error);
             error
         })?;
+    let headless = sandbox_command.headless;
     let mut builder = CommandBuilder::new(&sandbox_command.program);
+    if headless {
+        builder.env_clear();
+        if let Some(cwd) = &sandbox_command.cwd {
+            builder.cwd(cwd);
+        }
+        for (key, value) in &sandbox_command.env {
+            builder.env(key, value);
+        }
+        builder.env("SHELL", "/bin/sh");
+    }
     for arg in sandbox_command.args {
         builder.arg(arg);
     }
@@ -272,21 +283,23 @@ fn spawn_ai_command(
     let relay = relay_request_id.map(|request_id| (request_id, sidecar.clone()));
     let port_manager = sandboxes.clone();
     let port_sandbox_id = sandbox_id.clone();
-    let monitor_sessions = sessions.clone();
-    let monitor_id = id.clone();
-    let monitor_manager = sandboxes.clone();
-    let monitor_sandbox_id = sandbox_id.clone();
-    std::thread::spawn(move || loop {
-        let alive = monitor_sessions
-            .lock()
-            .map(|sessions| sessions.contains_key(&monitor_id))
-            .unwrap_or(false);
-        if !alive {
-            break;
-        }
-        let _ = monitor_manager.refresh_ports(&monitor_sandbox_id);
-        std::thread::sleep(Duration::from_secs(1));
-    });
+    if !headless {
+        let monitor_sessions = sessions.clone();
+        let monitor_id = id.clone();
+        let monitor_manager = sandboxes.clone();
+        let monitor_sandbox_id = sandbox_id.clone();
+        std::thread::spawn(move || loop {
+            let alive = monitor_sessions
+                .lock()
+                .map(|sessions| sessions.contains_key(&monitor_id))
+                .unwrap_or(false);
+            if !alive {
+                break;
+            }
+            let _ = monitor_manager.refresh_ports(&monitor_sandbox_id);
+            std::thread::sleep(Duration::from_secs(1));
+        });
+    }
     std::thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
         loop {
@@ -330,7 +343,9 @@ fn spawn_ai_command(
                 }
             }
         }
-        let _ = port_manager.refresh_ports(&port_sandbox_id);
+        if !headless {
+            let _ = port_manager.refresh_ports(&port_sandbox_id);
+        }
         let exit_code = child.wait().ok().map(|status| status.exit_code() as i32);
         if let Ok(true) = port_manager.workspace_limit_reached(&port_sandbox_id) {
             let warning =

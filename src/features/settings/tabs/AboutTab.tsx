@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "@/components/ui/link";
 import { Separator } from "@/components/ui/separator";
 import { SettingsSection } from "../SettingsShell";
-import { getBundledAppVersion, getInstalledAppVersion } from "@/lib/utils/appVersion";
+import { getBundledAppVersion, getInstalledAppVersion, tagAppVersion } from "@/lib/utils/appVersion";
+import { useUpdateStore } from "@/store/updateStore";
 
 const APP_REPO = "https://github.com/monolabsdev/poly-ui";
 const BADGES = [
@@ -14,6 +15,7 @@ const BADGES = [
 
 export function AboutTab() {
   const [version, setVersion] = useState(() => getBundledAppVersion());
+  const stale = useUpdateStore((s) => s.stale);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,10 +27,12 @@ export function AboutTab() {
     };
   }, []);
 
+  const displayVersion = tagAppVersion(version, { dirty: __APP_DIRTY__, stale });
+
   return (
     <SettingsSection
       title="PolyUI"
-      description={`Version ${version ?? "unknown"}`}
+      description={`Version ${displayVersion ?? "unknown"}`}
       action={
         <Link href={APP_REPO} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground">
           View on GitHub

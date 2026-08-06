@@ -136,9 +136,9 @@ export function createWebSearchTool(
       { input: { query: "latest PolyUI release" } },
       { input: { query: "AI SDK tool calling" } },
     ],
-    execute: async ({ query }) => ({
-      query,
-      results: await searchWeb(query, config, providerFetch),
-    }),
+    execute: async ({ query }) => {
+      const results = await searchWeb(query, config, providerFetch);
+      return { query, results };
+    },
   });
 }

@@ -126,6 +126,7 @@ const TurnItem = memo(function TurnItem({
                 model={msg.model}
                 thinking={msg.thinking}
                 thinkingDuration={msg.thinkingDuration}
+                thinkingTimings={msg.thinkingTimings}
                 isThinking={msg.isThinking}
                 isStreaming={msg.isStreaming}
                 status={msg.status}
@@ -356,6 +357,15 @@ export const ChatArea = memo(function ChatArea({
     overscan: motionPolicy.virtualOverscan,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
+
+  // Turns are appended in place when a new message lands, but each row's
+  // translateY is computed from sizes that may be an estimate or stale for one
+  // frame. Re-measuring synchronously before paint keeps a freshly appended
+  // turn from briefly overlapping the previous one (most visible with tall
+  // agent replies, whose plan/tool parts the estimator cannot predict).
+  useLayoutEffect(() => {
+    if (turns.length) rowVirtualizer.measure();
+  }, [turns, rowVirtualizer]);
 
   return (
     // StickToBottom only supplies context here — it reuses the instance above

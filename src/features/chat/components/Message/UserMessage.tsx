@@ -91,13 +91,13 @@ export function UserMessage({ id, conversationId, content, attachments }: Messag
         </Tooltip>
         {memoryUiEnabled && (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton
+            <DropdownMenuTrigger
+              render={<IconButton
                 size="small"
                 className="size-7 rounded-full"
-              >
+              />}
+            >
                 <MoreHorizontal size={14} />
-              </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <MemoryMenuItems messageId={id} conversationId={conversationId} content={content} />

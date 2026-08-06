@@ -132,7 +132,7 @@ export function ConversationList({
               )}
             >
               <SidebarMenuButton
-                asChild
+                render={<SidebarMenuRow />}
                 isActive={activeConversationId === row.conversation.id}
                 tooltip={row.conversation.title || "Untitled"}
                 onClick={() => {
@@ -143,23 +143,21 @@ export function ConversationList({
               >
                 {/* Row embeds its own action buttons, so it can't be a
                     real <button>. */}
-                <SidebarMenuRow>
-                  <ConversationItem
-                    conv={row.conversation}
-                    activeConversationId={activeConversationId}
-                    isGenerating={streamingConversationId === row.conversation.id}
-                    isCollapsed={isCollapsed}
-                    editingId={conv.editingId}
-                    editValue={conv.editValue}
-                    setEditValue={conv.setEditValue}
-                    handleConfirmRename={conv.handleConfirmRename}
-                    handleCancelRename={conv.handleCancelRename}
-                    handleStartRename={conv.handleStartRename}
-                    handleArchive={conv.handleArchive}
-                    handleStartDelete={conv.handleStartDelete}
-                    onExport={handleExport}
-                  />
-                </SidebarMenuRow>
+                <ConversationItem
+                  conv={row.conversation}
+                  activeConversationId={activeConversationId}
+                  isGenerating={streamingConversationId === row.conversation.id}
+                  isCollapsed={isCollapsed}
+                  editingId={conv.editingId}
+                  editValue={conv.editValue}
+                  setEditValue={conv.setEditValue}
+                  handleConfirmRename={conv.handleConfirmRename}
+                  handleCancelRename={conv.handleCancelRename}
+                  handleStartRename={conv.handleStartRename}
+                  handleArchive={conv.handleArchive}
+                  handleStartDelete={conv.handleStartDelete}
+                  onExport={handleExport}
+                />
               </SidebarMenuButton>
             </div>
           ),

@@ -83,11 +83,12 @@ class SqliteConversationRepository implements ConversationRepository {
 
   async addMessage(message: Message): Promise<void> {
     await this.db.execute(
-      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, webSearch, status, errorMessage, memoryUpdates, runtimeParts, usage, finishReason, agentSessionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO messages (id, conversationId, role, content, createdAt, attachments, model, provider, thinking, thinkingDuration, thinkingTimings, webSearch, status, errorMessage, memoryUpdates, runtimeParts, usage, finishReason, agentSessionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         message.id, message.conversationId, message.role, message.content, message.createdAt,
         message.attachments ? JSON.stringify(message.attachments) : null,
         message.model || null, message.provider || null, message.thinking || null, message.thinkingDuration || null,
+        message.thinkingTimings?.length ? JSON.stringify(message.thinkingTimings) : null,
         message.webSearch ? JSON.stringify(message.webSearch) : null,
         message.status || null,
         message.errorMessage || null,

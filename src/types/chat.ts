@@ -66,6 +66,8 @@ export interface ChatMessage {
   provider?: ModelProvider;
   thinking?: string;
   thinkingDuration?: number;
+  /** Per-reasoning-block duration in seconds, in order of appearance. */
+  thinkingTimings?: number[];
   isThinking?: boolean;
   isStreaming?: boolean;
   status?: "queued" | "streaming" | "complete" | "error" | "aborted";
