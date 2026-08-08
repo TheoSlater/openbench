@@ -147,14 +147,18 @@ export const ConversationItem = React.memo(function ConversationItem({
         </Box>
       ) : (
         <>
-        <span className="shrink-0 text-xs text-muted-foreground group-hover/row:hidden group-focus-within/row:hidden group-has-data-[state=open]/row:hidden [@media(hover:none)]:hidden">
-          {shortTimeAgo(conv.updatedAt || conv.createdAt)}
-        </span>
-        <Box
-          // Keep the trigger mounted while the menu is open so Base UI retains
-          // its anchor after the pointer leaves the row.
-          className="flex shrink-0 pointer-events-none opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
-        >
+        <Box className="relative flex size-8 shrink-0 items-center justify-center">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground transition-opacity group-hover/row:opacity-0 group-focus-within/row:opacity-0 group-has-data-[state=open]/row:opacity-0 [@media(hover:none)]:opacity-0"
+          >
+            {shortTimeAgo(conv.updatedAt || conv.createdAt)}
+          </span>
+          <Box
+            // Keep the trigger mounted while the menu is open so Base UI retains
+            // its anchor after the pointer leaves the row.
+            className="pointer-events-none opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+          >
           <DropdownMenu>
             <DropdownMenuTrigger
               render={<IconButton
@@ -180,6 +184,7 @@ export const ConversationItem = React.memo(function ConversationItem({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </Box>
         </Box>
         </>
       )}
