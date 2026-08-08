@@ -4,7 +4,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::State;
 use uuid::Uuid;
@@ -133,8 +132,8 @@ pub fn pty_spawn(
     Ok(id)
 }
 
-/// Spawns an isolated sandbox command in a PTY. The AI path never uses the
-/// host shell or host working directory.
+/// Spawns a host-restricted command in a PTY. The AI path never uses the host
+/// shell or host working directory.
 #[tauri::command(async)]
 pub async fn pty_spawn_command(
     state: State<'_, PtyState>,
@@ -188,7 +187,7 @@ fn spawn_ai_command(
             exit_code: None,
         });
     };
-    status("Initializing sandbox…");
+    status("Initializing host-restricted runner…");
     let sandbox_command =
         match sandboxes.spawn_command(&sandbox_id, &command, cwd.as_deref(), &status) {
             Ok(command) => command,
@@ -227,17 +226,13 @@ fn spawn_ai_command(
             relay_pty_failure(&sidecar, relay_request_id.as_deref(), &error);
             error
         })?;
-    let headless = sandbox_command.headless;
     let mut builder = CommandBuilder::new(&sandbox_command.program);
-    if headless {
-        builder.env_clear();
-        if let Some(cwd) = &sandbox_command.cwd {
-            builder.cwd(cwd);
-        }
-        for (key, value) in &sandbox_command.env {
-            builder.env(key, value);
-        }
-        builder.env("SHELL", "/bin/sh");
+    builder.env_clear();
+    if let Some(cwd) = &sandbox_command.cwd {
+        builder.cwd(cwd);
+    }
+    for (key, value) in &sandbox_command.env {
+        builder.env(key, value);
     }
     for arg in sandbox_command.args {
         builder.arg(arg);
@@ -281,25 +276,8 @@ fn spawn_ai_command(
 
     let thread_id = id.clone();
     let relay = relay_request_id.map(|request_id| (request_id, sidecar.clone()));
-    let port_manager = sandboxes.clone();
-    let port_sandbox_id = sandbox_id.clone();
-    if !headless {
-        let monitor_sessions = sessions.clone();
-        let monitor_id = id.clone();
-        let monitor_manager = sandboxes.clone();
-        let monitor_sandbox_id = sandbox_id.clone();
-        std::thread::spawn(move || loop {
-            let alive = monitor_sessions
-                .lock()
-                .map(|sessions| sessions.contains_key(&monitor_id))
-                .unwrap_or(false);
-            if !alive {
-                break;
-            }
-            let _ = monitor_manager.refresh_ports(&monitor_sandbox_id);
-            std::thread::sleep(Duration::from_secs(1));
-        });
-    }
+    let sandbox_manager = sandboxes.clone();
+    let sandbox_session_id = sandbox_id.clone();
     std::thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
         loop {
@@ -343,11 +321,8 @@ fn spawn_ai_command(
                 }
             }
         }
-        if !headless {
-            let _ = port_manager.refresh_ports(&port_sandbox_id);
-        }
         let exit_code = child.wait().ok().map(|status| status.exit_code() as i32);
-        if let Ok(true) = port_manager.workspace_limit_reached(&port_sandbox_id) {
+        if let Ok(true) = sandbox_manager.workspace_limit_reached(&sandbox_session_id) {
             let warning =
                 "Sandbox workspace limit reached. Delete files or reset the sandbox before the next command.";
             let _ = on_event.send(PtyEvent {
@@ -365,7 +340,7 @@ fn spawn_ai_command(
                 );
             }
         }
-        let _ = port_manager.command_finished(&port_sandbox_id);
+        let _ = sandbox_manager.command_finished(&sandbox_session_id);
         if let Ok(mut sessions) = sessions.lock() {
             sessions.remove(&thread_id);
         }

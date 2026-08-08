@@ -11,6 +11,7 @@ import { initRepository } from "@/lib/repositories";
 import { startUpdateChecker } from "@/store/updateStore";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { backupCorruptStorageItem, startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
+import { preserveExistingInstall } from "@/features/onboarding/persistence";
 
 const SYSTEM_PROMPTS_STORAGE_KEY = "polyui.systemPrompts";
 
@@ -95,7 +96,6 @@ async function migrateDefaultRuntime() {
 async function preloadVisibleAppChunks() {
   startupPhase("preload visible chunks start");
   await Promise.all([
-    import("@/features/auth/AuthModal"),
     import("@/features/release-notes/ReleaseNotesModal"),
   ]);
   startupPhase("preload visible chunks complete");
@@ -129,6 +129,11 @@ async function initializeStores() {
   initStoreCoordinator();
   startupPhase("store coordinator init complete");
 
+  // A user who already used PolyUI should keep opening the app directly. The
+  // new wizard is only for clean installs; interrupted onboarding already has
+  // its own record and is left alone.
+  preserveExistingInstall();
+
   startupPhase("auth restore start");
   await useAuthStore.getState().actions.restoreSession().catch((err) => {
     startupError("Session restore failed", err);
@@ -140,6 +145,8 @@ async function initializeStores() {
   if (isLoading) {
     useAuthStore.setState({ isLoading: false });
   }
+  const auth = useAuthStore.getState();
+  if (!auth.user && !auth.isGuest) auth.actions.skipAuth();
   startupPhase("initialize stores complete");
 }
 

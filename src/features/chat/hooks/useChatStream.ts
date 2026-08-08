@@ -303,6 +303,7 @@ export function useChatStream(
       webSearchEnabled,
       webSearchEnabled,
     );
+    const capabilityMode = useSettingsStore.getState().capabilityMode;
     const targets = runtime.kind === "coding-agent"
       ? [{
         model: runtime.model_id ?? agentName(runtime.agent_kind),
@@ -348,7 +349,9 @@ export function useChatStream(
         reasoning: voiceModeRef.current ? "none" : undefined,
         webSearchProvider:
           runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
-        terminalEnabled: runtime.kind === "chat-model",
+        // Null is the legacy value: preserve existing users' terminal access
+        // until they explicitly choose an onboarding capability level.
+        terminalEnabled: runtime.kind === "chat-model" && capabilityMode !== "chat-only",
         token: getSessionToken,
       };
     });

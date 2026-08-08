@@ -8,8 +8,8 @@ fn validates_pty_dimensions() {
 }
 
 #[test]
-fn ai_command_path_has_no_host_shell_fallback() {
-    let source = include_str!("../src/pty.rs");
+fn ai_command_path_uses_host_policy() {
+    let source = include_str!("../src/pty.rs").replace("\r\n", "\n");
     let ai_path = source
         .split("pub async fn pty_spawn_command")
         .nth(1)
@@ -18,8 +18,9 @@ fn ai_command_path_has_no_host_shell_fallback() {
     assert!(!ai_path.contains("new_default_prog"));
     assert!(!ai_path.contains("dirs::home_dir"));
     assert!(ai_path.contains("sandboxes.spawn_command"));
-    assert!(ai_path.contains("sandbox_command.headless"));
     assert!(ai_path.contains("builder.env_clear()"));
+    assert!(!ai_path.contains("docker"));
+    assert!(!ai_path.contains("podman"));
     assert!(source.contains("#[tauri::command(async)]\npub async fn pty_spawn_command"));
     assert!(ai_path.contains("spawn_blocking"));
     assert!(source.contains("kind: \"status\""));

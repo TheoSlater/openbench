@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
 import { MockLanguageModelV4 } from "ai/test";
 import type { UIMessageChunk } from "ai";
 import { ApprovalBroker } from "../sidecar/src/approvals";
 import { closeAgentProviders, streamAgent } from "../sidecar/src/agents";
 import type { AgentCommand } from "../sidecar/src/protocol";
 
-const fakeCli = new URL("./fixtures/fake-agent-cli.mjs", import.meta.url).pathname;
+const fakeCli = fileURLToPath(new URL("./fixtures/fake-agent-cli.mjs", import.meta.url));
 
 const usage = {
   inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
