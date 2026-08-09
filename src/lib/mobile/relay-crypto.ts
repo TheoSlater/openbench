@@ -7,6 +7,10 @@ import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 export type RelayKeyPair = { secretKey: string; publicKey: string };
 export type RelayCiphertext = { nonce: string; ciphertext: string };
 
+// Must stay byte-for-byte compatible with the Expo client and native iOS
+// client. This string is part of the relay wire protocol.
+const RELAY_SESSION_INFO = "poly-session-v1";
+
 export function createRelayKeyPair(): RelayKeyPair {
   const secretKey = x25519.utils.randomSecretKey();
   return {
@@ -21,7 +25,7 @@ export function deriveRelayKey(secretKey: string, peerPublicKey: string) {
       sha256,
       x25519.getSharedSecret(hexToBytes(secretKey), hexToBytes(peerPublicKey)),
       undefined,
-      utf8ToBytes("poly-relay-v1"),
+      utf8ToBytes(RELAY_SESSION_INFO),
       32,
     ),
   );
