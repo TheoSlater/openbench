@@ -1468,9 +1468,14 @@ async fn response_for_request(
             return json_response(200, r#"{"ok":true}"#);
         }
         let owner_id = mobile_owner_account_id(&db).await.unwrap_or_default();
+        let title = if request.title.trim().eq_ignore_ascii_case("iphone") {
+            "New Chat".to_string()
+        } else {
+            request.title.trim().to_string()
+        };
         let result = sqlx::query("INSERT INTO conversations (id, title, createdAt, updatedAt, isArchived, userId, folderId) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), 0, ?3, NULL) ON CONFLICT(id) DO NOTHING")
             .bind(&request.id)
-            .bind(&request.title)
+            .bind(title)
             .bind(owner_id)
             .execute(&db)
             .await;
@@ -1784,6 +1789,14 @@ async fn mobile_owner_account_id(db: &sqlx::SqlitePool) -> Result<String, String
     {
         return Ok(row.get::<String, _>("userId"));
     }
+    if let Ok(row) = sqlx::query(
+        "SELECT account_id FROM workspaces WHERE account_id <> '' ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_one(db)
+    .await
+    {
+        return Ok(row.get::<String, _>("account_id"));
+    }
     Ok(String::new())
 }
 
@@ -1837,11 +1850,13 @@ async fn insert_message(
         .execute(db)
         .await
         .map_err(|error| error.to_string())?;
-    sqlx::query("UPDATE conversations SET updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1")
-        .bind(&message.conversation_id)
-        .execute(db)
-        .await
-        .map_err(|error| error.to_string())?;
+    sqlx::query(
+        "UPDATE conversations SET updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+    )
+    .bind(&message.conversation_id)
+    .execute(db)
+    .await
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
 

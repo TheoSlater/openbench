@@ -40,6 +40,7 @@ import { handleAiTerminalParts } from "@/features/viewport/aiTerminal";
 const titleStore: TitleStore = {
   findConversation: (id) => useChatStore.getState().conversations.find((c) => c.id === id),
   getConversationMessages: (id) => useChatStore.getState().messages.filter((m) => m.conversationId === id),
+  loadConversationMessages: (id) => getRepository().getMessages(id, 50, 0),
   setTitleGenerationStatus: (id, status) =>
     useChatStore.getState().actions.setTitleGenerationStatus?.(id, status),
   renameConversation: (id, title, source) =>

@@ -270,6 +270,48 @@ async fn the_shipped_sql_migration_applies_through_sqlx() {
 }
 
 #[tokio::test]
+async fn compact_legacy_provider_schema_is_migrated() {
+    let pool = legacy_database().await;
+    sqlx::query("DROP TABLE provider_configs")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r"
+        CREATE TABLE provider_configs (
+            provider_type TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            ollama_host TEXT,
+            ollama_api_key TEXT,
+            ollama_api_base_url TEXT,
+            priority INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            api_key TEXT,
+            api_base_url TEXT
+        )
+        ",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO provider_configs (provider_type, enabled, ollama_host) VALUES ('OllamaLocal', 1, 'http://127.0.0.1:11434')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    apply_rework_schema(&pool).await;
+
+    let report = migrate(&pool, &InMemorySecretStore::new()).await;
+    assert_eq!(report.connections_created, 1);
+    let connections = repository::list_connections(&pool, "").await.unwrap();
+    assert_eq!(connections.len(), 1);
+    assert_eq!(connections[0].provider, Provider::Ollama);
+    assert!(connections[0].enabled);
+}
+
+#[tokio::test]
 async fn cleanup_drops_legacy_provider_table_after_original_schema_upgrade() {
     let pool = legacy_database().await;
     sqlx::migrate!("./src/db/migrations")

@@ -15,7 +15,7 @@ use crate::connections::secrets::{self, Secret, SecretError, SecretRef, SecretSt
 use crate::connections::{Connection, ConnectionModel, DiscoverySource, Provider};
 use crate::runtime::{RuntimeRef, UnresolvedReason};
 use sqlx::{Row, SqlitePool};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// What the migration did. Returned for logging and asserted on in tests.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -214,17 +214,46 @@ async fn migrate_provider_configs(
     store: &dyn SecretStore,
     report: &mut MigrationReport,
 ) -> Result<(), String> {
-    let rows = sqlx::query(
-        r"
-        SELECT id, account_id, provider_type, enabled, ollama_host, ollama_api_key,
-               api_key, api_base_url, preset, headers, model_suggestions, priority
-        FROM provider_configs
-        ORDER BY account_id ASC, priority ASC, id ASC
-        ",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|error| error.to_string())?;
+    // Some pre-runtime-rework installs used provider_type as the primary key
+    // and never had the newer migration columns. Read both shapes through the
+    // same aliases so an old Ollama/OpenAI setup is not silently lost during
+    // pairing.
+    let columns = sqlx::query("PRAGMA table_info(provider_configs)")
+        .fetch_all(pool)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|row| row.get::<String, _>("name"))
+        .collect::<HashSet<_>>();
+    let column = |name: &str, fallback: &str| {
+        if columns.contains(name) {
+            name.to_string()
+        } else {
+            fallback.to_string()
+        }
+    };
+    let id = if columns.contains("id") {
+        "id".to_string()
+    } else {
+        "rowid".to_string()
+    };
+    let query = format!(
+        "SELECT {id} AS id, {} AS account_id, provider_type AS provider_type, {} AS enabled, {} AS ollama_host, {} AS ollama_api_key, {} AS api_key, {} AS api_base_url, {} AS preset, {} AS headers, {} AS model_suggestions, {} AS priority FROM provider_configs ORDER BY priority ASC, provider_type ASC",
+        column("account_id", "''"),
+        column("enabled", "1"),
+        column("ollama_host", "NULL"),
+        column("ollama_api_key", "NULL"),
+        column("api_key", "NULL"),
+        column("api_base_url", "NULL"),
+        column("preset", "NULL"),
+        column("headers", "NULL"),
+        column("model_suggestions", "NULL"),
+        column("priority", "0"),
+    );
+    let rows = sqlx::query(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|error| error.to_string())?;
 
     for row in &rows {
         let legacy_id: i64 = row.get("id");
