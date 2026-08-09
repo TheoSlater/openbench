@@ -176,12 +176,13 @@ function App() {
     void listen<{ conversationId?: string }>("mobile-chat-updated", (event) => {
       const changedId = event.payload.conversationId;
       const store = useChatStore.getState();
-      void store.actions.loadConversations().then(() => {
+      void store.actions.loadConversations().then(async () => {
+        const latest = useChatStore.getState();
+        if (changedId && latest.activeConversationId === changedId) {
+          await latest.actions.setActiveConversationId(changedId);
+        }
         if (changedId) {
           retryTitleForConversation(titleStore, changedId);
-        }
-        if (changedId && store.activeConversationId === changedId) {
-          void store.actions.setActiveConversationId(changedId);
         }
       });
     }).then((fn) => {
