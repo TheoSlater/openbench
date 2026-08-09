@@ -96,11 +96,27 @@ function setMobileConnectionStatus(connected: boolean, hostName: string | null) 
 }
 
 export function relayUrl(value: string) {
-  const url = new URL(value);
+  const url = new URL(relayOrigin(value));
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
   url.search = "";
   return url.toString();
+}
+
+function relayOrigin(value: string) {
+  const trimmed = value.trim();
+  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  const url = new URL(withScheme);
+
+  // Pairing payloads carry an HTTP(S) origin. Both clients derive /ws from it.
+  if (url.protocol === "wss:") url.protocol = "https:";
+  if (url.protocol === "ws:") url.protocol = "http:";
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Poly relay URL must use http or https.");
+  }
+  return url.origin;
 }
 
 export function relayPairingPayload(
@@ -111,7 +127,7 @@ export function relayPairingPayload(
   const key = relayIdentityForToken(info.token);
   return JSON.stringify({
     version: 1,
-    relayUrl: relay,
+    relayUrl: relayOrigin(relay),
     hostId: info.token,
     hostName: info.host,
     pairingToken: info.token,
@@ -137,6 +153,7 @@ class RelayHostBridge {
   ) {}
 
   start() {
+    this.sessionKey = null;
     this.socket = new WebSocket(relayUrl(this.relay));
     this.socket.onopen = () => {
       this.socket?.send(

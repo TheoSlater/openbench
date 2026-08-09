@@ -43,3 +43,6 @@ src-tauri/binaries/polyui-ai-runtime-*
 
 # ts-rs writes duplicate bindings here when Cargo runs from src-tauri.
 src-tauri/bindings/
+
+# Bun temporary standalone build artifacts.
+*.bun-build
