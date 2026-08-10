@@ -1,1 +1,5 @@
-export { ProfileTab as PersonalizationTab } from "./ProfileTab";
+import { ProfileTab } from "./ProfileTab";
+
+export function PersonalizationTab({ onOpenOnboarding }: { onOpenOnboarding?: () => void }) {
+  return <ProfileTab onOpenOnboarding={onOpenOnboarding} />;
+}

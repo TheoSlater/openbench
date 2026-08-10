@@ -269,6 +269,7 @@ pub fn run() {
             commands::connection_commands::get_conversation_runtime,
             commands::connection_commands::set_conversation_runtime,
             commands::connection_commands::list_recent_runtimes,
+            commands::db_commands::reset_local_data,
             commands::ai_runtime_commands::ai_runtime_start,
             commands::ai_runtime_commands::ai_runtime_agent_models,
             commands::ai_runtime_commands::ai_runtime_cancel,
@@ -328,7 +329,6 @@ pub fn run() {
             pty::pty_resize,
             pty::pty_close,
             sandbox::sandbox_destroy,
-            sandbox::sandbox_ports,
             sandbox::sandbox_stop_processes,
             sandbox::sandbox_diagnostics,
         ])

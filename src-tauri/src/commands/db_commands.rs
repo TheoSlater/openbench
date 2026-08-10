@@ -1,6 +1,97 @@
+use crate::connections::secrets::SecretRef;
 use crate::AppState;
 use serde::Serialize;
+use sqlx::query;
 use tauri::State;
+
+const RESET_TABLES: &[&str] = &[
+    "memory_record_sources",
+    "memory_outbox",
+    "memory_processing_queue",
+    "memory_records",
+    "memory_settings",
+    "connection_models",
+    "connections",
+    "agent_verification_legacy",
+    "agent_verification",
+    "mobile_push_tokens",
+    "agent_installations",
+    "workspaces",
+    "messages",
+    "conversations",
+    "folders",
+    "sessions",
+    "users",
+    "provider_configs",
+];
+
+const WEB_SEARCH_PROVIDERS: &[&str] = &["exa", "ollama", "tavily"];
+
+/// Remove all PolyUI-owned data while leaving SQLite migration metadata intact.
+/// Credentials are deleted through the OS secret store before their database
+/// references are removed, so a failed database reset can be retried safely.
+#[tauri::command]
+pub async fn reset_local_data(state: State<'_, AppState>) -> Result<(), String> {
+    let connection_refs: Vec<String> =
+        sqlx::query_scalar("SELECT secret_ref FROM connections WHERE secret_ref IS NOT NULL")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|error| format!("Could not read saved provider credentials: {error}"))?;
+
+    for reference in connection_refs {
+        state
+            .secret_store
+            .delete(&SecretRef(reference))
+            .map_err(|error| format!("Could not remove a saved provider credential: {error}"))?;
+    }
+    for provider in WEB_SEARCH_PROVIDERS {
+        state
+            .secret_store
+            .delete(&SecretRef::for_web_search(provider))
+            .map_err(|error| format!("Could not remove saved web search credentials: {error}"))?;
+    }
+
+    // Resetting local data should not leave active sandbox workspaces behind.
+    // Cleanup is best-effort; the reaper will handle an unavailable runtime.
+    let _ = state.sandboxes.destroy_all();
+
+    let mut transaction = state
+        .db
+        .begin()
+        .await
+        .map_err(|error| format!("Could not start the local data reset: {error}"))?;
+
+    for table in RESET_TABLES {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        )
+        .bind(table)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|error| format!("Could not inspect local data: {error}"))?;
+        if !exists {
+            continue;
+        }
+
+        if *table == "memory_records" {
+            query("UPDATE memory_records SET supersedes_id = NULL")
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| format!("Could not reset local memories: {error}"))?;
+        }
+
+        let statement = format!("DELETE FROM \"{}\"", table.replace('"', "\"\""));
+        query(&statement)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| format!("Could not clear local {table} data: {error}"))?;
+    }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| format!("Could not finish the local data reset: {error}"))
+}
 
 #[derive(Serialize)]
 pub struct SqlResult {

@@ -15,6 +15,7 @@ import {
 } from "./lib/utils/startupDiagnostics";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/utils/platform";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useShallow } from "zustand/react/shallow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { TITLE_BAR_HEIGHT } from "@/lib/constants/titlebar";
@@ -32,7 +33,10 @@ if (USE_CUSTOM_WINDOW_CONTROLS) {
 }
 
 function Root() {
-  const mode = useThemeStore((state) => state.mode);
+  const { mode, previewMode } = useThemeStore(useShallow((state) => ({
+    mode: state.mode,
+    previewMode: state.previewMode,
+  })));
   const performance = useSettingsStore((state) => state.performance);
   const prefersDarkMode = usePrefersDarkMode();
   const [isAppReady, setIsAppReady] = useState(false);
@@ -85,9 +89,10 @@ function Root() {
   }, [isAppReady, startupError]);
 
   useEffect(() => {
-    const isDark = mode === "dark" || (mode === "system" && prefersDarkMode);
+    const effectiveMode = previewMode ?? mode;
+    const isDark = effectiveMode === "dark" || (effectiveMode === "system" && prefersDarkMode);
     document.documentElement.classList.toggle("dark", isDark);
-  }, [mode, prefersDarkMode]);
+  }, [mode, prefersDarkMode, previewMode]);
 
   // OS preference seeds this setting once; user choice controls it afterward.
   const reduceMotion = useReducedMotion();
@@ -154,7 +159,7 @@ function Root() {
             {startupError ? (
               <StartupErrorScreen message={startupError} />
             ) : isAppReady ? (
-              <div className="app-content zoom-content animate-fade-in">
+              <div className="app-content relative zoom-content animate-fade-in">
                 <App />
               </div>
             ) : null}

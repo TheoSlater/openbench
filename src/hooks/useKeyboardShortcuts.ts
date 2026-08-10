@@ -9,14 +9,12 @@ import { requestComposerFocus } from "@/features/shortcuts/registry";
  */
 export function useKeyboardShortcuts({
   onOpenSettings,
-  isAuthGateOpen,
   setIsCommandPaletteOpen,
   onNewChat,
   onStopStreaming,
   onOpenShortcuts,
 }: {
   onOpenSettings: (tab: SettingsTab) => void;
-  isAuthGateOpen: boolean;
   setIsCommandPaletteOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onNewChat: () => void;
   onStopStreaming: () => void;
@@ -44,10 +42,6 @@ export function useKeyboardShortcuts({
       switch (event.key.toLowerCase()) {
         case "k":
           event.preventDefault();
-          if (isAuthGateOpen) {
-            setIsCommandPaletteOpen(false);
-            return;
-          }
           setIsCommandPaletteOpen((open) => !open);
           return;
         case ",":
@@ -55,13 +49,11 @@ export function useKeyboardShortcuts({
           onOpenSettings("general");
           return;
         case "n":
-          if (isAuthGateOpen) return;
           event.preventDefault();
           onNewChat();
           requestComposerFocus();
           return;
         case "l":
-          if (isAuthGateOpen) return;
           event.preventDefault();
           requestComposerFocus();
           return;
@@ -76,7 +68,6 @@ export function useKeyboardShortcuts({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
-    isAuthGateOpen,
     onNewChat,
     onOpenSettings,
     onOpenShortcuts,

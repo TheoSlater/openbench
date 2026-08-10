@@ -46,14 +46,14 @@ describe("sidebar polish", () => {
 
   it("keeps primary actions compact and discoverable", () => {
     const nav = read("src/components/nav-main.tsx");
-    const guest = read("src/features/sidebar/components/GuestFooter.tsx");
+    const profile = read("src/features/profile/ProfileMenu.tsx");
 
     // The shortcut hint must come from the Kbd component and the shortcut
     // registry, not a hand-rolled <kbd> with a hardcoded key label.
     expect(nav).toContain("<Kbd");
     expect(nav).toContain('shortcutKeys("search")');
     expect(nav).not.toContain("⌘");
-    expect(guest).toContain('aria-label="Sign in"');
-    expect(guest).not.toContain('className="min-h-[30px] w-full');
+    expect(profile).toContain("Local profile");
+    expect(profile).not.toContain("Sign in");
   });
 });

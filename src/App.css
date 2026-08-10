@@ -277,6 +277,16 @@ body {
     overflow: hidden;
 }
 
+.onboarding-surface {
+    isolation: isolate;
+    background: var(--background);
+}
+
+.onboarding-step {
+    overflow-anchor: none;
+    scrollbar-gutter: stable;
+}
+
 .startup-error-screen,
 .error-boundary-screen {
     align-items: center;

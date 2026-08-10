@@ -9,7 +9,6 @@ const files = [
   "src/features/sidebar/components/FolderTree.tsx",
   "src/features/sidebar/components/ConversationList.tsx",
   "src/features/sidebar/components/ConversationSkeleton.tsx",
-  "src/features/sidebar/components/GuestFooter.tsx",
   "src/features/chat/components/ConversationItem.tsx",
   "src/features/profile/ProfileMenu.tsx",
 ];

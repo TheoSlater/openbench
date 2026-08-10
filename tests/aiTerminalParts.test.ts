@@ -103,9 +103,9 @@ describe("AI terminal session bus", () => {
     await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
 
     const channel = vi.mocked(invoke).mock.calls[0]?.[1]?.onEvent;
-    channel?.onmessage({ kind: "status", message: "Creating sandbox…" });
+    channel?.onmessage({ kind: "status", message: "Using host-restricted runner…" });
 
-    await vi.waitFor(() => expect(seen.at(-1)).toBe("Creating sandbox…"));
+    await vi.waitFor(() => expect(seen.at(-1)).toBe("Using host-restricted runner…"));
     unsubscribe();
   });
 

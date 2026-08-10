@@ -27,9 +27,10 @@ type SettingsModalProps = {
   onClose: () => void;
   initialTab?: SettingsTab;
   onOpenAdvancedSettings?: () => void;
+  onOpenOnboarding?: () => void;
 };
 
-function renderTab(tab: SettingsTabId) {
+function renderTab(tab: SettingsTabId, onOpenOnboarding?: () => void) {
   switch (tab) {
     case "general":
       return <GeneralTab />;
@@ -46,7 +47,7 @@ function renderTab(tab: SettingsTabId) {
     case "memory":
       return <MemorySettingsTab />;
     case "personalization":
-      return <PersonalizationTab />;
+      return <PersonalizationTab onOpenOnboarding={onOpenOnboarding} />;
     case "data-controls":
       return <DataControlsTab />;
     case "about":
@@ -59,6 +60,7 @@ export function SettingsModal({
   onClose,
   initialTab = "general",
   onOpenAdvancedSettings = () => undefined,
+  onOpenOnboarding,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() => resolveSettingsTab(initialTab));
   const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTabId>>(
@@ -103,7 +105,7 @@ export function SettingsModal({
       <SettingsPanel onClose={onClose}>
         {[...visitedTabs].map((tab) => (
           <div key={tab} className={`animate-fade-in ${tab === activeTab ? "block" : "hidden"}`}>
-            {renderTab(tab)}
+            {renderTab(tab, onOpenOnboarding)}
           </div>
         ))}
       </SettingsPanel>

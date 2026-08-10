@@ -24,10 +24,6 @@ function formatBytes(value: number): string {
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
-function formatLimit(value: number, format: (value: number) => string): string {
-  return value > 0 ? format(value) : "—";
-}
-
 function formatAge(value: number): string {
   if (value < 1_000) return "now";
   if (value < 60_000) return `${Math.round(value / 1_000)}s`;
@@ -35,7 +31,7 @@ function formatAge(value: number): string {
 }
 
 /**
- * Visible xterm attached to the AI sandbox PTY.
+ * Visible xterm attached to the AI host-restricted PTY.
  */
 export function AiTerminalViewport() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -190,7 +186,7 @@ export function AiTerminalViewport() {
   };
 
   const resetSandbox = () => {
-    if (window.confirm("Reset this sandbox? Its workspace and installed packages will be deleted.")) {
+    if (window.confirm("Reset this runner? Its temporary workspace will be deleted.")) {
       void resetAiSandbox();
     }
   };
@@ -235,8 +231,8 @@ export function AiTerminalViewport() {
           <details className="relative">
             <summary
               className={`flex cursor-pointer list-none items-center gap-1 rounded px-1.5 py-1 text-[11px] hover:bg-muted ${sandboxUnavailable ? "text-destructive" : "text-muted-foreground hover:text-foreground"}`}
-              aria-label="Show sandbox diagnostics"
-              title="Sandbox diagnostics"
+              aria-label="Show runner diagnostics"
+              title="Runner diagnostics"
             >
               <ShieldCheck size={13} />
               Sandbox
@@ -251,46 +247,24 @@ export function AiTerminalViewport() {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                     <span>Workspace</span>
                     <span className="text-right text-foreground">{formatBytes(diagnostics.workspaceBytes)} / {formatBytes(diagnostics.workspaceLimitBytes)}</span>
-                    <span>Memory</span>
-                    <span className="text-right text-foreground">{formatLimit(diagnostics.memoryLimitBytes, formatBytes)}</span>
-                    <span>CPU</span>
-                    <span className="text-right text-foreground">{diagnostics.cpuLimit > 0 ? `${diagnostics.cpuLimit} cores` : "—"}</span>
                     <span>Processes</span>
-                    <span className="text-right text-foreground">{diagnostics.activeCommands} / {diagnostics.pidsLimit > 0 ? diagnostics.pidsLimit : "—"}</span>
+                    <span className="text-right text-foreground">{diagnostics.activeCommands}</span>
                     <span>Idle</span>
                     <span className="text-right text-foreground">{formatAge(diagnostics.lastActivityAgeMs)}</span>
                   </div>
                   <div className="mt-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
                     <div>Network: <span className="text-foreground">{diagnostics.networkPolicy}</span></div>
-                    <div className="mt-1 truncate" title={diagnostics.containerName}>Container: {diagnostics.containerName}</div>
+                    <div className="mt-1">Execution: host process</div>
                   </div>
                   {diagnostics.capabilities.length ? (
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       Tools: <span className="text-foreground">{diagnostics.capabilities.join(", ")}</span>
                     </div>
                   ) : null}
-                  {diagnostics.ports.length ? (
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      <div>Preview ports</div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {diagnostics.ports.map((port) => (
-                          <a
-                            key={port.containerPort}
-                            className="rounded bg-muted px-1.5 py-0.5 text-foreground hover:underline"
-                            href={port.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            :{port.containerPort}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </>
               ) : (
                 <div className="text-xs text-muted-foreground">
-                  {sandboxUnavailable ? "Cleaned up or unavailable." : "Loading sandbox status…"}
+                  {sandboxUnavailable ? "Cleaned up or unavailable." : "Loading runner status…"}
                 </div>
               )}
             </div>

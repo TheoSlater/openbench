@@ -57,17 +57,29 @@ export type PerformanceSettings = {
   keepViewportActive: boolean;
 };
 
+export type LocalProfile = {
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+export type CapabilityMode = "chat-only" | "workspace" | "agent-tools";
+
 type SettingsState = {
   general: GeneralSettings;
   tts: TtsSettings;
   dictation: DictationSettings;
   performance: PerformanceSettings;
+  profile: LocalProfile;
+  profileConfigured: boolean;
+  capabilityMode: CapabilityMode | null;
   selectedPromptPreset: PromptPresetId;
   actions: {
     updateGeneral: (update: Partial<GeneralSettings>) => void;
     updateTts: (update: Partial<TtsSettings>) => void;
     updateDictation: (update: Partial<DictationSettings>) => void;
     updatePerformance: (update: Partial<PerformanceSettings>) => void;
+    setProfile: (profile: LocalProfile) => void;
+    setCapabilityMode: (mode: CapabilityMode) => void;
     setPromptPreset: (id: PromptPresetId) => void;
   };
 };
@@ -88,7 +100,7 @@ const defaultTts: TtsSettings = {
   },
 };
 
-const SETTINGS_VERSION = 30;
+const SETTINGS_VERSION = 31;
 
 function osPrefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -132,6 +144,9 @@ function defaultSettingsState(): Omit<SettingsState, "actions"> {
     tts: { ...defaultTts },
     dictation: { ...defaultDictation },
     performance: { ...defaultPerformance },
+    profile: { displayName: "", avatarUrl: null },
+    profileConfigured: false,
+    capabilityMode: null,
     selectedPromptPreset: "default" as PromptPresetId,
   };
 }
@@ -164,6 +179,9 @@ export function mergeSettingsWithDefaults(
     },
     dictation: { ...current.dictation, ...p.dictation },
     performance: { ...current.performance, ...p.performance },
+    profile: { ...current.profile, ...(p.profile ?? {}) },
+    profileConfigured: p.profileConfigured ?? current.profileConfigured,
+    capabilityMode: p.capabilityMode ?? current.capabilityMode,
     actions: current.actions,
   };
 }
@@ -192,6 +210,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         updatePerformance: (update) =>
           set((s) => ({ performance: { ...s.performance, ...update } })),
+
+        setProfile: (profile) => set({ profile, profileConfigured: true }),
+
+        setCapabilityMode: (capabilityMode) => set({ capabilityMode }),
 
         setPromptPreset: (id) => set({ selectedPromptPreset: id }),
       },
@@ -312,6 +334,9 @@ export const useSettingsStore = create<SettingsState>()(
         tts,
         dictation,
         performance,
+        profile,
+        profileConfigured,
+        capabilityMode,
         selectedPromptPreset,
       }) =>
         ({
@@ -319,6 +344,9 @@ export const useSettingsStore = create<SettingsState>()(
           tts,
           dictation,
           performance,
+          profile,
+          profileConfigured,
+          capabilityMode,
           selectedPromptPreset,
         }) as SettingsState,
     },

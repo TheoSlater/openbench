@@ -45,12 +45,10 @@ import { useViewportStore } from "@/features/viewport/viewportStore";
 import { listen } from "@tauri-apps/api/event";
 import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
 import { useMobileRelayBridge } from "@/lib/mobile/relay-bridge";
+import { OnboardingShell, type OnboardingFinishTarget } from "@/features/onboarding/OnboardingShell";
+import { readOnboardingRecord } from "@/features/onboarding/persistence";
+import { profileLabel } from "@/features/onboarding/profile";
 
-const AuthModalLazy = lazy(() =>
-  import("@/features/auth/AuthModal").then((module) => ({
-    default: module.AuthModal,
-  })),
-);
 const ReleaseNotesModalLazy = lazy(() =>
   import("@/features/release-notes/ReleaseNotesModal").then((module) => ({
     default: module.ReleaseNotesModal,
@@ -69,6 +67,9 @@ const ViewportDrawerLazy = lazy(() =>
 function App() {
   useMobileRelayBridge();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(
+    () => !readOnboardingRecord()?.completed,
+  );
   const [settingsInitialTab, setSettingsInitialTab] =
     useState<SettingsTab>("general");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -79,15 +80,7 @@ function App() {
   );
   const stopStreamingRef = useRef<(() => void) | null>(null);
   const notify = useNotify();
-  const { user, isAuthenticated, isAuthLoading, isGuest } = useAuthStore(
-    useShallow((state) => ({
-      user: state.user,
-      isAuthenticated: state.isAuthenticated,
-      isAuthLoading: state.isLoading,
-      isGuest: state.isGuest,
-    })),
-  );
-  const isAuthGateOpen = !isAuthenticated && !isAuthLoading && !isGuest;
+  const user = useAuthStore((state) => state.user);
 
   const handleOpenSettings = useCallback((tab: SettingsTab = "general") => {
     setSettingsInitialTab(tab);
@@ -98,14 +91,24 @@ function App() {
     setIsSettingsOpen(true);
   }, []);
   const handleCloseSettings = useCallback(() => setIsSettingsOpen(false), []);
+  const handleOpenOnboarding = useCallback(() => {
+    setIsSettingsOpen(false);
+    setIsOnboardingOpen(true);
+  }, []);
+  const handleOnboardingFinished = useCallback((target: OnboardingFinishTarget) => {
+    setIsOnboardingOpen(false);
+    if (target === "settings") {
+      setSettingsInitialTab("personalization");
+      setIsSettingsOpen(true);
+    }
+  }, []);
   const handleOpenAdvancedSettings = useCallback(() => {
     setIsSettingsOpen(false);
     useViewStore.getState().setActiveView(ADVANCED_SETTINGS_VIEW_ID);
   }, []);
   const handleOpenCommandPalette = useCallback(() => {
-    if (isAuthGateOpen) return;
     setIsCommandPaletteOpen(true);
-  }, [isAuthGateOpen]);
+  }, []);
   const handleStopStreamingReady = useCallback(
     (stopStreaming: (() => void) | null) => {
       stopStreamingRef.current = stopStreaming;
@@ -122,23 +125,21 @@ function App() {
 
   useKeyboardShortcuts({
     onOpenSettings: handleOpenSettings,
-    isAuthGateOpen,
     setIsCommandPaletteOpen,
     onNewChat: triggerNewChat,
     onStopStreaming: handleStopStreaming,
     onOpenShortcuts: handleOpenShortcuts,
   });
 
-  useEffect(() => {
-    if (isAuthGateOpen) setIsCommandPaletteOpen(false);
-  }, [isAuthGateOpen]);
-
-  const { selectedPromptPreset, general } = useSettingsStore(
+  const { selectedPromptPreset, general, profile, profileConfigured } = useSettingsStore(
     useShallow((s) => ({
       selectedPromptPreset: s.selectedPromptPreset,
       general: s.general,
+      profile: s.profile,
+      profileConfigured: s.profileConfigured,
     })),
   );
+  const userName = profileLabel(profileConfigured ? profile.displayName : user?.fullName ?? "");
 
   const systemPromptContent = useMemo(() => {
     const preset = getPresetContent(selectedPromptPreset);
@@ -294,7 +295,7 @@ function App() {
           <main className="relative flex min-w-0 flex-1 flex-row overflow-hidden">
             <ChatWorkspace
               systemPromptContent={systemPromptContent}
-              userName={user?.fullName || user?.email}
+              userName={userName}
               isTemporary={isTemporary}
               onStopStreamingReady={handleStopStreamingReady}
               onOpenConnections={handleOpenConnections}
@@ -315,6 +316,7 @@ function App() {
             onClose={handleCloseSettings}
             initialTab={settingsInitialTab}
             onOpenAdvancedSettings={handleOpenAdvancedSettings}
+            onOpenOnboarding={handleOpenOnboarding}
           />
         ) : null}
       </Suspense>
@@ -323,7 +325,7 @@ function App() {
         onOpenChange={setIsArchivedOpen}
       />
       <CommandPalette
-        open={!isAuthGateOpen && isCommandPaletteOpen}
+        open={isCommandPaletteOpen}
         onOpenChange={setIsCommandPaletteOpen}
         items={commandPaletteItems as CommandPaletteItem[]}
       />
@@ -332,13 +334,11 @@ function App() {
         onOpenChange={setIsShortcutsOpen}
       />
       <GlobalConfirmDialog />
-      <Suspense fallback={null}>
-        <AuthModalLazy />
-      </Suspense>
       {devMode && debugOverlayEnabled ? <DebugOverlay /> : null}
       <Suspense fallback={null}>
         <ReleaseNotesModalLazy />
       </Suspense>
+      <OnboardingShell open={isOnboardingOpen} onFinished={handleOnboardingFinished} />
     </SidebarProvider>
   );
 }

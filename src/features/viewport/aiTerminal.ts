@@ -26,11 +26,11 @@ export type AiTerminalSession = {
   sandboxId: string;
   command: string;
   cwd?: string;
-  /** Set once the sandbox PTY session exists; input is only sent once attached. */
+  /** Set once the host PTY session exists; input is only sent once attached. */
   ptyId: string | null;
   /** Every PTY event so far, replayed when the viewport attaches. */
   events: PtyEvent[];
-  /** Latest sandbox startup or execution step shown by the viewport. */
+  /** Latest runner startup or execution step shown by the viewport. */
   status?: string;
   error?: string;
   startedAt: number;
@@ -45,20 +45,9 @@ export type SandboxDiagnostics = {
   sandboxId: string;
   state: string;
   runtime: string;
-  containerName: string;
   capabilities: string[];
-  importedTools: string[];
-  ports: Array<{
-    sandboxId: string;
-    containerPort: number;
-    hostPort: number;
-    url: string;
-  }>;
   workspaceBytes: number;
   workspaceLimitBytes: number;
-  memoryLimitBytes: number;
-  cpuLimit: number;
-  pidsLimit: number;
   networkPolicy: string;
   activeCommands: number;
   lastActivityAgeMs: number;
@@ -197,8 +186,8 @@ export async function resetAiSandbox(): Promise<void> {
 }
 
 /**
- * Spawns a sandbox PTY session. Tauri owns the container boundary and relays
- * captured output back to the AI runtime keyed by the tool call id.
+ * Spawns a host-restricted PTY session and relays captured output back to the
+ * AI runtime keyed by the tool call id.
  */
 export function runAiCommand(spec: {
   toolCallId: string;
@@ -213,7 +202,7 @@ export function runAiCommand(spec: {
     cwd: spec.cwd,
     ptyId: null,
     events: [],
-    status: "Initializing sandbox…",
+    status: "Initializing host-restricted runner…",
     startedAt: Date.now(),
     history: [],
     resetting: false,

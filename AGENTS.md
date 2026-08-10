@@ -1,83 +1,40 @@
-# AGENTS.md
+# Repository Guidelines
 
-This file provides guidance to Coding Agents when working with code in this repository.
+## Project Structure
 
-## What this is
+PolyUI is a Tauri v2 desktop app with a React/TypeScript UI and Rust native services.
 
-PolyUI is a Tauri v2 desktop app — a React/TypeScript frontend bundled with a Rust backend. It's a local-first AI chat client that talks to Ollama (and OpenAI-compatible APIs) entirely on-device. SQLite (via `tauri-plugin-sql`) is the persistence layer.
+- `src/` contains UI, feature modules, Zustand stores, shared libraries, repositories, and generated bindings.
+- `src-tauri/src/` contains thin Tauri commands plus SQLite migrations, connection/keychain services, memory, mobile, PTY, sandbox, and AI-sidecar supervision.
+- `sidecar/src/` is the bundled Bun AI SDK runtime; `relay/` contains the optional mobile relay.
+- `tests/` contains Vitest tests. `docs/` contains deeper architecture notes; `CONTEXT.md` is the domain glossary.
 
-## Commands
+## Build, Test, and Development
 
 ```bash
-bun install           # install deps
-bun run tauri dev     # dev server (Tauri window + Vite HMR)
-bun run build         # tsc + vite build (frontend only)
-bun run tauri build   # full production build + installer
-bun run test          # vitest run (once)
-bun run test:watch    # vitest watch
+bun install
+bun run tauri dev                 # Tauri app, Vite HMR, and sidecar build
+bun run build                     # sidecar build, TypeScript check, Vite build
+bun run tauri build               # production installers
+bun run test                      # all Vitest tests
+bun run test -- tests/foo.test.ts # one test file
+bun run sidecar:typecheck
+bun run sidecar:test
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Run a single test file: `bun run test -- tests/foo.test.ts`
+## Architecture and Data Flow
 
-Tests live in `tests/` (not colocated). They're Node environment, no browser/Tauri APIs available — use the repository injection seam or pure logic imports.
+Chat uses `@ai-sdk/react` and `src/lib/ai/transport.ts`, which invoke `ai_runtime_*` Tauri commands. Rust authorizes requests, reads secrets from the OS keychain, and supervises the bundled sidecar over private JSONL stdin/stdout. The sidecar owns provider generation, streaming, tools, and Claude Code/Codex integration. Rust emits `ai-runtime-event`; one frontend listener fans out chunks by `request_id`.
 
-## Architecture
+SQLite is the source of truth for conversations. `src/lib/repositories/` owns the frontend repository seam, and `src/lib/ai/messages.ts` is the only AI SDK message-mapping boundary. Stores must not import one another; use `store/coordinator.ts` for cross-store effects.
 
-### Frontend (`src/`)
+## Security and Testing
 
-**Stores** (`src/store/`) — Zustand. One store per domain: `authStore`, `chatStore`, `modelStore`, `settingsStore`, `folderStore`, `themeStore`, etc. **Stores must not import each other.** Cross-store effects go through `store/coordinator.ts` (e.g. auth → chat).
+Never put credentials in frontend state, browser storage, URLs, messages, or logs. Coding agents default to read-only; workspace writes require explicit mode selection and approval. The AI terminal uses the Rust host-restricted allowlisted runner—do not add Docker/Podman or arbitrary-shell fallback. `execute_sql` is disabled unless the `dev-sql-console` Cargo feature is enabled.
 
-**Features** (`src/features/`) — self-contained feature modules: `chat`, `auth`, `sidebar`, `models`, `ollama`, `settings`, `command-palette`, `dictation`, `memory`, `providers`, `folders`, `release-notes`, `web-search`, `agent`.
+Vitest runs in Node without real Tauri/browser APIs; use repository injection seams or pure logic. Use `useShallow` for grouped Zustand selectors and keep lazy imports at route/modal boundaries.
 
-**Lib** (`src/lib/`) — shared logic with no UI:
-- `lib/chat/stream-client.ts` — `EventBus` interface + `TauriEventBus` (typed Tauri event wrapper)
-- `lib/chat/stream-accumulator.ts` — pure token accumulation, batched via rAF, no React
-- `lib/repositories/` — `ConversationRepository` interface with SQLite impl and in-memory impl; injected via `setRepository()` for tests
-- `lib/featureRegistry.ts` — runtime feature flags
+## Commits and Pull Requests
 
-**Path alias**: `@/` → `src/`
-
-### Backend (`src-tauri/src/`)
-
-Commands are thin Tauri adapters in `commands/`; domain logic lives in dedicated modules:
-- `tool_loop.rs` — streaming + tool calling loop until completion
-- `stream_emitter.rs` — `StreamEmitter` trait + Tauri impl + test spy
-- `web_search/` — `WebSearchClient` trait + Exa impl + mock
-- `auth.rs`, `memory/`, `providers/`, `models/`
-
-`execute_sql` command is gated behind the `dev-sql-console` Cargo feature flag (off by default).
-
-### Data flow
-
-Rust emits typed Tauri events (`chat-chunk`, `chat-thinking`, `web-search-event`). The frontend `TauriEventBus` subscribes; `StreamAccumulator` batches tokens; React hooks consume the accumulator. Multi-model streams each get their own `request_id`.
-
-## Key conventions
-
-- Zustand selectors use `useShallow` for object/array selections to prevent spurious re-renders
-- Lazy imports (`React.lazy`) only at route/modal boundaries — not for performance micro-optimization inside features (see `tests/noMixedDynamicImports.test.ts`)
-- Token budget discipline in sidebar components is enforced by `tests/sidebarTokenDiscipline.test.ts`
-- Domain vocabulary: see `CONTEXT.md` for the full glossary (Conversation, Message, Stream, Tool Loop, Provider, Repository, etc.)
-
-## Branching & PR workflow
-
-- **Never commit directly to `main`.** All changes must be pull-requested.
-- Create a feature branch off `main` for each isolated change:
-  ```bash
-  git checkout main
-  git pull
-  git checkout -b feat/your-thing
-  # commit work
-  git push origin feat/your-thing
-  # PR feat/your-thing → main
-  ```
-- Each PR carries only its feature branch commits. Keep `main` clean.
-
-
-## Naming style:
-
-- Prefer concise, human-written identifiers.
-- Function names should usually be 2–5 words.
-- Avoid describing the entire implementation or test case in the name.
-- The function body should explain behavior; the name only identifies intent.
-- Prefer `parse_strict_version` over `strict_versions_require_three_plain_numeric_components`.
-- Prefer `loads_config` over `loads_configuration_file_from_default_search_paths`.
+Work on a feature branch; never commit directly to `main`. Prefer concise Conventional Commit prefixes such as `feat:`, `fix:`, and `docs:`. Keep PRs focused, include relevant tests, and describe user-visible or security-impacting changes; add screenshots for UI changes.

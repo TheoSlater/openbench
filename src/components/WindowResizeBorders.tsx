@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { IS_LINUX } from "@/lib/utils/platform";
+import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/utils/platform";
 
 // Not exported from @tauri-apps/api/window; mirrors its ResizeDirection type.
 type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>["startResizeDragging"]>[0];
@@ -8,8 +8,8 @@ type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>["startResi
 const EDGE = 5; // px hit area along edges
 const CORNER = 12; // px hit area in corners
 
-// Undecorated GTK windows have no native resize borders (lib.rs disables
-// decorations on Linux), so we provide our own via startResizeDragging.
+// Undecorated desktop windows have no native resize borders, so we provide
+// our own via startResizeDragging.
 const HANDLES: { direction: ResizeDirection; cursor: string; style: React.CSSProperties }[] = [
   { direction: "North", cursor: "n-resize", style: { top: 0, left: CORNER, right: CORNER, height: EDGE } },
   { direction: "South", cursor: "s-resize", style: { bottom: 0, left: CORNER, right: CORNER, height: EDGE } },
@@ -25,7 +25,7 @@ export function WindowResizeBorders() {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    if (!IS_LINUX) return;
+    if (!USE_CUSTOM_WINDOW_CONTROLS) return;
     const w = getCurrentWindow();
     void w.isMaximized().then(setMaximized);
     const unlisten: (() => void)[] = [];
@@ -35,7 +35,7 @@ export function WindowResizeBorders() {
     return () => { unlisten.forEach((fn) => fn()); };
   }, []);
 
-  if (!IS_LINUX || maximized) return null;
+  if (!USE_CUSTOM_WINDOW_CONTROLS || maximized) return null;
 
   return (
     <>
