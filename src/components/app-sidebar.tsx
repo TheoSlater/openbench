@@ -64,7 +64,12 @@ function AppSidebarBody({
 
   return (
     <>
-      <SidebarHeader className={IS_MAC || USE_CUSTOM_WINDOW_CONTROLS ? "p-0" : undefined}>
+      <SidebarHeader
+        className={cn(
+          IS_MAC || USE_CUSTOM_WINDOW_CONTROLS ? "p-0" : undefined,
+          IS_MAC && "macos-sidebar-safe-area",
+        )}
+      >
         <SidebarBrand />
       </SidebarHeader>
 

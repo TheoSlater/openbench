@@ -24,7 +24,9 @@ dev-sql-console = []
 whisper-cuda = ["whisper-rs/cuda"]
 
 [dependencies]
-tauri = { version = "2", features = ["unstable"] }
+# The macOS config overlay uses transparent/full-size titlebar content, which
+# Tauri requires to be opted into explicitly for macOS private window APIs.
+tauri = { version = "2", features = ["unstable", "macos-private-api"] }
 tauri-plugin-http = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-window-state = "2"
@@ -63,6 +65,12 @@ sysinfo = "0.33"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", features = ["v3_24"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Tauri 2.11 still uses window-vibrancy 0.6 internally. Keep the newer direct
+# dependency macOS-only so Liquid Glass is available without changing the
+# window-effects behavior of Windows or Linux builds.
+window-vibrancy = "0.8"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.189"

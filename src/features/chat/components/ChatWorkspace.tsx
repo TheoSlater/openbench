@@ -192,6 +192,7 @@ export default function ChatWorkspace({
     // content height, leaving a gap under the composer that only a window
     // resize cleared. Stretch has no such dependency.
     <Box
+      data-chat-workspace
       className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
       {chat.runtime}

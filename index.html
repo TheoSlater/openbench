@@ -12,7 +12,10 @@
         const mode = localStorage.getItem('theme_mode') || m.mode || 'dark';
         const d = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme:dark)').matches);
         document.documentElement.classList.toggle('dark', d);
-        document.documentElement.style.backgroundColor = d ? '#171717' : '#ffffff';
+        const isMac = window.__TAURI_OS_PLUGIN_INTERNALS__?.platform === 'macos';
+        document.documentElement.style.backgroundColor = isMac
+          ? 'transparent'
+          : (d ? '#171717' : '#ffffff');
       } catch(e) {}
     </script>
   </head>

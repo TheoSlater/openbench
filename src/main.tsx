@@ -30,6 +30,9 @@ document.documentElement.style.setProperty(
   "--titlebar-height",
   `${TITLE_BAR_HEIGHT}px`,
 );
+document.documentElement.dataset.platform = PLATFORM || "unknown";
+document.documentElement.dataset.nativeVibrancy =
+  USE_NATIVE_MACOS_VIBRANCY ? "true" : "false";
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.setAttribute("data-chrome", "borderless");
 } else {
