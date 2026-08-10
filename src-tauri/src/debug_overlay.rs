@@ -11,6 +11,29 @@ use tauri::{AppHandle, Emitter};
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 pub const DEBUG_STATS_EVENT: &str = "debug-overlay-stats";
+pub const DEV_LOG_EVENT: &str = "dev-log";
+
+const MAX_DEV_LOG_MESSAGE_LENGTH: usize = 1200;
+static DEV_LOGGING_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub fn short_id(value: &str) -> String {
+    value.chars().take(16).collect()
+}
+
+pub fn stop_dev_logging() {
+    DEV_LOGGING_ENABLED.store(false, Ordering::SeqCst);
+}
+
+fn dev_logging_enabled() -> bool {
+    cfg!(debug_assertions) && DEV_LOGGING_ENABLED.load(Ordering::Relaxed)
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevLogPayload {
+    pub level: String,
+    pub message: String,
+}
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,12 +129,37 @@ fn bytes_to_mb(bytes: u64) -> f64 {
 }
 
 pub fn terminal_log(level: &str, message: &str) {
+    if !dev_logging_enabled() {
+        return;
+    }
+    let message = message
+        .chars()
+        .take(MAX_DEV_LOG_MESSAGE_LENGTH)
+        .collect::<String>();
     match level {
         "error" => log::error!("[dev] {message}"),
         "warn" => log::warn!("[dev] {message}"),
         _ => log::info!("[dev] {message}"),
     }
     println!("[dev] {message}");
+}
+
+pub fn emit_dev_log(app: &tauri::AppHandle, level: &str, message: &str) {
+    if !dev_logging_enabled() {
+        return;
+    }
+    let message = message
+        .chars()
+        .take(MAX_DEV_LOG_MESSAGE_LENGTH)
+        .collect::<String>();
+    terminal_log(level, &message);
+    let _ = app.emit(
+        DEV_LOG_EVENT,
+        DevLogPayload {
+            level: level.to_string(),
+            message,
+        },
+    );
 }
 
 #[tauri::command]
@@ -125,5 +173,7 @@ pub fn debug_overlay_enable(
 
 #[tauri::command]
 pub fn debug_log(level: String, message: String) {
-    terminal_log(&level, &message);
+    if cfg!(debug_assertions) {
+        terminal_log(&level, &message);
+    }
 }

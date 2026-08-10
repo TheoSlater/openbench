@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { ConversationRepository, mapRowToConversation, mapRowToMessage, type MessageRow } from "./types";
 import { Message, Conversation, Folder, ConversationMetadata } from "@/types/chat";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export type { ConversationRepository } from "./types";
 
@@ -310,11 +311,15 @@ export class InMemoryConversationRepository implements ConversationRepository {
 let repository: ConversationRepository | null = null;
 
 export async function initRepository(): Promise<ConversationRepository> {
-  if (repository) return repository;
+  if (repository) {
+    devLog("debug", "repository", "SQLite repository already initialized");
+    return repository;
+  }
 
+  devLog("info", "repository", "SQLite repository initialization started");
   const db = await loadDatabaseWithRetry("sqlite:chat.db");
   repository = new SqliteConversationRepository(db);
-  if (DEV) console.log("[repo] SQLite repository active");
+  devLog("info", "repository", "SQLite repository active");
 
   return repository;
 }
@@ -324,9 +329,15 @@ async function loadDatabaseWithRetry(path: string): Promise<Database> {
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
-      return await Database.load(path);
+      const db = await Database.load(path);
+      devLog("debug", "repository", "SQLite database loaded", { attempt: attempt + 1 });
+      return db;
     } catch (error) {
       lastError = error;
+      devLog("warn", "repository", "SQLite database load attempt failed", {
+        attempt: attempt + 1,
+        error,
+      });
       await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
     }
   }

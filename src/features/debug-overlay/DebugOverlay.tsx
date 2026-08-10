@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke, listen } from "@/lib/tauriBridge";
 import { useShallow } from "zustand/react/shallow";
 import {
   Select,
@@ -121,11 +120,13 @@ export function DebugOverlay() {
         const head = next[0];
         const previousHead = previous[0];
         if (!previousHead || previousHead.requestId !== head.requestId) {
-          devLog("info", "api", `request ${head.requestId} ${head.status}`, {
+          devLog("info", "api", `request ${head.status}`, {
+            requestId: head.requestId,
             error: head.error ?? undefined,
           });
         } else if (previousHead.status !== head.status) {
-          devLog("info", "api", `request ${head.requestId} ${head.status}`, {
+          devLog("info", "api", `request ${head.status}`, {
+            requestId: head.requestId,
             error: head.error ?? undefined,
           });
         }

@@ -8,6 +8,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 type LinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {
   as?: React.ElementType;
@@ -94,7 +95,7 @@ async function openInDefaultBrowser(href: string) {
     await openUrl(href);
     return;
   } catch (error) {
-    console.warn("Failed to open link with Tauri opener:", error);
+    devLog("warn", "opener", "Failed to open link with Tauri opener", error);
   }
   window.open(href, "_blank", "noopener,noreferrer");
 }

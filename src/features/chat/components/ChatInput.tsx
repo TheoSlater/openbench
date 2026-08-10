@@ -259,8 +259,12 @@ export const ChatInput = memo(function ChatInput({
     updateConversationMetadata,
   ]);
 
-  const hasContent =
-    draft.trim() || currentAttachments.length > 0 || !!pastedPreview;
+  const attachmentsReady = currentAttachments.every(
+    (attachment) => attachment.status !== "processing" && attachment.status !== "previewing" && attachment.status !== "error",
+  );
+  const hasContent = Boolean(
+    draft.trim() || currentAttachments.length > 0 || pastedPreview,
+  );
   const showVoiceModeAction =
     voiceModeExperimental &&
     !isStreaming &&
@@ -312,7 +316,7 @@ export const ChatInput = memo(function ChatInput({
   const canUploadImages = true;
 
   const handleSubmit = useCallback(() => {
-    if (!hasContent && !pastedPreview) return;
+    if ((!hasContent && !pastedPreview) || !attachmentsReady) return;
     const finalText = pastedPreview
       ? draft.trim()
         ? `${draft}\n\n${pastedPreview.text}`
@@ -325,6 +329,7 @@ export const ChatInput = memo(function ChatInput({
     setPastedPreview(null);
   }, [
     hasContent,
+    attachmentsReady,
     draft,
     pastedPreview,
     onSubmit,
@@ -646,7 +651,7 @@ export const ChatInput = memo(function ChatInput({
                       ? false
                       : isStreaming
                         ? false
-                        : !hasContent
+                        : !hasContent || !attachmentsReady
                   }
                   aria-label={
                     showVoiceModeAction

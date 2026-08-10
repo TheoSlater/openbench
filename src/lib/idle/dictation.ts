@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauriBridge'
 import { idleManager } from './manager'
 import { useNotificationStore } from '@/store/notificationStore'
 

@@ -3,6 +3,7 @@ import type { ChatMessage } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
 import { connectionsClient } from "@/features/connections/client";
 import { getRepository } from "@/lib/repositories";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export interface TitleStore {
   findConversation(id: string): { title: string; titleSource?: string; isTemporary?: boolean } | undefined;
@@ -206,7 +207,7 @@ function scheduleTitleGeneration(
   window.setTimeout(() => {
     void generateAndApplyTitle(store, conversationId, model, userName)
       .catch((error) => {
-        console.warn("Title generation failed", error);
+        devLog("warn", "title-generation", "Title generation failed", error);
       });
   }, TITLE_GENERATION_DELAY_MS);
 }
@@ -247,7 +248,7 @@ async function generateAndApplyTitle(
     });
     title = result.text;
   } catch (err) {
-    console.warn("Title generation invoke failed", err);
+    devLog("warn", "title-generation", "Title generation invoke failed", err);
   }
 
   let finalTitle = sanitizeTitle(title, firstUser?.content);
@@ -287,7 +288,7 @@ async function loadMessagesForTitle(store: TitleStore, conversationId: string): 
     const loaded = await store.loadConversationMessages(conversationId);
     return loaded.length ? loaded : current;
   } catch (error) {
-    console.warn("Could not load messages for title generation", error);
+    devLog("warn", "title-generation", "Could not load messages for title generation", error);
     return current;
   }
 }

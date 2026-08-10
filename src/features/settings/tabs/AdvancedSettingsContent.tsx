@@ -9,6 +9,7 @@ import {
   memoryUpdateSettings,
 } from "@/features/memory/memoryClient";
 import { getCurrentProviderAccountId } from "@/features/providers";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export function AdvancedSettingsContent() {
   const {
@@ -38,7 +39,7 @@ export function AdvancedSettingsContent() {
     });
     if (!checked) {
       void disableMemoryForOwner(getCurrentProviderAccountId()).catch((err) =>
-        console.warn("[Memory] disableMemoryForOwner failed", err),
+        devLog("warn", "memory", "disableMemoryForOwner failed", err),
       );
     }
   }, [actions]);
@@ -46,16 +47,16 @@ export function AdvancedSettingsContent() {
   const handleMemoryToggle = useCallback((checked: boolean) => {
     actions.updateGeneral({ memoryBeta: checked });
     const ownerId = getCurrentProviderAccountId();
-    console.info(`[Memory] toggle changed to ${checked}, ownerId="${ownerId}"`);
+    devLog("info", "memory", "Memory toggle changed", { checked, ownerId });
     if (!checked) {
       void disableMemoryForOwner(ownerId).catch((err) =>
-        console.warn("[Memory] disableMemoryForOwner failed", err),
+        devLog("warn", "memory", "disableMemoryForOwner failed", err),
       );
       return;
     }
     void memoryGetSettings(ownerId)
       .then((existing) => {
-        console.info("[Memory] existing settings from backend", existing);
+        devLog("info", "memory", "Existing settings loaded", existing);
         return memoryUpdateSettings({
           ...existing,
           enabled: true,
@@ -64,10 +65,10 @@ export function AdvancedSettingsContent() {
         });
       })
       .then((saved) => {
-        console.info("[Memory] settings saved to backend", saved);
+        devLog("info", "memory", "Settings saved", saved);
       })
       .catch((err) => {
-        console.error("[Memory] failed to update settings", err);
+        devLog("error", "memory", "Failed to update settings", err);
       });
   }, [actions]);
 

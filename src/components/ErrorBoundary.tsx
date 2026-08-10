@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { startupError } from "@/lib/utils/startupDiagnostics";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 interface Props {
   children: React.ReactNode;
@@ -21,7 +22,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("[ErrorBoundary]", error, info.componentStack);
+    devLog("error", "react", "Error boundary caught render failure", {
+      error,
+      componentStackLength: info.componentStack?.length ?? 0,
+    });
     startupError("React error boundary caught render failure", `${error.message}\n${info.componentStack}`);
   }
 

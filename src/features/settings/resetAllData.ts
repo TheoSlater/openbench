@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 
 export async function resetAllData(): Promise<void> {
   await invoke("reset_local_data");

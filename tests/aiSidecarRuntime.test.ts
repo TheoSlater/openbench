@@ -133,6 +133,34 @@ describe("AI sidecar runtime", () => {
     expect(chunks.filter((record) => record.requestId === "req-b")).toHaveLength(4);
   });
 
+  it("emits dev lifecycle records without chat content", async () => {
+    const records: RuntimeRecord[] = [];
+    const server = new RuntimeServer({
+      dev: true,
+      write: (record) => records.push(record),
+      streamChat: async () => new ReadableStream({ start(controller) { controller.close(); } }),
+    });
+
+    await server.handle(command("dev-request"));
+    await vi.waitFor(() => expect(server.activeRequestCount).toBe(0));
+
+    const logs = records.filter((record) => record.type === "log");
+    expect(logs.length).toBeGreaterThan(0);
+    expect(JSON.stringify(logs)).not.toContain("private-key");
+    expect(JSON.stringify(logs)).not.toContain("hello");
+  });
+
+  it("stops lifecycle logging after shutdown", async () => {
+    const records: RuntimeRecord[] = [];
+    const server = new RuntimeServer({ dev: true, write: (record) => records.push(record) });
+
+    await server.handle({ type: "shutdown" });
+    const logCount = records.filter((record) => record.type === "log").length;
+    await expect(server.handle(command("after-shutdown"))).rejects.toThrow("shutting down");
+
+    expect(records.filter((record) => record.type === "log")).toHaveLength(logCount);
+  });
+
   it("collects mobile text inside the JavaScript runtime", async () => {
     const records: RuntimeRecord[] = [];
     const server = new RuntimeServer({

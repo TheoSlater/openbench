@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import type { Connection } from "@/generated/bindings/Connection";
 import type { ConnectionModel } from "@/generated/bindings/ConnectionModel";
 import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";

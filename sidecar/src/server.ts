@@ -20,7 +20,19 @@ export type RuntimeServerDeps = {
   streamChat?: typeof streamChat;
   streamAgent?: typeof streamAgent;
   write: (record: RuntimeRecord, secrets?: string[]) => void;
+  dev?: boolean;
 };
+
+function commandSummary(command: RuntimeCommand): string {
+  const requestId = "requestId" in command ? command.requestId.slice(0, 16) : "-";
+  if (command.type === "chat") {
+    return `type=chat request_id=${requestId} messages=${command.messages.length} provider=${command.connection.provider}`;
+  }
+  if (command.type === "agent") {
+    return `type=agent request_id=${requestId} kind=${command.agent.kind} messages=${command.messages.length}`;
+  }
+  return `type=${command.type} request_id=${requestId}`;
+}
 
 export class RuntimeServer {
   private readonly active = new Map<string, AbortController>();
@@ -30,6 +42,7 @@ export class RuntimeServer {
   private readonly runChat: typeof streamChat;
   private readonly runAgent: typeof streamAgent;
   private readonly approvals: ApprovalBroker;
+  private readonly dev: boolean;
   private stopped = false;
 
   constructor(private readonly deps: RuntimeServerDeps) {
@@ -38,6 +51,7 @@ export class RuntimeServer {
     this.discoverAgentModels = deps.listAgentModels ?? listAgentModels;
     this.runChat = deps.streamChat ?? streamChat;
     this.runAgent = deps.streamAgent ?? streamAgent;
+    this.dev = deps.dev ?? false;
     this.approvals = new ApprovalBroker((event, requestId) => deps.write({
       type: "chunk",
       requestId,
@@ -54,7 +68,9 @@ export class RuntimeServer {
   }
 
   async handle(command: RuntimeCommand): Promise<void> {
+    this.log("debug", `command received ${commandSummary(command)}`);
     if (this.stopped && command.type !== "shutdown") {
+      this.log("warn", `command rejected while shutting down type=${command.type}`);
       throw new Error("AI runtime is shutting down");
     }
     switch (command.type) {
@@ -69,6 +85,7 @@ export class RuntimeServer {
         this.approvals.cancel(command.requestId);
         return;
       case "approval":
+        this.log("debug", `approval request_id=${command.requestId} approved=${command.approved}`);
         if (!this.approvals.resolve(
           command.requestId,
           command.approvalId,
@@ -78,19 +95,11 @@ export class RuntimeServer {
         return;
       case "pty-data":
         ptyBroker.append(command.requestId, new Uint8Array(command.payload.data));
-        this.deps.write({
-          type: "log",
-          level: "warn",
-          message: `PTY data received: ${command.requestId} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`,
-        });
+        this.log("debug", `PTY data request_id=${command.requestId.slice(0, 16)} bytes=${command.payload.data.length} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`);
         return;
       case "pty-exit":
         ptyBroker.finish(command.requestId, command.payload.exitCode);
-        this.deps.write({
-          type: "log",
-          level: "warn",
-          message: `PTY exit received: ${command.requestId} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`,
-        });
+        this.log("debug", `PTY exit request_id=${command.requestId.slice(0, 16)} exit_code=${command.payload.exitCode ?? "null"} pending=${ptyBroker.pendingCount} buffered=${ptyBroker.bufferedCount}`);
         return;
       case "list-models":
         this.startRequest(command.requestId, [command.connection.secret], async (signal) => {
@@ -129,11 +138,21 @@ export class RuntimeServer {
         });
         return;
       case "shutdown":
+        this.log("info", "shutdown requested");
         this.stopped = true;
         for (const controller of this.active.values()) controller.abort("shutdown");
         this.active.clear();
         await closeAgentProviders();
     }
+  }
+
+  private log(
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    secrets: string[] = [],
+  ): void {
+    if (!this.dev || this.stopped) return;
+    this.deps.write({ type: "log", level, message }, secrets);
   }
 
   private startAgent(command: Extract<RuntimeCommand, { type: "agent" }>): void {
@@ -142,6 +161,9 @@ export class RuntimeServer {
     }
     const controller = new AbortController();
     this.active.set(command.requestId, controller);
+    const startedAt = Date.now();
+    let chunkCount = 0;
+    this.log("info", `agent start request_id=${command.requestId.slice(0, 16)} kind=${command.agent.kind}`);
     void (async () => {
       try {
         const stream = await this.runAgent(command, controller.signal, {
@@ -151,15 +173,18 @@ export class RuntimeServer {
         while (true) {
           const next = await reader.read();
           if (next.done) break;
+          chunkCount += 1;
           this.deps.write({ type: "chunk", requestId: command.requestId, chunk: next.value });
         }
       } catch (error) {
+        this.log("error", `agent error request_id=${command.requestId.slice(0, 16)}`);
         this.deps.write({
           type: "error",
           requestId: command.requestId,
           error: error instanceof Error ? error : new Error(String(error)),
         });
       } finally {
+        this.log("info", `agent done request_id=${command.requestId.slice(0, 16)} chunks=${chunkCount} duration_ms=${Date.now() - startedAt}`);
         this.approvals.cancel(command.requestId);
         this.active.delete(command.requestId);
         this.deps.write({ type: "done", requestId: command.requestId });
@@ -173,7 +198,11 @@ export class RuntimeServer {
     }
     const controller = new AbortController();
     this.active.set(command.requestId, controller);
-    const secrets = [command.connection.secret, command.webSearch?.secret];
+    const secrets = [command.connection.secret, command.webSearch?.secret]
+      .filter((secret): secret is string => Boolean(secret));
+    const startedAt = Date.now();
+    let chunkCount = 0;
+    this.log("info", `chat start request_id=${command.requestId.slice(0, 16)} provider=${command.connection.provider} messages=${command.messages.length}`);
     void (async () => {
       try {
         const stream = await this.runChat(command, controller.signal);
@@ -182,6 +211,7 @@ export class RuntimeServer {
         while (true) {
           const next = await reader.read();
           if (next.done) break;
+          chunkCount += 1;
           if (command.collectText && next.value.type === "text-delta") text += next.value.delta;
           this.deps.write(
             { type: "chunk", requestId: command.requestId, chunk: next.value },
@@ -194,12 +224,14 @@ export class RuntimeServer {
           chunk: { type: "data-runtime-result", data: { text } },
         });
       } catch (error) {
+        this.log("error", `chat error request_id=${command.requestId.slice(0, 16)}`, secrets);
         this.deps.write({
           type: "error",
           requestId: command.requestId,
           error: error instanceof Error ? error : new Error(String(error)),
         }, secrets.filter((secret): secret is string => Boolean(secret)));
       } finally {
+        this.log("info", `chat done request_id=${command.requestId.slice(0, 16)} chunks=${chunkCount} duration_ms=${Date.now() - startedAt}`);
         this.active.delete(command.requestId);
         this.deps.write({ type: "done", requestId: command.requestId });
       }
@@ -214,16 +246,24 @@ export class RuntimeServer {
     if (this.active.has(requestId)) throw new Error(`Duplicate request id: ${requestId}`);
     const controller = new AbortController();
     this.active.set(requestId, controller);
+    const startedAt = Date.now();
+    this.log("info", `request start request_id=${requestId.slice(0, 16)}`);
     void (async () => {
       try {
         await work(controller.signal);
       } catch (error) {
+        this.log(
+          "error",
+          `request error request_id=${requestId.slice(0, 16)}`,
+          secrets.filter((secret): secret is string => Boolean(secret)),
+        );
         this.deps.write({
           type: "error",
           requestId,
           error: error instanceof Error ? error : new Error(String(error)),
         }, secrets.filter((secret): secret is string => Boolean(secret)));
       } finally {
+        this.log("info", `request done request_id=${requestId.slice(0, 16)} duration_ms=${Date.now() - startedAt}`);
         this.active.delete(requestId);
       }
     })();
@@ -231,11 +271,13 @@ export class RuntimeServer {
 }
 
 export async function serve(): Promise<void> {
+  const dev = process.env.POLYUI_DEV_LOGS === "1";
   const write = (record: RuntimeRecord, secrets: string[] = []) => {
     process.stdout.write(`${encodeRecord(record, secrets)}\n`);
   };
-  const server = new RuntimeServer({ write });
+  const server = new RuntimeServer({ write, dev });
   write({ type: "ready" });
+  if (dev) write({ type: "log", level: "info", message: "runtime server ready" });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     if (Buffer.byteLength(line) > 4 * 1024 * 1024) {

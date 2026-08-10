@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { extensions as imageExtensions } from "@/lib/image-upload/validation";
 import { useNotificationStore } from "@/store/notificationStore";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 type UseFileDragDetectionOptions = {
   onFilesDropped?: (files: File[]) => void;
@@ -81,7 +82,7 @@ export function useFileDragDetection({
 
     const logDragEvent = (name: string, event?: DragEvent) => {
       if (!debug) return;
-      console.log(`[file-drag] ${name}`, {
+      devLog("debug", "file-drag", name, {
         depth: dragDepthRef.current,
         files: event?.dataTransfer?.files?.length ?? 0,
         types: Array.from(event?.dataTransfer?.types ?? []),

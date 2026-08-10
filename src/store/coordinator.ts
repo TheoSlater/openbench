@@ -7,6 +7,7 @@ import { setTtsSettings, setTtsLoadNotifier, useTtsStore, type TtsLoadProgress }
 import { useNotificationStore } from "./notificationStore";
 import { setUpdateInstallSimulation } from "./updateStore";
 import { getRepository } from "@/lib/repositories";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 // Cross-store effects live here. Stores own local state only.
 let initialized = false;
@@ -103,7 +104,7 @@ export function initStoreCoordinator() {
           if (prevGuestId && newUserId) {
             await getRepository()
               .transferConversations(prevGuestId, newUserId)
-              .catch((err) => console.warn("[coordinator] Conversation transfer failed:", err));
+              .catch((err) => devLog("warn", "coordinator", "Conversation transfer failed", err));
           }
           await useChatStore.getState().actions.loadConversations();
           await useFolderStore.getState().actions.loadFolders();

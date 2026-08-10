@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { User, AuthResponse } from "@/types/auth";
 import { loggedInvoke } from "@/lib/utils/utils";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 const GUEST_ID_KEY = "polyui.guestId";
 
@@ -89,7 +90,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         localStorage.removeItem("session_token");
         set({ user: null, isAuthenticated: false, isLoading: false });
       } catch (err) {
-        console.error("Logout error:", err);
+        devLog("error", "auth", "Logout failed", err);
         localStorage.removeItem("session_token");
         set({ user: null, isAuthenticated: false, isLoading: false });
       }

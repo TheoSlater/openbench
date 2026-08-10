@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Copy, RefreshCw, Square } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { QRCodeSVG } from "qrcode.react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";

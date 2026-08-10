@@ -1,3 +1,5 @@
+import { devLog } from '@/features/debug-overlay/devLog'
+
 type IdleState = 'active' | 'idle'
 type StateListener = (state: IdleState) => void
 
@@ -185,7 +187,7 @@ class IdleStateManager {
     this._state = 'idle'
     this.notifyState()
     const count = this.handlers.size
-    console.debug(`[IdleManager] → idle (${count} handlers)`)
+    devLog('debug', 'idle', 'Idle state entered', { handlerCount: count })
     const sorted = [...this.handlers.entries()]
       .sort((a, b) => (b[1].priority ?? 0) - (a[1].priority ?? 0))
     for (const [, h] of sorted) h.onPause()
@@ -195,7 +197,7 @@ class IdleStateManager {
     if (this._state !== 'idle') return
     this._state = 'active'
     this.notifyState()
-    console.debug('[IdleManager] → active')
+    devLog('debug', 'idle', 'Active state restored')
     const sorted = [...this.handlers.entries()]
       .sort((a, b) => (a[1].priority ?? 0) - (b[1].priority ?? 0))
     for (const [, h] of sorted) h.onResume()

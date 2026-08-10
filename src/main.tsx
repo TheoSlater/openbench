@@ -11,16 +11,20 @@ import { WindowResizeBorders } from "./components/WindowResizeBorders";
 import { prepareAppStartup } from "./startup";
 import {
   startupError as reportStartupError,
+  installFrontendDiagnostics,
   startupPhase,
 } from "./lib/utils/startupDiagnostics";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/utils/platform";
+import { devLog } from "@/features/debug-overlay/devLog";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useShallow } from "zustand/react/shallow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { TITLE_BAR_HEIGHT } from "@/lib/constants/titlebar";
 import "./App.css";
 import App from "./App";
+
+installFrontendDiagnostics();
 
 document.documentElement.style.setProperty(
   "--titlebar-height",
@@ -52,7 +56,7 @@ function Root() {
       .then(() => {
         startupPhase("prepareAppStartup complete");
         invoke("startup_frontend_loaded").catch((e) =>
-          console.error("[startup] frontend log failed:", e),
+          devLog("error", "startup", "Frontend log command failed", e),
         );
         if (!cancelled) setIsAppReady(true);
       })

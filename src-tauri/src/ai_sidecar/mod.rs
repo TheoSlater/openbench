@@ -6,6 +6,7 @@ pub use protocol::AiRuntimeEvent;
 use protocol::SidecarRecord;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncBufReadExt;
@@ -24,6 +25,39 @@ struct State {
     generation: u64,
 }
 
+fn short_id(value: Option<&serde_json::Value>) -> String {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(crate::debug_overlay::short_id)
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn command_summary(command: &serde_json::Value) -> String {
+    let kind = command
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    let request_id = short_id(command.get("requestId"));
+    let message_count = command
+        .get("messages")
+        .and_then(serde_json::Value::as_array)
+        .map(|messages| messages.len());
+    let provider = command
+        .get("connection")
+        .and_then(|connection| connection.get("provider"))
+        .and_then(serde_json::Value::as_str);
+    let model = command
+        .get("connection")
+        .and_then(|connection| connection.get("modelId"))
+        .and_then(serde_json::Value::as_str);
+    format!(
+        "type={kind} request_id={request_id}{}{}{}",
+        message_count.map_or(String::new(), |count| format!(" messages={count}")),
+        provider.map_or(String::new(), |value| format!(" provider={value}")),
+        model.map_or(String::new(), |value| format!(" model={value}")),
+    )
+}
+
 pub struct AiSidecar {
     app: AppHandle,
     executable: PathBuf,
@@ -31,12 +65,13 @@ pub struct AiSidecar {
     pending: Arc<Mutex<HashMap<String, Pending>>>,
     active: Arc<Mutex<HashSet<String>>>,
     events: broadcast::Sender<AiRuntimeEvent>,
+    stopping: AtomicBool,
 }
 
 impl AiSidecar {
     pub fn new(app: &AppHandle) -> Result<Arc<Self>, String> {
         let (events, _) = broadcast::channel(256);
-        Ok(Arc::new(Self {
+        let sidecar = Arc::new(Self {
             app: app.clone(),
             executable: resolve_executable(app)?,
             state: Arc::new(Mutex::new(State {
@@ -46,7 +81,14 @@ impl AiSidecar {
             pending: Arc::new(Mutex::new(HashMap::new())),
             active: Arc::new(Mutex::new(HashSet::new())),
             events,
-        }))
+            stopping: AtomicBool::new(false),
+        });
+        crate::debug_overlay::emit_dev_log(
+            &sidecar.app,
+            "info",
+            "[dev:ai-sidecar] supervisor initialized",
+        );
+        Ok(sidecar)
     }
 
     pub async fn start_stream(
@@ -54,9 +96,24 @@ impl AiSidecar {
         request_id: &str,
         command: serde_json::Value,
     ) -> Result<(), String> {
+        self.log(
+            "debug",
+            format!(
+                "stream start request_id={} {}",
+                crate::debug_overlay::short_id(request_id),
+                command_summary(&command)
+            ),
+        );
         self.active.lock().await.insert(request_id.to_string());
         if let Err(error) = self.send(command).await {
             self.active.lock().await.remove(request_id);
+            self.log(
+                "error",
+                format!(
+                    "stream start failed request_id={}: {error}",
+                    crate::debug_overlay::short_id(request_id)
+                ),
+            );
             return Err(error);
         }
         Ok(())
@@ -67,6 +124,14 @@ impl AiSidecar {
         request_id: &str,
         command: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
+        self.log(
+            "debug",
+            format!(
+                "request start request_id={} {}",
+                crate::debug_overlay::short_id(request_id),
+                command_summary(&command)
+            ),
+        );
         let (sender, receiver) = oneshot::channel();
         self.pending
             .lock()
@@ -76,7 +141,7 @@ impl AiSidecar {
             self.pending.lock().await.remove(request_id);
             return Err(error);
         }
-        match wait_for_response(
+        let result = match wait_for_response(
             &self.pending,
             request_id,
             receiver,
@@ -90,7 +155,16 @@ impl AiSidecar {
                 let _ = self.cancel(request_id).await;
                 Err("AI runtime request timed out".into())
             }
-        }
+        };
+        self.log(
+            if result.is_ok() { "debug" } else { "error" },
+            format!(
+                "request complete request_id={} ok={}",
+                crate::debug_overlay::short_id(request_id),
+                result.is_ok()
+            ),
+        );
+        result
     }
 
     /// Fire-and-forget relay for one-way messages (e.g. PTY output routed back
@@ -101,6 +175,7 @@ impl AiSidecar {
             .and_then(serde_json::Value::as_str)
             .unwrap_or("unknown");
         crate::startup_log::log_event(format!("AI PTY relay send: {kind}"));
+        self.log("debug", format!("relay send {kind}"));
         let result = self.send(command).await;
         if let Err(error) = &result {
             crate::startup_log::log_error(format!("AI PTY relay send failed: {error}"));
@@ -109,6 +184,13 @@ impl AiSidecar {
     }
 
     pub async fn cancel(&self, request_id: &str) -> Result<(), String> {
+        self.log(
+            "debug",
+            format!(
+                "cancel request_id={}",
+                crate::debug_overlay::short_id(request_id)
+            ),
+        );
         self.send(serde_json::json!({ "type": "cancel", "requestId": request_id }))
             .await
     }
@@ -120,6 +202,14 @@ impl AiSidecar {
         approved: bool,
         reason: Option<String>,
     ) -> Result<(), String> {
+        self.log(
+            "debug",
+            format!(
+                "approval request_id={} approval_id={} approved={approved}",
+                crate::debug_overlay::short_id(request_id),
+                crate::debug_overlay::short_id(approval_id)
+            ),
+        );
         self.send(serde_json::json!({
             "type": "approval",
             "requestId": request_id,
@@ -131,6 +221,10 @@ impl AiSidecar {
     }
 
     pub async fn shutdown(&self) {
+        if self.stopping.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        self.log("info", "shutdown requested".to_string());
         if let Some(process) = self.state.lock().await.process.take() {
             process.terminate().await;
         }
@@ -141,7 +235,14 @@ impl AiSidecar {
     }
 
     async fn send(&self, command: serde_json::Value) -> Result<(), String> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Err("AI runtime is shutting down".into());
+        }
+        let summary = command_summary(&command);
         let mut state = self.state.lock().await;
+        if self.stopping.load(Ordering::Acquire) {
+            return Err("AI runtime is shutting down".into());
+        }
         if state.process.is_none() {
             self.spawn_locked(&mut state).await?;
         }
@@ -154,6 +255,7 @@ impl AiSidecar {
         if result.is_ok() {
             return Ok(());
         }
+        self.log("warn", format!("write failed; restarting {summary}"));
         if let Some(process) = state.process.take() {
             process.terminate().await;
         }
@@ -166,11 +268,20 @@ impl AiSidecar {
             .await
     }
 
+    fn log(&self, level: &str, message: String) {
+        crate::debug_overlay::emit_dev_log(
+            &self.app,
+            level,
+            &format!("[dev:ai-sidecar] {message}"),
+        );
+    }
+
     async fn spawn_locked(&self, state: &mut State) -> Result<(), String> {
         let (process, mut stdout) = SidecarProcess::spawn(&self.executable).await?;
         state.generation += 1;
         let generation = state.generation;
         state.process = Some(process);
+        self.log("info", format!("sidecar spawned generation={generation}"));
         let app = self.app.clone();
         let shared_state = self.state.clone();
         let pending = self.pending.clone();
@@ -181,10 +292,29 @@ impl AiSidecar {
             loop {
                 line.clear();
                 match stdout.read_line(&mut line).await {
-                    Ok(0) | Err(_) => break,
+                    Ok(0) => {
+                        crate::debug_overlay::emit_dev_log(
+                            &app,
+                            "warn",
+                            "[dev:ai-sidecar] sidecar stdout closed",
+                        );
+                        break;
+                    }
+                    Err(error) => {
+                        crate::debug_overlay::emit_dev_log(
+                            &app,
+                            "error",
+                            &format!("[dev:ai-sidecar] sidecar stdout read failed: {error}"),
+                        );
+                        break;
+                    }
                     Ok(_) => match serde_json::from_str::<SidecarRecord>(line.trim_end()) {
                         Ok(record) => route_record(&app, &pending, &active, &events, record).await,
-                        Err(error) => log::error!("invalid AI runtime envelope: {error}"),
+                        Err(error) => crate::debug_overlay::emit_dev_log(
+                            &app,
+                            "error",
+                            &format!("[dev:ai-sidecar] invalid runtime envelope: {error}"),
+                        ),
                     },
                 }
             }
@@ -230,24 +360,51 @@ async fn route_record(
     record: SidecarRecord,
 ) {
     match record {
-        SidecarRecord::Ready => {}
+        SidecarRecord::Ready => {
+            crate::debug_overlay::emit_dev_log(app, "info", "[dev:ai-sidecar] runtime ready");
+        }
         SidecarRecord::Chunk { request_id, chunk } => {
             let event = AiRuntimeEvent::Chunk { request_id, chunk };
             let _ = events.send(event.clone());
             let _ = app.emit("ai-runtime-event", event);
         }
         SidecarRecord::Done { request_id } => {
+            crate::debug_overlay::emit_dev_log(
+                app,
+                "debug",
+                &format!(
+                    "[dev:ai-sidecar] stream done request_id={}",
+                    crate::debug_overlay::short_id(&request_id)
+                ),
+            );
             active.lock().await.remove(&request_id);
             let event = AiRuntimeEvent::Done { request_id };
             let _ = events.send(event.clone());
             let _ = app.emit("ai-runtime-event", event);
         }
         SidecarRecord::Result { request_id, result } => {
+            crate::debug_overlay::emit_dev_log(
+                app,
+                "debug",
+                &format!(
+                    "[dev:ai-sidecar] request result request_id={} fields={}",
+                    crate::debug_overlay::short_id(&request_id),
+                    result.as_object().map_or(0, serde_json::Map::len)
+                ),
+            );
             if let Some(sender) = pending.lock().await.remove(&request_id) {
                 let _ = sender.send(Ok(result));
             }
         }
         SidecarRecord::Error { request_id, error } => {
+            crate::debug_overlay::emit_dev_log(
+                app,
+                "error",
+                &format!(
+                    "[dev:ai-sidecar] request error request_id={}: {error}",
+                    crate::debug_overlay::short_id(&request_id)
+                ),
+            );
             if let Some(sender) = pending.lock().await.remove(&request_id) {
                 let _ = sender.send(Err(error));
             } else {
@@ -258,7 +415,13 @@ async fn route_record(
             }
         }
         SidecarRecord::Log { level, message } => {
-            if level == "error" {
+            if cfg!(debug_assertions) {
+                crate::debug_overlay::emit_dev_log(
+                    app,
+                    &level,
+                    &format!("[dev:sidecar] {message}"),
+                );
+            } else if level == "error" {
                 log::error!("AI runtime: {message}");
             } else {
                 log::warn!("AI runtime: {message}");
@@ -274,6 +437,11 @@ async fn fail_all(
     events: &broadcast::Sender<AiRuntimeEvent>,
     message: &str,
 ) {
+    crate::debug_overlay::emit_dev_log(
+        app,
+        "error",
+        &format!("[dev:ai-sidecar] failing active requests: {message}"),
+    );
     for (_, sender) in pending.lock().await.drain() {
         let _ = sender.send(Err(message.to_string()));
     }

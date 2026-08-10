@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { useShallow } from "zustand/react/shallow";
 import {
   AlertCircle,

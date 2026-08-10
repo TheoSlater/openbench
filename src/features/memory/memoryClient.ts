@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { getSessionToken } from "@/lib/utils/utils";
 import type {
   MemoryForgetMessageInput,

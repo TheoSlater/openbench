@@ -1,6 +1,7 @@
 import { useNotificationStore, type ToastType } from "@/store/notificationStore";
 import { useCallback, useMemo } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export function useNotify() {
   const add = useNotificationStore((s) => s.actions.add);
@@ -11,6 +12,12 @@ export function useNotify() {
 
   const tryAdd = useCallback(
     (toast: Omit<import("@/store/notificationStore").Toast, "id">) => {
+      if (toast.type === "error" || toast.type === "warning") {
+        devLog(toast.type === "error" ? "error" : "warn", "notification", "Toast shown", {
+          messageLength: toast.message.length,
+          descriptionLength: toast.description?.length ?? 0,
+        });
+      }
       if (!notificationsEnabled) return "";
       return add(toast);
     },
@@ -43,6 +50,10 @@ export function useNotify() {
         return result;
       } catch (err) {
         const errorMsg = typeof msgs.error === "function" ? msgs.error(err) : msgs.error;
+        devLog("error", "notification", "Promise notification failed", {
+          messageLength: errorMsg.length,
+          error: err,
+        });
         update(id, { message: errorMsg, type: "error", duration: 5000 });
         throw err;
       }

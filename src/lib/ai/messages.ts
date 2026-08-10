@@ -28,8 +28,19 @@ function hasOrderedResponse(parts: Part[]): boolean {
     && parts.some((part) => part.type === "text" || part.type === "reasoning");
 }
 
+function textToBase64(content: string): string {
+  const bytes = new TextEncoder().encode(content);
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 function fileUrl(content: string, mediaType: string): string {
-  return content.startsWith("data:") ? content : `data:${mediaType};base64,${content}`;
+  if (content.startsWith("data:")) return content;
+  const isText = mediaType.startsWith("text/") || mediaType === "application/json";
+  return `data:${mediaType};base64,${isText ? textToBase64(content) : content}`;
 }
 
 export function toUIMessage(message: Message): PolyUIMessage {

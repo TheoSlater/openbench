@@ -76,6 +76,16 @@ impl SandboxManager {
         cwd: Option<&str>,
         status: &dyn Fn(&str),
     ) -> Result<SandboxCommand, String> {
+        crate::debug_overlay::emit_dev_log(
+            &self.app,
+            "debug",
+            &format!(
+                "[dev:sandbox] command prepare sandbox_id={} command_length={} has_cwd={}",
+                sandbox_id.chars().take(16).collect::<String>(),
+                command.len(),
+                cwd.is_some(),
+            ),
+        );
         validate_session_id(sandbox_id)?;
         if command.trim().is_empty() || command.len() > MAX_COMMAND_LENGTH {
             return Err(blocked("command must be between 1 and 2000 characters"));
@@ -89,7 +99,18 @@ impl SandboxManager {
             .map_err(|_| "Sandbox state lock poisoned.".to_string())?;
         if state.sessions.contains_key(sandbox_id) {
             let session = state.sessions.get_mut(sandbox_id).expect("session present");
-            return prepare_command(session, &cwd, command, status);
+            let result = prepare_command(session, &cwd, command, status);
+            if result.is_err() {
+                crate::debug_overlay::emit_dev_log(
+                    &self.app,
+                    "error",
+                    &format!(
+                        "[dev:sandbox] command rejected sandbox_id={}",
+                        sandbox_id.chars().take(16).collect::<String>()
+                    ),
+                );
+            }
+            return result;
         }
 
         let mut session = create_headless_session()?;
@@ -101,6 +122,14 @@ impl SandboxManager {
             }
         };
         state.sessions.insert(sandbox_id.to_string(), session);
+        crate::debug_overlay::emit_dev_log(
+            &self.app,
+            "debug",
+            &format!(
+                "[dev:sandbox] command prepared sandbox_id={}",
+                sandbox_id.chars().take(16).collect::<String>()
+            ),
+        );
         Ok(plan)
     }
 
@@ -115,6 +144,15 @@ impl SandboxManager {
             .ok_or_else(|| "Sandbox session not found.".to_string())?;
         session.active_commands = session.active_commands.saturating_add(1);
         touch_session(session);
+        crate::debug_overlay::emit_dev_log(
+            &self.app,
+            "debug",
+            &format!(
+                "[dev:sandbox] command started sandbox_id={} active={}",
+                crate::debug_overlay::short_id(sandbox_id),
+                session.active_commands
+            ),
+        );
         Ok(())
     }
 
@@ -129,6 +167,15 @@ impl SandboxManager {
             .ok_or_else(|| "Sandbox session not found.".to_string())?;
         session.active_commands = session.active_commands.saturating_sub(1);
         touch_session(session);
+        crate::debug_overlay::emit_dev_log(
+            &self.app,
+            "debug",
+            &format!(
+                "[dev:sandbox] command finished sandbox_id={} active={}",
+                crate::debug_overlay::short_id(sandbox_id),
+                session.active_commands
+            ),
+        );
         Ok(())
     }
 
@@ -194,6 +241,14 @@ impl SandboxManager {
             .remove(sandbox_id);
         if let Some(session) = session {
             cleanup_headless_session(session)?;
+            crate::debug_overlay::emit_dev_log(
+                &self.app,
+                "info",
+                &format!(
+                    "[dev:sandbox] destroyed sandbox_id={}",
+                    crate::debug_overlay::short_id(sandbox_id)
+                ),
+            );
             let _ = self.app.emit("sandbox-destroyed", sandbox_id);
         }
         Ok(())
@@ -242,6 +297,14 @@ impl SandboxManager {
         };
         for (sandbox_id, session) in expired {
             if let Err(error) = cleanup_headless_session(session) {
+                crate::debug_overlay::emit_dev_log(
+                    &self.app,
+                    "error",
+                    &format!(
+                        "[dev:sandbox] idle workspace cleanup failed sandbox_id={}: {error}",
+                        crate::debug_overlay::short_id(&sandbox_id)
+                    ),
+                );
                 crate::startup_log::log_error(format!(
                     "idle host workspace cleanup failed for {sandbox_id}: {error}"
                 ));

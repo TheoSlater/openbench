@@ -1,7 +1,9 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { destroyAiSandbox } from "@/lib/ai/transport";
 import { closePty } from "./pty";
 import { openAiTerminalTab } from "./viewportStore";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export type PtyEvent = {
   kind: "data" | "exit" | "error" | "status";
@@ -143,12 +145,17 @@ export function resetAiTerminalState(): void {
 export async function stopAiCommand(): Promise<void> {
   const session = current;
   if (!session?.ptyId || session.done) return;
+  devLog("debug", "ai-terminal", "Stopping command", {
+    toolCallId: session.toolCallId,
+    sandboxId: session.sandboxId,
+  });
   session.status = "Stopping command…";
   emit(session);
   try {
     await invoke("sandbox_stop_processes", { sandboxId: session.sandboxId }).catch(() => undefined);
     await closePty(session.ptyId);
   } catch (error) {
+    devLog("error", "ai-terminal", "Stop command failed", { error });
     session.error = String(error);
     session.done = true;
     session.durationMs = Date.now() - session.startedAt;
@@ -159,6 +166,7 @@ export async function stopAiCommand(): Promise<void> {
 export async function resetAiSandbox(): Promise<void> {
   const session = current;
   if (!session) return;
+  devLog("debug", "ai-terminal", "Resetting sandbox", { sandboxId: session.sandboxId });
   const ptyId = session.ptyId;
   session.resetting = true;
   session.done = true;
@@ -179,6 +187,7 @@ export async function resetAiSandbox(): Promise<void> {
     session.status = "Sandbox reset";
     emit(session);
   } catch (error) {
+    devLog("error", "ai-terminal", "Sandbox reset failed", { error });
     session.error = String(error);
     session.status = "Sandbox reset failed";
     emit(session);
@@ -208,6 +217,12 @@ export function runAiCommand(spec: {
     resetting: false,
     done: false,
   };
+  devLog("debug", "ai-terminal", "Command start", {
+    toolCallId: spec.toolCallId,
+    sandboxId: spec.sandboxId,
+    command: spec.command,
+    hasCwd: Boolean(spec.cwd),
+  });
   sessions.set(spec.toolCallId, session);
   current = session;
   emit(session);
@@ -220,12 +235,21 @@ export function runAiCommand(spec: {
       session.status = event.message;
     }
     if (event.kind === "error" && event.message) {
+      devLog("error", "ai-terminal", "PTY error", {
+        toolCallId: session.toolCallId,
+        message: event.message,
+      });
       session.error = event.message;
       session.done = true;
       session.durationMs = Date.now() - session.startedAt;
       session.status = "Sandbox failed";
     }
     if (event.kind === "exit") {
+      devLog("debug", "ai-terminal", "PTY exit", {
+        toolCallId: session.toolCallId,
+        exitCode: event.exitCode,
+        durationMs: Date.now() - session.startedAt,
+      });
       session.done = true;
       session.durationMs = Date.now() - session.startedAt;
       session.exitCode = event.exitCode;
@@ -255,9 +279,17 @@ export function runAiCommand(spec: {
       }
       session.ptyId = ptyId;
       session.status = "Running command…";
+      devLog("debug", "ai-terminal", "PTY attached", {
+        toolCallId: session.toolCallId,
+        ptyId,
+      });
       emit(session);
     })
     .catch((error) => {
+      devLog("error", "ai-terminal", "PTY spawn failed", {
+        toolCallId: session.toolCallId,
+        error,
+      });
       session.done = true;
       session.error = String(error);
       session.durationMs = Date.now() - session.startedAt;
