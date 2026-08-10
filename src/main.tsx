@@ -13,7 +13,11 @@ import {
   startupError as reportStartupError,
   startupPhase,
 } from "./lib/utils/startupDiagnostics";
-import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/utils/platform";
+import {
+  PLATFORM,
+  USE_CUSTOM_WINDOW_CONTROLS,
+  USE_NATIVE_MACOS_VIBRANCY,
+} from "./lib/utils/platform";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useShallow } from "zustand/react/shallow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -26,6 +30,9 @@ document.documentElement.style.setProperty(
   "--titlebar-height",
   `${TITLE_BAR_HEIGHT}px`,
 );
+document.documentElement.dataset.platform = PLATFORM || "unknown";
+document.documentElement.dataset.nativeVibrancy =
+  USE_NATIVE_MACOS_VIBRANCY ? "true" : "false";
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.setAttribute("data-chrome", "borderless");
 } else {

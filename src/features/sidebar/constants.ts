@@ -1,7 +1,8 @@
 import type * as React from "react"
 
 /**
- * Single source of truth for sidebar sizing, spacing and radius.
+ * Single source of truth for sidebar sizing, spacing, row radius, and the
+ * main content/header corner.
  * Consumed both as JS values and (via `sidebarStyleVars`) as CSS variables,
  * so expanded and collapsed modes stay in lockstep. Don't hardcode these
  * numbers in components — reference the CSS vars (e.g. `h-(--sidebar-item-height)`).

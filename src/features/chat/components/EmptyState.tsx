@@ -27,8 +27,8 @@ export function EmptyState({
     : userName ? `Hello, ${userName}` : "Hello";
 
   return (
-    <Box className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-      <Box className="flex w-full max-w-3xl flex-col items-center gap-6">
+    <Box className="macos-empty-state relative flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+      <Box className="macos-empty-state__group flex w-full max-w-3xl flex-col items-center gap-6">
         <Typography
           as="h1"
           variant="h3"

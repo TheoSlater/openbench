@@ -1,12 +1,15 @@
 import { platform } from "@tauri-apps/plugin-os";
 
-const PLATFORM = (() => {
+export const PLATFORM = (() => {
   try { return platform(); } catch { return ""; }
 })();
 
 export const IS_MAC = PLATFORM === "macos";
 export const IS_LINUX = PLATFORM === "linux";
 export const IS_WINDOWS = PLATFORM === "windows";
+
+/** Native macOS material is configured by the macOS Tauri config overlay. */
+export const USE_NATIVE_MACOS_VIBRANCY = IS_MAC;
 
 export const USE_CUSTOM_WINDOW_CONTROLS = IS_WINDOWS || IS_LINUX;
 

@@ -1,3 +1,4 @@
+// Design: quiet native Mac utility — native sidebar material, opaque chat canvas, restrained surfaces.
 import {
   lazy,
   Suspense,
