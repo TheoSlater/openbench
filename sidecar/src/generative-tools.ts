@@ -1,20 +1,68 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { searchWeb, type SearchConfig, type SearchResult } from "./web-search";
 
 type Fetch = typeof fetch;
 
+const httpUrl = z.string().url().refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
+}, "Source URL must use HTTP(S)");
+
+const weatherDataSchema = z.object({
+  temperatureC: z.number().finite().describe("Current temperature in Celsius"),
+  windSpeedMps: z.number().finite().optional().describe("Wind speed in metres per second"),
+  condition: z.string().trim().min(1).max(80).optional().describe("Short current condition"),
+  observedAt: z.string().trim().min(1).max(80).optional().describe("Observation time"),
+  summary: z.string().trim().min(1).max(500).optional().describe("One-sentence summary grounded in the search results"),
+  sourceTitle: z.string().trim().min(1).max(200).optional().describe("Title of the most relevant search result"),
+  sourceUrl: httpUrl.optional().describe("HTTP(S) URL of the most relevant search result"),
+});
+
+const stockDataSchema = z.object({
+  company: z.string().trim().min(1).max(120).optional().describe("Company name"),
+  price: z.number().finite().describe("Latest stock price"),
+  currency: z.string().trim().regex(/^[A-Za-z]{3}$/).describe("ISO 4217 currency code"),
+  change: z.number().finite().optional().describe("Absolute price change"),
+  changePercent: z.number().finite().optional().describe("Percentage price change"),
+  marketStatus: z.string().trim().min(1).max(40).optional().describe("Market status"),
+  asOf: z.string().trim().min(1).max(80).optional().describe("Quote timestamp"),
+  summary: z.string().trim().min(1).max(500).optional().describe("One-sentence summary grounded in the search results"),
+  sourceTitle: z.string().trim().min(1).max(200).optional().describe("Title of the most relevant search result"),
+  sourceUrl: httpUrl.optional().describe("HTTP(S) URL of the most relevant search result"),
+});
+
+const stockInputSchema = stockDataSchema.extend({
+  symbol: z.string().trim().min(1).max(12).describe("Stock symbol"),
+});
+
 type WeatherOutput = {
   location: string;
-  source: "open-meteo";
-  temperature: number;
-  windSpeed: number;
+  source: "open-meteo" | "web-search";
+  status?: "needs-web-search";
+  query?: string;
+  instruction?: string;
+  temperature?: number;
+  windSpeed?: number;
+  condition?: string;
   observedAt?: string;
+  summary?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
 };
 
-type SearchOutput = {
-  query: string;
-  results: SearchResult[];
+type StockOutput = {
+  symbol: string;
+  source: "web-search";
+  company?: string;
+  price?: number;
+  currency?: string;
+  change?: number;
+  changePercent?: number;
+  marketStatus?: string;
+  asOf?: string;
+  summary?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
 };
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
@@ -74,67 +122,80 @@ async function openMeteoWeather(
   };
 }
 
-async function searchWeather(
-  location: string,
-  searchConfig: SearchConfig,
-  providerFetch: Fetch,
-): Promise<SearchOutput & { location: string; source: "web-search" }> {
-  const query = `current weather in ${location}`;
-  return {
-    location,
-    source: "web-search",
-    query,
-    results: await searchWeb(query, searchConfig, providerFetch),
-  };
-}
-
-export function createWeatherTool(options: {
-  fetch?: Fetch;
-  search: SearchConfig;
-}) {
+export function createWeatherTool(options: { fetch?: Fetch }) {
   const providerFetch = options.fetch ?? fetch;
   return tool({
-    description: "Get current weather using Open-Meteo, then fall back to web search if unavailable",
+    description: "Render current weather. Call with a location for Open-Meteo; if it returns needs-web-search, call web_search and call this tool again with normalized data.",
     inputSchema: z.object({
       location: z.string().trim().min(1).max(200).describe("Location to check"),
+      data: weatherDataSchema.optional().describe("Normalized weather facts from web_search"),
     }),
     strict: true,
     inputExamples: [{ input: { location: "London" } }],
-    execute: async ({ location }) => {
+    execute: async ({ location, data }): Promise<WeatherOutput> => {
+      if (data) {
+        return {
+          location,
+          source: "web-search",
+          temperature: data.temperatureC,
+          ...(data.windSpeedMps === undefined ? {} : { windSpeed: data.windSpeedMps }),
+          ...(data.condition ? { condition: data.condition } : {}),
+          ...(data.observedAt ? { observedAt: data.observedAt } : {}),
+          ...(data.summary ? { summary: data.summary } : {}),
+          ...(data.sourceTitle ? { sourceTitle: data.sourceTitle } : {}),
+          ...(data.sourceUrl ? { sourceUrl: data.sourceUrl } : {}),
+        };
+      }
       try {
         return await openMeteoWeather(location, providerFetch);
-      } catch (openMeteoError) {
-        try {
-          return await searchWeather(location, options.search, providerFetch);
-        } catch (searchError) {
-          throw new Error(
-            `Weather lookup failed: ${openMeteoError instanceof Error ? openMeteoError.message : "Open-Meteo unavailable"}; ${searchError instanceof Error ? searchError.message : "web search unavailable"}`,
-          );
-        }
+      } catch {
+        return {
+          location,
+          source: "open-meteo",
+          status: "needs-web-search",
+          query: `current weather in ${location}`,
+          instruction: "Open-Meteo is unavailable. Call web_search, summarize the result, then call displayWeather again with data fields.",
+        };
       }
     },
   });
 }
 
-export function createStockTool(options: {
-  fetch?: Fetch;
-  search: SearchConfig;
-}) {
-  const providerFetch = options.fetch ?? fetch;
+export function createStockTool() {
   return tool({
-    description: "Search the web for a stock symbol and render the results",
-    inputSchema: z.object({
-      symbol: z.string().trim().min(1).max(12).describe("Stock symbol"),
-    }),
+    description: "Render a structured stock quote. Call web_search first, summarize the result, then call this tool with individual quote fields.",
+    inputSchema: stockInputSchema,
     strict: true,
-    inputExamples: [{ input: { symbol: "AAPL" } }],
-    execute: async ({ symbol }) => {
-      const query = `${symbol.toUpperCase()} stock price`;
+    inputExamples: [{
+      input: {
+        symbol: "AAPL",
+        company: "Apple Inc.",
+        price: 185.2,
+        currency: "USD",
+        change: 1.25,
+        changePercent: 0.68,
+        marketStatus: "Open",
+        asOf: "2026-08-06T15:00",
+        summary: "Apple traded higher in the latest session.",
+        sourceTitle: "Apple stock quote",
+        sourceUrl: "https://example.com/aapl",
+      },
+    }],
+    execute: async ({ symbol, ...data }): Promise<StockOutput> => {
+      const normalizedSymbol = symbol.toUpperCase();
       return {
-        symbol: symbol.toUpperCase(),
-        source: "web-search" as const,
-        query,
-        results: await searchWeb(query, options.search, providerFetch),
+        symbol: normalizedSymbol,
+        source: "web-search",
+        price: data.price,
+        currency: data.currency.toUpperCase(),
+        ...(data.company ? { company: data.company } : {}),
+        ...(data.change === undefined ? {} : { change: data.change }),
+        ...(data.changePercent === undefined ? {} : { changePercent: data.changePercent }),
+        ...(data.marketStatus ? { marketStatus: data.marketStatus } : {}),
+        ...(data.asOf ? { asOf: data.asOf } : {}),
+        ...(data.summary ? { summary: data.summary } : {}),
+        ...(data.sourceTitle ? { sourceTitle: data.sourceTitle } : {}),
+        ...(data.sourceUrl ? { sourceUrl: data.sourceUrl } : {}),
       };
     },
   });

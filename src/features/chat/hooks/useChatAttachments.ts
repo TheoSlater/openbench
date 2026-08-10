@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from "react";
 import { useChatStore } from "@/store/chatStore";
 import { Attachment } from "@/types/chat";
 import { isImageAttachment } from "@/lib/utils/utils";
-import { validateImageFiles } from "@/lib/image-upload/validation";
+import { attachmentMimeType, validateAttachmentFiles } from "@/lib/image-upload/validation";
 import { readImageDimensions } from "@/lib/image-upload/metadata";
 import { registerImageAttachment, releaseImageAttachment } from "@/lib/image-upload/attachments";
 import { imageUploadConfig } from "@/lib/image-upload/config";
@@ -22,10 +22,15 @@ export function useChatAttachments(chatKey: string) {
     (state) => state.attachmentsByChat[chatKey] ?? EMPTY,
   );
   const storeAddAttachment = useChatStore((state) => state.actions.addAttachment);
+  const storeUpdateAttachment = useChatStore((state) => state.actions.updateAttachment);
   const storeRemoveAttachment = useChatStore((state) => state.actions.removeAttachment);
   const addCurrentAttachment = useCallback(
     (attachment: Attachment) => storeAddAttachment(chatKey, attachment),
     [chatKey, storeAddAttachment],
+  );
+  const updateCurrentAttachment = useCallback(
+    (id: string, updates: Partial<Attachment>) => storeUpdateAttachment(chatKey, id, updates),
+    [chatKey, storeUpdateAttachment],
   );
   const removeCurrentAttachment = useCallback(
     (id: string) => storeRemoveAttachment(chatKey, id),
@@ -38,27 +43,33 @@ export function useChatAttachments(chatKey: string) {
   const processFiles = useCallback(
     async (files: FileList | File[]) => {
       const selected = Array.from(files);
-      const imageFiles = selected.filter((file) => isImageAttachment(file.type));
-      const validation = validateImageFiles(imageFiles, {
-        maxFiles: Math.max(0, imageUploadConfig.maxFiles - currentAttachments.filter((item) => isImageAttachment(item.type)).length),
+      const existingCount = useChatStore.getState().attachmentsByChat[chatKey]?.length ?? 0;
+      const validation = validateAttachmentFiles(selected, {
+        maxFiles: Math.max(0, imageUploadConfig.maxAttachments - existingCount),
       });
-      validation.errors.forEach((error) => notify.error("Image upload failed", error.message));
-      const acceptedImages = new Set(validation.accepted);
+      if (validation.errors.length > 0) {
+        notify.error(
+          `${validation.errors.length} file${validation.errors.length === 1 ? "" : "s"} not added`,
+          validation.errors.map((error) => error.message).join(" "),
+        );
+      }
+      const acceptedFiles = new Set(validation.accepted);
       for (const selectedFile of selected) {
+        if (!acceptedFiles.has(selectedFile)) continue;
         let file = selectedFile;
+        const normalizedType = attachmentMimeType(file);
         const attachment: Attachment = {
           id: crypto.randomUUID(),
           name: file.name,
-          type: file.type,
+          type: normalizedType,
           size: file.size,
         };
 
-        const isImage = isImageAttachment(file.type);
+        const isImage = isImageAttachment(normalizedType);
         if (isImage) {
-          if (!acceptedImages.has(file)) continue;
           file = await optimizeImage(file);
           attachment.name = file.name;
-          attachment.type = file.type;
+          attachment.type = attachmentMimeType(file);
           attachment.size = file.size;
           attachment.status = "previewing";
           attachment.previewUrl = registerImageAttachment(attachment, file);
@@ -70,8 +81,7 @@ export function useChatAttachments(chatKey: string) {
               releaseImageAttachment(attachment);
               removeCurrentAttachment(attachment.id);
             } else {
-              attachment.status = "ready";
-              Object.assign(attachment, dimensions);
+              updateCurrentAttachment(attachment.id, { ...dimensions, status: "ready" });
             }
           } catch {
             notify.error("Image upload failed", `${file.name}: image could not be decoded.`);
@@ -80,22 +90,33 @@ export function useChatAttachments(chatKey: string) {
           }
           continue;
         }
+
+        attachment.status = "processing";
+        addCurrentAttachment(attachment);
         const reader = new FileReader();
         reader.onload = (e) => {
           const raw = e.target?.result;
-          if (typeof raw !== "string") return;
-          attachment.content = isImage ? raw.split(",")[1] : raw;
-          addCurrentAttachment(attachment);
+          if (typeof raw !== "string" || !raw) {
+            notify.error("File could not be read", `${file.name}: the file did not contain readable text.`);
+            removeCurrentAttachment(attachment.id);
+            return;
+          }
+          updateCurrentAttachment(attachment.id, { content: raw, status: "ready" });
         };
-
-        if (isImage) {
-          reader.readAsDataURL(file);
-        } else {
-          reader.readAsText(file);
-        }
+        reader.onerror = () => {
+          notify.error("File could not be read", `${file.name}: the file may be unreadable or damaged.`);
+          removeCurrentAttachment(attachment.id);
+        };
+        reader.readAsText(file);
       }
     },
-    [addCurrentAttachment, currentAttachments, notify, removeCurrentAttachment],
+    [
+      addCurrentAttachment,
+      chatKey,
+      notify,
+      removeCurrentAttachment,
+      updateCurrentAttachment,
+    ],
   );
 
   const openFilePicker = (accept: string) => {

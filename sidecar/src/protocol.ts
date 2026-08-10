@@ -135,7 +135,7 @@ export type RuntimeRecord =
   | { type: "done"; requestId: string }
   | { type: "result"; requestId: string; result: unknown }
   | { type: "error"; requestId: string; error: string | Error }
-  | { type: "log"; level: "warn" | "error"; message: string };
+  | { type: "log"; level: "debug" | "info" | "warn" | "error"; message: string };
 
 const SECRET_KEYS = new Set([
   "apikey",
@@ -187,11 +187,24 @@ export function parseCommand(line: string): RuntimeCommand {
 
 export function encodeRecord(record: RuntimeRecord, secrets: string[] = []): string {
   const safe = record.type === "error"
-    ? { ...record, error: record.error instanceof Error ? record.error.message : record.error }
-    : record;
+    ? {
+      ...record,
+      error: redactText(record.error instanceof Error ? record.error.message : record.error),
+    }
+    : record.type === "log"
+      ? { ...record, message: redactText(record.message) }
+      : record;
   let encoded = JSON.stringify(redact(safe));
   for (const secret of secrets) {
     if (secret) encoded = encoded.replaceAll(secret, "[REDACTED]");
   }
   return encoded;
+}
+
+function redactText(value: string): string {
+  return value
+    .replace(/Bearer\s+[^\s,]+/gi, "Bearer [REDACTED]")
+    .replace(/(api[_-]?key|token|secret|credential|password)=([^\s&]+)/gi, "$1=[REDACTED]")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[REDACTED]")
+    .slice(0, 1200);
 }

@@ -16,6 +16,7 @@ import { connectionsClient } from "@/features/connections/client";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import { runtimeIsAvailable, runtimeLabel } from "@/features/runtime/runtime-options";
 import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 const EMPTY_ATTACHMENTS: never[] = [];
 
@@ -105,7 +106,7 @@ export default function ChatWorkspace({
       try {
         await connectionsClient.setRuntime(created.id, selectedRuntime);
       } catch (error) {
-        console.error("Failed to bind the selected runtime to the conversation:", error);
+        devLog("error", "runtime", "Failed to bind selected runtime to conversation", error);
       }
     }
     return created.id;

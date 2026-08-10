@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import { getWebSearchProvider } from "./registry";

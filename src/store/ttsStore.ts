@@ -1,5 +1,7 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { create } from "zustand";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 interface TtsState {
   activeMessageId: number | string | null;
@@ -157,7 +159,16 @@ const loadSupertonic = async () => {
     bytesDownloaded: number;
     totalBytes: number | null;
   }>();
+  let progressCount = 0;
   onProgress.onmessage = (p) => {
+    progressCount += 1;
+    if (progressCount === 1 || progressCount % 10 === 0) {
+      devLog("debug", "tts", "Supertonic model load progress", {
+        progressCount,
+        bytesDownloaded: p.bytesDownloaded,
+        hasTotal: p.totalBytes !== null,
+      });
+    }
     clearTimeout(stallTimer);
     stallTimer = setTimeout(stalled, 120_000);
     notifyLoadProgress({ phase: "progress", ...p });
@@ -304,7 +315,17 @@ const synthesizeIntoSession = async (
   // back-to-back on the session AudioContext so speech starts on the first
   // chunk instead of after the whole text is synthesized.
   const onChunk = new Channel<SupertonicChunk>();
+  let chunkCount = 0;
   onChunk.onmessage = (chunk) => {
+    chunkCount += 1;
+    if (chunkCount === 1 || chunk.isLast) {
+      devLog("debug", "tts", "Supertonic audio chunk", {
+        chunkCount,
+        isLast: chunk.isLast,
+        sampleRate: chunk.sampleRate,
+        sampleCount: chunk.pcmBase64.length,
+      });
+    }
     if (chunk.isLast) resolveLastChunk();
     if (session !== current || ctx.state === "closed") return;
 
@@ -470,7 +491,7 @@ export const useTtsStore = create<TtsState>((set, get) => ({
         try {
           window.speechSynthesis.cancel();
         } catch (err) {
-          console.warn("Error cancelling speech synthesis:", err);
+          devLog("warn", "tts", "Error cancelling speech synthesis", err);
         }
       }
 

@@ -5,38 +5,35 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-const mockDevLogStore = vi.hoisted(() => ({ getState: () => ({ devMode: false }) }));
-vi.mock("@/store/devStore", () => ({
-  useDevStore: mockDevLogStore,
-}));
-
-import { devLog } from "@/features/debug-overlay/devLog";
+import { devLog, stopDevLogging } from "@/features/debug-overlay/devLog";
 
 describe("devLog", () => {
   const mockedInvoke = vi.mocked(invoke);
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDevLogStore.getState = () => ({ devMode: false });
+    Object.defineProperty(globalThis, "window", {
+      value: { __TAURI_INTERNALS__: {} },
+      configurable: true,
+    });
   });
 
-  it("is a no-op when dev mode is off", () => {
+  it("logs in development even when the debug overlay is off", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     devLog("info", "overlay", "hello");
     devLog("error", "overlay", "boom");
 
-    expect(info).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-    expect(mockedInvoke).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith("[dev:overlay] hello");
+    expect(error).toHaveBeenCalledWith("[dev:overlay] boom");
+    expect(mockedInvoke).toHaveBeenCalledTimes(2);
 
     info.mockRestore();
     error.mockRestore();
   });
 
   it("logs to the console and the terminal when dev mode is on", () => {
-    mockDevLogStore.getState = () => ({ devMode: true });
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     devLog("info", "overlay", "enabled");
@@ -51,7 +48,6 @@ describe("devLog", () => {
   });
 
   it("uses the console method matching the level", () => {
-    mockDevLogStore.getState = () => ({ devMode: true });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     devLog("warn", "overlay", "slow");
@@ -66,7 +62,6 @@ describe("devLog", () => {
   });
 
   it("appends serialized data to the terminal message", () => {
-    mockDevLogStore.getState = () => ({ devMode: true });
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     devLog("info", "overlay", "stats", { fps: 60 });
@@ -81,12 +76,44 @@ describe("devLog", () => {
   });
 
   it("swallows terminal forwarding failures", () => {
-    mockDevLogStore.getState = () => ({ devMode: true });
     mockedInvoke.mockRejectedValueOnce(new Error("command unavailable"));
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     expect(() => devLog("info", "overlay", "persist")).not.toThrow();
 
+    info.mockRestore();
+  });
+
+  it("redacts secret and content-bearing data", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    devLog("info", "security", "request", {
+      token: "secret-token",
+      prompt: "private prompt",
+      count: 2,
+    });
+
+    expect(info).toHaveBeenCalledWith("[dev:security] request", {
+      token: "[REDACTED]",
+      prompt: { type: "string", length: 14 },
+      count: 2,
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("debug_log", {
+      level: "info",
+      message: expect.stringContaining("[REDACTED]"),
+    });
+
+    info.mockRestore();
+  });
+
+  it("stops browser and terminal logging after shutdown begins", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    stopDevLogging();
+    devLog("info", "shutdown", "should not be emitted");
+
+    expect(info).not.toHaveBeenCalled();
+    expect(mockedInvoke).not.toHaveBeenCalled();
     info.mockRestore();
   });
 });

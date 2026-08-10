@@ -25,6 +25,9 @@ impl SidecarProcess {
             // errors are returned on stdout after redaction; discard raw stderr.
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        if cfg!(debug_assertions) {
+            command.env("POLYUI_DEV_LOGS", "1");
+        }
         #[cfg(unix)]
         command.process_group(0);
         let mut child = command

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ComponentType } from "react";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 type ViewComponent = ComponentType<Record<string, never>>;
 
@@ -7,7 +8,7 @@ const views = new Map<string, ViewComponent>();
 
 export function registerView(id: string, component: ViewComponent) {
   if (views.has(id)) {
-    console.warn(`[view-registry] View "${id}" already registered — overwriting`);
+    devLog("warn", "view-registry", "View already registered; overwriting", { viewId: id });
   }
   views.set(id, component);
 }

@@ -1,6 +1,6 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { listen as tauriListen } from "@tauri-apps/api/event";
+import { invoke, listen } from "@/lib/tauriBridge";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 export type RuntimeEvent =
   | { type: "chunk"; request_id: string; chunk: UIMessageChunk }
@@ -14,24 +14,29 @@ export interface RuntimeBridge {
 
 const tauriBridge: RuntimeBridge = {
   async listen(listener) {
-    return tauriListen<RuntimeEvent>("ai-runtime-event", ({ payload }) => listener(payload));
+    return listen<RuntimeEvent>("ai-runtime-event", ({ payload }) => listener(payload));
   },
-  invoke: (command, args) => tauriInvoke(command, args),
+  invoke: (command, args) => invoke(command, args),
 };
 
 export class RuntimeTransportManager {
   private readonly streams = new Map<string, ReadableStreamDefaultController<UIMessageChunk>>();
+  private readonly chunkCounts = new Map<string, number>();
   private listener: Promise<void> | undefined;
 
   constructor(private readonly bridge: RuntimeBridge) {}
 
   async ready(): Promise<void> {
-    this.listener ??= this.bridge.listen((event) => this.route(event)).then(() => undefined);
+    this.listener ??= this.bridge.listen((event) => this.route(event)).then(() => {
+      devLog("debug", "ai-transport", "runtime listener ready");
+    });
     await this.listener;
   }
 
   open(requestId: string, sandboxId?: string): ReadableStream<UIMessageChunk> {
     if (this.streams.has(requestId)) throw new Error(`Duplicate AI request: ${requestId}`);
+    this.chunkCounts.set(requestId, 0);
+    devLog("debug", "ai-transport", "stream open", { requestId, sandboxId });
     return new ReadableStream<UIMessageChunk>({
       start: (controller) => {
         this.streams.set(requestId, controller);
@@ -48,23 +53,56 @@ export class RuntimeTransportManager {
     const controller = this.streams.get(requestId);
     if (!controller) return;
     this.streams.delete(requestId);
+    this.chunkCounts.delete(requestId);
+    devLog("error", "ai-transport", "stream failed", { requestId, error });
     controller.error(error instanceof Error ? error : new Error(String(error)));
   }
 
   private route(event: RuntimeEvent): void {
     const controller = this.streams.get(event.request_id);
-    if (!controller) return;
+    if (!controller) {
+      devLog("warn", "ai-transport", "late or unknown runtime event", {
+        requestId: event.request_id,
+        eventType: event.type,
+      });
+      return;
+    }
     if (event.type === "chunk") {
+      const count = (this.chunkCounts.get(event.request_id) ?? 0) + 1;
+      this.chunkCounts.set(event.request_id, count);
+      if (count === 1 || count % 50 === 0) {
+        devLog("debug", "ai-transport", "stream chunk", {
+          requestId: event.request_id,
+          chunkCount: count,
+          chunkType: event.chunk.type,
+        });
+      }
       controller.enqueue(event.chunk);
       return;
     }
     this.streams.delete(event.request_id);
-    if (event.type === "error") controller.error(new Error(event.error));
-    else controller.close();
+    const chunkCount = this.chunkCounts.get(event.request_id) ?? 0;
+    this.chunkCounts.delete(event.request_id);
+    if (event.type === "error") {
+      devLog("error", "ai-transport", "stream error", {
+        requestId: event.request_id,
+        chunkCount,
+        error: event.error,
+      });
+      controller.error(new Error(event.error));
+    } else {
+      devLog("debug", "ai-transport", "stream done", {
+        requestId: event.request_id,
+        chunkCount,
+      });
+      controller.close();
+    }
   }
 
   private async cancel(requestId: string, sandboxId?: string): Promise<void> {
     this.streams.delete(requestId);
+    this.chunkCounts.delete(requestId);
+    devLog("debug", "ai-transport", "stream cancel", { requestId, sandboxId });
     await this.bridge.invoke("ai_runtime_cancel", {
       requestId,
       ...(sandboxId ? { sandboxId } : {}),
@@ -75,7 +113,7 @@ export class RuntimeTransportManager {
 export const aiRuntimeManager = new RuntimeTransportManager(tauriBridge);
 
 export function destroyAiSandbox(sandboxId: string): Promise<void> {
-  return tauriInvoke("sandbox_destroy", { sandboxId });
+  return invoke("sandbox_destroy", { sandboxId });
 }
 
 export type AgentTransport = {
@@ -124,6 +162,11 @@ implements ChatTransport<UI_MESSAGE> {
   }: Parameters<ChatTransport<UI_MESSAGE>["sendMessages"]>[0]): Promise<
     ReadableStream<UIMessageChunk>
   > {
+    devLog("debug", "ai-transport", "chat request start", {
+      requestId: this.options.requestId,
+      hasAgent: Boolean(this.options.agent),
+      hasTools: Boolean(this.options.activeTools?.length),
+    });
     const stream = this.manager.open(this.options.requestId, this.options.conversationId);
     await this.manager.ready();
     const abort = () => {
@@ -154,6 +197,10 @@ implements ChatTransport<UI_MESSAGE> {
         token: this.options.token?.() ?? null,
       });
     } catch (error) {
+      devLog("error", "ai-transport", "chat request invoke failed", {
+        requestId: this.options.requestId,
+        error,
+      });
       this.manager.fail(this.options.requestId, error);
       throw error;
     }

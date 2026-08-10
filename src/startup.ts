@@ -9,6 +9,7 @@ import { startUpdateChecker } from "@/store/updateStore";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { backupCorruptStorageItem, startupError, startupPhase } from "@/lib/utils/startupDiagnostics";
 import { preserveExistingInstall } from "@/features/onboarding/persistence";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 const SYSTEM_PROMPTS_STORAGE_KEY = "polyui.systemPrompts";
 
@@ -113,7 +114,7 @@ async function initializeStores() {
   startupPhase("auth restore start");
   await useAuthStore.getState().actions.restoreSession().catch((err) => {
     startupError("Session restore failed", err);
-    console.warn("[startup] Session restore failed:", err);
+    devLog("warn", "startup", "Session restore failed", err);
   });
   startupPhase("auth restore complete");
 

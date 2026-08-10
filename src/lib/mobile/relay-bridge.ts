@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { sendNotification } from "@tauri-apps/plugin-notification";
 import { useEffect, useRef } from "react";
 import { create } from "zustand";

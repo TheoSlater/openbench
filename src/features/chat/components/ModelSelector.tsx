@@ -22,6 +22,7 @@ import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
 import { useChatStore } from "@/store/chatStore";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 type FlatRow =
   | { kind: "header"; label: string; id: string }
@@ -122,7 +123,7 @@ export function ModelSelector({
       try {
         await connectionsClient.setRuntime(activeConversationId, runtime);
       } catch (error) {
-        console.error("Failed to bind the selected runtime to the conversation:", error);
+        devLog("error", "runtime", "Failed to bind selected runtime to conversation", error);
       }
     }
     selectRuntime(runtime, runtimeLabel(runtime));

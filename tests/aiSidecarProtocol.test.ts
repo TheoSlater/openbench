@@ -182,4 +182,20 @@ describe("AI sidecar protocol", () => {
       error: "provider rejected [REDACTED]",
     });
   });
+
+  it("keeps dev lifecycle records bounded and redacted", () => {
+    const encoded = encodeRecord({
+      type: "log",
+      level: "error",
+      message: "provider failed with Bearer private-token and api_key=another-secret",
+    });
+
+    expect(encoded).not.toContain("private-token");
+    expect(encoded).not.toContain("another-secret");
+    expect(JSON.parse(encoded)).toEqual({
+      type: "log",
+      level: "error",
+      message: "provider failed with Bearer [REDACTED] and api_key=[REDACTED]",
+    });
+  });
 });

@@ -181,6 +181,40 @@ describe("AI SDK tool loop", () => {
         {
           stream: stream([
             { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "weather-search", toolName: "web_search" },
+            { type: "tool-input-delta", id: "weather-search", delta: '{"query":"current weather in London"}' },
+            { type: "tool-input-end", id: "weather-search" },
+            {
+              type: "tool-call",
+              toolCallId: "weather-search",
+              toolName: "web_search",
+              input: '{"query":"current weather in London"}',
+            },
+            finish("tool-calls"),
+          ]),
+        },
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "weather-render", toolName: "displayWeather" },
+            {
+              type: "tool-input-delta",
+              id: "weather-render",
+              delta: '{"location":"London","data":{"temperatureC":22.4,"windSpeedMps":11.9,"condition":"Sunny","observedAt":"2026-08-06T15:00","summary":"Sunny and warm","sourceTitle":"London weather","sourceUrl":"https://example.com/weather"}}',
+            },
+            { type: "tool-input-end", id: "weather-render" },
+            {
+              type: "tool-call",
+              toolCallId: "weather-render",
+              toolName: "displayWeather",
+              input: '{"location":"London","data":{"temperatureC":22.4,"windSpeedMps":11.9,"condition":"Sunny","observedAt":"2026-08-06T15:00","summary":"Sunny and warm","sourceTitle":"London weather","sourceUrl":"https://example.com/weather"}}',
+            },
+            finish("tool-calls"),
+          ]),
+        },
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
             { type: "text-start", id: "fallback-text" },
             { type: "text-delta", id: "fallback-text", delta: "Search fallback." },
             { type: "text-end", id: "fallback-text" },
@@ -218,9 +252,145 @@ describe("AI SDK tool loop", () => {
       type: "tool-output-available",
       toolCallId: "weather-fallback",
       output: expect.objectContaining({
-        source: "web-search",
-        query: "current weather in London",
+        status: "needs-web-search",
       }),
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "tool-output-available",
+      toolCallId: "weather-search",
+      output: {
+        query: "current weather in London",
+        results: [{
+          title: "London weather",
+          url: "https://example.com/weather",
+          highlights: ["Sunny and warm"],
+        }],
+      },
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "source-url",
+      sourceId: "weather-search:0",
+      url: "https://example.com/weather",
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "tool-output-available",
+      toolCallId: "weather-render",
+      output: {
+        location: "London",
+        source: "web-search",
+        temperature: 22.4,
+        windSpeed: 11.9,
+        condition: "Sunny",
+        observedAt: "2026-08-06T15:00",
+        summary: "Sunny and warm",
+        sourceTitle: "London weather",
+        sourceUrl: "https://example.com/weather",
+      },
+    }));
+  });
+
+  it("searches first, then renders structured stock data", async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "stock-search", toolName: "web_search" },
+            { type: "tool-input-delta", id: "stock-search", delta: '{"query":"AAPL stock price"}' },
+            { type: "tool-input-end", id: "stock-search" },
+            {
+              type: "tool-call",
+              toolCallId: "stock-search",
+              toolName: "web_search",
+              input: '{"query":"AAPL stock price"}',
+            },
+            finish("tool-calls"),
+          ]),
+        },
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "tool-input-start", id: "stock-render", toolName: "getStockPrice" },
+            {
+              type: "tool-input-delta",
+              id: "stock-render",
+              delta: '{"symbol":"AAPL","company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}',
+            },
+            { type: "tool-input-end", id: "stock-render" },
+            {
+              type: "tool-call",
+              toolCallId: "stock-render",
+              toolName: "getStockPrice",
+              input: '{"symbol":"AAPL","company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}',
+            },
+            finish("tool-calls"),
+          ]),
+        },
+        {
+          stream: stream([
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "stock-text" },
+            { type: "text-delta", id: "stock-text", delta: "Stock result." },
+            { type: "text-end", id: "stock-text" },
+            finish("stop"),
+          ]),
+        },
+      ],
+    });
+    const providerFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      results: [{
+        title: "Apple stock quote",
+        url: "https://example.com/aapl",
+        highlights: ["Apple traded higher in the latest session."],
+      }],
+    }), { status: 200 }));
+
+    const result = await streamChat({
+      type: "chat",
+      requestId: "req-stock-search",
+      connection: {
+        id: "conn",
+        provider: "openai",
+        modelId: "model",
+      },
+      messages: [{ id: "user", role: "user", parts: [{ type: "text", text: "stock" }] }],
+      webSearch: { provider: "exa", secret: "search-key" },
+    }, new AbortController().signal, { model, fetch: providerFetch });
+    const chunks: UIMessageChunk[] = [];
+    for await (const chunk of result) chunks.push(chunk);
+
+    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "source-url",
+      sourceId: "stock-search:0",
+      url: "https://example.com/aapl",
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "tool-input-available",
+      toolCallId: "stock-render",
+      input: expect.objectContaining({
+        symbol: "AAPL",
+        price: 185.2,
+        currency: "USD",
+      }),
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "tool-output-available",
+      toolCallId: "stock-render",
+      output: {
+        symbol: "AAPL",
+        source: "web-search",
+        company: "Apple Inc.",
+        price: 185.2,
+        currency: "USD",
+        change: 1.25,
+        changePercent: 0.68,
+        marketStatus: "Open",
+        asOf: "2026-08-06T15:00",
+        summary: "Apple traded higher in the latest session.",
+        sourceTitle: "Apple stock quote",
+        sourceUrl: "https://example.com/aapl",
+      },
     }));
   });
 

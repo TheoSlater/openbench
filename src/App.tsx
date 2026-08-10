@@ -43,7 +43,7 @@ import { useDevStore } from "@/store/devStore";
 import { getDevComponentGalleryAction } from "@/features/dev/componentGalleryAction";
 import { DebugOverlay } from "@/features/debug-overlay/DebugOverlay";
 import { useViewportStore } from "@/features/viewport/viewportStore";
-import { listen } from "@tauri-apps/api/event";
+import { listen } from "@/lib/tauriBridge";
 import { ShortcutsDialog } from "@/features/shortcuts/ShortcutsDialog";
 import { useMobileRelayBridge } from "@/lib/mobile/relay-bridge";
 import { OnboardingShell, type OnboardingFinishTarget } from "@/features/onboarding/OnboardingShell";

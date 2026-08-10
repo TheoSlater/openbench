@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { getRepository } from "@/lib/repositories";
 import { collectDescendantFolderIds } from "@/lib/utils/folders";
 import { Folder, Attachment } from "@/types/chat";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 async function getRepo() {
   return getRepository();
@@ -75,7 +76,7 @@ export const useFolderStore = create<FolderStore>((set) => ({
           });
         }
       } catch (error) {
-        console.error("Failed to persist folder:", error);
+        devLog("error", "folder-store", "Failed to persist folder", error);
         set((state) => ({
           folders: state.folders.filter((candidate) => candidate.id !== id),
         }));
@@ -104,7 +105,7 @@ export const useFolderStore = create<FolderStore>((set) => ({
           updatedAt: now,
         });
       } catch (error) {
-        console.error("Failed to update folder:", error);
+        devLog("error", "folder-store", "Failed to update folder", error);
         set({ folders: previous });
         throw error;
       }
@@ -124,7 +125,7 @@ export const useFolderStore = create<FolderStore>((set) => ({
         await Promise.all([...descendantIds].map((folderId) => r.deleteFolder(folderId)));
         set({ deletedFolderIds: [...descendantIds] });
       } catch (error) {
-        console.error("Failed to delete folder:", error);
+        devLog("error", "folder-store", "Failed to delete folder", error);
         set({ folders: previousFolders, activeFolderId: previousActiveFolderId });
         throw error;
       }

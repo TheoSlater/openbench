@@ -49,6 +49,53 @@ describe("AI SDK message persistence boundary", () => {
     expect(restored.runtimeParts).toHaveLength(1);
   });
 
+  it("encodes raw UTF-8 text attachments without corrupting provider payloads", () => {
+    const ui = toUIMessage({
+      ...entity,
+      content: "",
+      thinking: undefined,
+      runtimeParts: undefined,
+      attachments: [{
+        id: "file-1",
+        name: "notes.md",
+        type: "text/markdown",
+        size: 12,
+        content: "café — notes",
+        status: "ready",
+      }],
+    });
+    const file = ui.parts.find((part) => part.type === "file");
+
+    expect(file?.type).toBe("file");
+    if (file?.type !== "file") return;
+    expect(file.url.startsWith("data:text/markdown;base64,")).toBe(true);
+
+    const encoded = file.url.split(",", 2)[1];
+    const bytes = Uint8Array.from(atob(encoded), (value) => value.charCodeAt(0));
+    expect(new TextDecoder().decode(bytes)).toBe("café — notes");
+  });
+
+  it("keeps already-materialized attachment data URLs unchanged", () => {
+    const dataUrl = "data:text/plain;base64,SGVsbG8=";
+    const ui = toUIMessage({
+      ...entity,
+      content: "",
+      thinking: undefined,
+      runtimeParts: undefined,
+      attachments: [{
+        id: "file-2",
+        name: "hello.txt",
+        type: "text/plain",
+        size: 5,
+        content: dataUrl,
+        status: "ready",
+      }],
+    });
+    const file = ui.parts.find((part) => part.type === "file");
+
+    expect(file?.type === "file" && file.url).toBe(dataUrl);
+  });
+
   it("keeps text, reasoning, and tool parts in response order", () => {
     const parts = [
       { type: "text", text: "Sure! I will run that command for you." },

@@ -225,7 +225,12 @@ pub fn run() {
                 startup_log::log_phase("main window created");
                 _window.on_window_event(|event| match event {
                     tauri::WindowEvent::CloseRequested { .. } => {
+                        crate::debug_overlay::stop_dev_logging();
                         startup_log::log_phase("window close requested");
+                        if let Some(ai) = AI_SIDECAR_FOR_EXIT.get() {
+                            startup_log::log_phase("window close requested; stopping AI sidecar");
+                            tauri::async_runtime::block_on(ai.shutdown());
+                        }
                     }
                     tauri::WindowEvent::Destroyed => {
                         startup_log::log_phase("window destroyed");
@@ -344,6 +349,7 @@ pub fn run() {
 
     app.run(|_app, event| {
         if let tauri::RunEvent::ExitRequested { code, .. } = event {
+            crate::debug_overlay::stop_dev_logging();
             // ponytail: hard-exit before Tauri teardown. Closing the sqlite pools
             // (block_on on the main thread) and dropping the ONNX/Supertonic
             // sessions deadlocks on Linux, leaving a frozen "not responding"

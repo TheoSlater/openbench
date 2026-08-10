@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauriBridge";
 import { useShallow } from "zustand/react/shallow";
 import type { Attachment } from "@/types/chat";
 import { useChatStore } from "@/store/chatStore";
@@ -23,6 +23,7 @@ import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/pr
 import { notifyMemoryUpdated } from "@/features/memory/useConversationMemoryCount";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
+import { devLog } from "@/features/debug-overlay/devLog";
 import { agentName, runtimeIsAvailable, runtimeLabel } from "@/features/runtime/runtime-options";
 import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 import { fromUIMessage, toUIMessage, filterPartsForRuntime, type PolyUIMessage } from "@/lib/ai/messages";
@@ -81,7 +82,7 @@ async function extractUserMessageMemory(
       actions.attachMemoryUpdates(conversationId, userMessageId, summaries);
     }
   } catch (error) {
-    console.error("[Memory] user message extraction failed", error);
+    devLog("error", "memory", "User message extraction failed", error);
   }
 }
 
@@ -288,15 +289,16 @@ export function useChatStream(
     );
     if (!uiMessages.length || uiMessages[uiMessages.length - 1]?.role !== "user") return;
 
-    const webSearchEnabled = isFeatureAIActive("web_search");
+    const webSearchForced = isFeatureAIActive("web_search");
+    const webSearchAvailable = runtime.kind === "chat-model";
     const webSearch = useSettingsStore.getState().general.webSearch;
     const voicePrompt = voiceModeRef.current
       ? `${systemPrompt}\n\n${VOICE_SYSTEM_PROMPT_SUFFIX}`
       : systemPrompt;
     const instructions = buildSystemPrompt(
       voicePrompt,
-      webSearchEnabled,
-      webSearchEnabled,
+      webSearchAvailable,
+      webSearchForced,
     );
     const capabilityMode = useSettingsStore.getState().capabilityMode;
     const model = runtime.kind === "coding-agent"
@@ -343,7 +345,7 @@ export function useChatStream(
       instructions,
       reasoning: voiceModeRef.current ? "none" : undefined,
       webSearchProvider:
-        runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
+        webSearchAvailable ? webSearch.provider : undefined,
       terminalEnabled: runtime.kind === "chat-model" && capabilityMode !== "chat-only",
       token: getSessionToken,
     };

@@ -3,6 +3,7 @@ import { getRepository } from "@/lib/repositories";
 import { Message, Conversation, Attachment, WebSearchEvent, ConversationMetadata } from "@/types/chat";
 import { getNextQueuedMessage } from "@/lib/chat/queue";
 import { destroyAiSandbox } from "@/lib/ai/transport";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 async function getRepo() {
   return getRepository();
@@ -12,7 +13,7 @@ async function destroySandbox(id: string): Promise<void> {
   try {
     await destroyAiSandbox(id);
   } catch (error) {
-    console.error("Failed to destroy AI sandbox:", error);
+    devLog("error", "chat-store", "Failed to destroy AI sandbox", error);
   }
 }
 
@@ -114,6 +115,7 @@ type ChatStore = {
       messageId: string,
     ) => Promise<void>;
     addAttachment: (key: string, attachment: Attachment) => void;
+    updateAttachment: (key: string, id: string, updates: Partial<Attachment>) => void;
     removeAttachment: (key: string, id: string) => void;
     clearAttachments: (key: string) => void;
     enqueueMessage: (msg: QueuedMessage) => void;
@@ -223,7 +225,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       for (const id of stamped) {
         getRepo()
           .then((r) => r.setMessageMemoryUpdates(id, summaries))
-          .catch((error) => console.error("Failed to persist memory updates:", error));
+          .catch((error) => devLog("error", "chat-store", "Failed to persist memory updates", error));
       }
     },
     createConversation: async (title = "New Chat", isTemporary = false, folderId) => {
@@ -251,7 +253,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const userId = get().accountId;
           await r.createConversation(id, title, userId || undefined, folderId);
         } catch (error) {
-          console.error("Failed to persist conversation:", error);
+          devLog("error", "chat-store", "Failed to persist conversation", error);
         }
       }
       return conversation;
@@ -275,7 +277,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           hasMoreMessages: messages.length === pageSize,
         });
       } catch (error) {
-        console.error("Failed to load conversation messages:", error);
+        devLog("error", "chat-store", "Failed to load conversation messages", error);
         if (seq !== switchSeq) return;
         set({ activeConversationId: id, messages: [], hasMoreMessages: false });
       }
@@ -299,7 +301,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           hasMoreMessages: newMessages.length === pageSize,
         });
       } catch (error) {
-        console.error("Failed to load more messages:", error);
+        devLog("error", "chat-store", "Failed to load more messages", error);
       }
     },
     setMessages: (messages) => set({ messages }),
@@ -347,7 +349,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.addMessage(payload);
         } catch (error) {
-          console.error("Failed to persist message:", error);
+          devLog("error", "chat-store", "Failed to persist message", error);
         }
       }
       return payload;
@@ -362,7 +364,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.deleteConversation(id);
         } catch (error) {
-          console.error("Failed to delete conversation:", error);
+          devLog("error", "chat-store", "Failed to delete conversation", error);
         }
       }
       await destroySandbox(id);
@@ -395,7 +397,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.deleteConversations(toDelete);
         } catch (error) {
-          console.error("Failed to delete conversations:", error);
+          devLog("error", "chat-store", "Failed to delete conversations", error);
         }
       }
       await Promise.all(ids.map(destroySandbox));
@@ -428,7 +430,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.deleteAllConversations(userId);
         } catch (error) {
-          console.error("Failed to delete all conversations:", error);
+          devLog("error", "chat-store", "Failed to delete all conversations", error);
         }
       }
       await Promise.all(conversations.map((conversation) => destroySandbox(conversation.id)));
@@ -450,7 +452,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.updateConversation(id, { isArchived: true });
         } catch (error) {
-          console.error("Failed to archive conversation:", error);
+          devLog("error", "chat-store", "Failed to archive conversation", error);
         }
       }
 
@@ -481,7 +483,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.updateConversation(id, { isArchived: false });
         } catch (error) {
-          console.error("Failed to unarchive conversation:", error);
+          devLog("error", "chat-store", "Failed to unarchive conversation", error);
         }
       }
 
@@ -512,7 +514,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.updateConversation(id, { title: newTitle, updatedAt: now });
         } catch (e) {
-          console.warn("Failed to persist renamed title", e);
+          devLog("warn", "chat-store", "Failed to persist renamed title", e);
         }
       }
     },
@@ -529,7 +531,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const r = await getRepo();
         await r.updateConversation(id, { metadata });
       } catch (error) {
-        console.error("Failed to update conversation metadata:", error);
+        devLog("error", "chat-store", "Failed to update conversation metadata", error);
       }
     },
     setTitleGenerationStatus: (id, status) => set((state) => ({
@@ -548,7 +550,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const r = await getRepo();
           await r.deleteMessagesAfter(conversationId, messageId);
         } catch (error) {
-          console.error("Failed to delete messages after:", error);
+          devLog("error", "chat-store", "Failed to delete messages after", error);
         }
       }
 
@@ -584,6 +586,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         attachmentsByChat: {
           ...state.attachmentsByChat,
           [key]: [...(state.attachmentsByChat[key] ?? []), attachment],
+        },
+      })),
+    updateAttachment: (key, id, updates) =>
+      set((state) => ({
+        attachmentsByChat: {
+          ...state.attachmentsByChat,
+          [key]: (state.attachmentsByChat[key] ?? []).map((attachment) =>
+            attachment.id === id ? { ...attachment, ...updates } : attachment,
+          ),
         },
       })),
     removeAttachment: (key, id) =>

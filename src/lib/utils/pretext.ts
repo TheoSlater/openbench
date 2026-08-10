@@ -1,4 +1,5 @@
 import { prepare, layout } from "@chenglou/pretext";
+import { devLog } from "@/features/debug-overlay/devLog";
 
 /**
  * Pretext configurations for efficient text measurement.
@@ -72,7 +73,7 @@ export const measureTextHeight = (
   } catch (e) {
     if (!didWarnMeasurementFailure && typeof window !== "undefined") {
       didWarnMeasurementFailure = true;
-      console.warn("Pretext measurement failed:", e);
+      devLog("warn", "pretext", "Text measurement failed", e);
     }
     return fallbackTextHeight(text, width, fallbackLineHeightPx);
   }
