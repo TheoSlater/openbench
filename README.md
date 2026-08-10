@@ -28,7 +28,7 @@
   ·
   <a href="https://github.com/monolabsdev/poly-ui/issues">Issues</a>
   ·
-  <a href="https://linear.app/poly-ui/view/roadmap-fa502b4506c7">Roadmap</a>
+  <a href="https://heliumrooms.com/room/9ZEQlZ">Roadmap</a>
 </p>
 
 <p align="center">
@@ -144,7 +144,7 @@ When submitting code, keep changes focused, update relevant tests, verify the af
 
 ## Roadmap
 
-Current work and planned features are tracked on the [public PolyUI roadmap](https://linear.app/poly-ui/view/roadmap-fa502b4506c7).
+Current work and planned features are tracked on the [public PolyUI roadmap](https://heliumrooms.com/room/9ZEQlZ).
 
 ## Support
 
