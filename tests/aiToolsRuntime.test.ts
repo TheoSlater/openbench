@@ -314,14 +314,14 @@ describe("AI SDK tool loop", () => {
             {
               type: "tool-input-delta",
               id: "stock-render",
-              delta: '{"symbol":"AAPL","data":{"company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}}',
+              delta: '{"symbol":"AAPL","company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}',
             },
             { type: "tool-input-end", id: "stock-render" },
             {
               type: "tool-call",
               toolCallId: "stock-render",
               toolName: "getStockPrice",
-              input: '{"symbol":"AAPL","data":{"company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}}',
+              input: '{"symbol":"AAPL","company":"Apple Inc.","price":185.2,"currency":"USD","change":1.25,"changePercent":0.68,"marketStatus":"Open","asOf":"2026-08-06T15:00","summary":"Apple traded higher in the latest session.","sourceTitle":"Apple stock quote","sourceUrl":"https://example.com/aapl"}',
             },
             finish("tool-calls"),
           ]),
@@ -364,6 +364,15 @@ describe("AI SDK tool loop", () => {
       type: "source-url",
       sourceId: "stock-search:0",
       url: "https://example.com/aapl",
+    }));
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "tool-input-available",
+      toolCallId: "stock-render",
+      input: expect.objectContaining({
+        symbol: "AAPL",
+        price: 185.2,
+        currency: "USD",
+      }),
     }));
     expect(chunks).toContainEqual(expect.objectContaining({
       type: "tool-output-available",

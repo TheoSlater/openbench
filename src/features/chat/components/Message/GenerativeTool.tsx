@@ -46,26 +46,20 @@ type WeatherOutput =
     sourceUrl?: string;
   };
 
-type StockOutput =
-  | {
-    kind: "pending";
-    symbol: string;
-    query?: string;
-  }
-  | {
-    kind: "data";
-    symbol: string;
-    company?: string;
-    price: number;
-    currency: string;
-    change?: number;
-    changePercent?: number;
-    marketStatus?: string;
-    asOf?: string;
-    summary?: string;
-    sourceTitle?: string;
-    sourceUrl?: string;
-  };
+type StockOutput = {
+  kind: "data";
+  symbol: string;
+  company?: string;
+  price: number;
+  currency: string;
+  change?: number;
+  changePercent?: number;
+  marketStatus?: string;
+  asOf?: string;
+  summary?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+};
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? value as Record<string, unknown> : null;
@@ -154,13 +148,6 @@ function stockOutput(value: unknown): StockOutput | null {
     || !item.symbol.trim()
   ) return null;
   const symbol = item.symbol.trim().toUpperCase();
-  if (item.status === "needs-web-search") {
-    return {
-      kind: "pending",
-      symbol,
-      ...(typeof item.query === "string" ? { query: item.query } : {}),
-    };
-  }
   if (
     item.status !== undefined
     || !finiteNumber(item.price)
@@ -364,9 +351,6 @@ export function GenerativeTool({
       return <ErrorCard title="Weather unavailable" message="Tool returned invalid weather data." />;
     }
     const value = stockOutput(output);
-    if (value?.kind === "pending") {
-      return <SearchPendingCard subject={`Stock quote for ${value.symbol}`} />;
-    }
     return value
       ? <StockCard value={value} />
       : <ErrorCard title="Stock price unavailable" message="Tool returned invalid stock data." />;

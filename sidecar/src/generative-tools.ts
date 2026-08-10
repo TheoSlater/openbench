@@ -31,6 +31,10 @@ const stockDataSchema = z.object({
   sourceUrl: httpUrl.optional().describe("HTTP(S) URL of the most relevant search result"),
 });
 
+const stockInputSchema = stockDataSchema.extend({
+  symbol: z.string().trim().min(1).max(12).describe("Stock symbol"),
+});
+
 type WeatherOutput = {
   location: string;
   source: "open-meteo" | "web-search";
@@ -49,9 +53,6 @@ type WeatherOutput = {
 type StockOutput = {
   symbol: string;
   source: "web-search";
-  status?: "needs-web-search";
-  query?: string;
-  instruction?: string;
   company?: string;
   price?: number;
   currency?: string;
@@ -163,23 +164,25 @@ export function createWeatherTool(options: { fetch?: Fetch }) {
 export function createStockTool() {
   return tool({
     description: "Render a structured stock quote. Call web_search first, summarize the result, then call this tool with individual quote fields.",
-    inputSchema: z.object({
-      symbol: z.string().trim().min(1).max(12).describe("Stock symbol"),
-      data: stockDataSchema.optional().describe("Normalized stock facts from web_search"),
-    }),
+    inputSchema: stockInputSchema,
     strict: true,
-    inputExamples: [{ input: { symbol: "AAPL" } }],
-    execute: async ({ symbol, data }): Promise<StockOutput> => {
+    inputExamples: [{
+      input: {
+        symbol: "AAPL",
+        company: "Apple Inc.",
+        price: 185.2,
+        currency: "USD",
+        change: 1.25,
+        changePercent: 0.68,
+        marketStatus: "Open",
+        asOf: "2026-08-06T15:00",
+        summary: "Apple traded higher in the latest session.",
+        sourceTitle: "Apple stock quote",
+        sourceUrl: "https://example.com/aapl",
+      },
+    }],
+    execute: async ({ symbol, ...data }): Promise<StockOutput> => {
       const normalizedSymbol = symbol.toUpperCase();
-      if (!data) {
-        return {
-          symbol: normalizedSymbol,
-          source: "web-search",
-          status: "needs-web-search",
-          query: `${normalizedSymbol} stock price`,
-          instruction: "Call web_search, summarize the result, then call getStockPrice again with data fields.",
-        };
-      }
       return {
         symbol: normalizedSymbol,
         source: "web-search",
