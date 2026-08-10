@@ -44,11 +44,6 @@ export type ToolRegistryOptions = {
 };
 
 export function createToolRegistry(options: ToolRegistryOptions) {
-  const search: SearchConfig = options.webSearch ?? {
-    provider: "local",
-    secret: undefined,
-    baseUrl: undefined,
-  };
   const webSearch = options.webSearch
     ? createWebSearchTool(options.webSearch, options.fetch)
     : undefined;
@@ -65,8 +60,8 @@ export function createToolRegistry(options: ToolRegistryOptions) {
       : {}),
     ...(options.generativeUI
       ? {
-        displayWeather: createWeatherTool({ fetch: options.fetch, search }),
-        getStockPrice: createStockTool({ fetch: options.fetch, search }),
+        displayWeather: createWeatherTool({ fetch: options.fetch }),
+        getStockPrice: createStockTool(),
       }
       : {}),
   };
