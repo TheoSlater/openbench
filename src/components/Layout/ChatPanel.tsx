@@ -5,7 +5,10 @@ type ChatPanelProps = {
 
 export function ChatPanel({ children, backgroundImage }: ChatPanelProps) {
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-(--sidebar-panel-radius) bg-sidebar">
+    <div
+      data-chat-panel
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-tl-(--sidebar-panel-radius) bg-sidebar"
+    >
       {backgroundImage && (
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-3xl"

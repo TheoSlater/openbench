@@ -12,7 +12,9 @@ describe("sidebar polish", () => {
     const titlebarBrand = read("src/components/PolyUiBrand.tsx");
 
     expect(titlebar).toContain("<PolyUiBrand");
-    expect(titlebar).toContain("paddingLeft: IS_MAC ? 80 : 8");
+    expect(titlebar).toContain(
+      'paddingLeft: IS_MAC ? "var(--macos-titlebar-leading-inset)" : 8',
+    );
     expect(titlebarBrand).toContain("px-3");
     expect(titlebarBrand).toContain("font-medium");
     expect(titlebarBrand).not.toContain("font-bold");
@@ -21,6 +23,30 @@ describe("sidebar polish", () => {
     expect(controls).toContain("SIDEBAR_TOGGLE_EVENT");
     expect(controls).toContain('title="Toggle sidebar"');
     expect(controls).toContain('aria-hidden="true"');
+  });
+
+  it("does not let the initial html canvas hide native macOS material", () => {
+    const index = read("index.html");
+    const styles = read("src/App.css");
+    const chatPanel = read("src/components/Layout/ChatPanel.tsx");
+    const workspace = read("src/features/chat/components/ChatWorkspace.tsx");
+
+    expect(index).toContain("const isMac");
+    expect(index).toContain("'transparent'");
+    expect(styles).toContain(
+      "background: var(--macos-webview-background) !important",
+    );
+    expect(styles).toContain(
+      '[data-slot="sidebar-inset"] > [data-chat-panel]',
+    );
+    expect(chatPanel).toContain("rounded-tl-(--sidebar-panel-radius)");
+    expect(workspace).toContain("data-chat-workspace");
+    expect(styles).toContain("--macos-chat-background");
+    expect(styles).toContain("background: transparent");
+    expect(styles).toContain('html[data-platform="macos"]:not(.dark)');
+    expect(styles).toContain("--sidebar-foreground: oklch(1 0 0 / 0.96)");
+    expect(styles).toContain("--macos-sidebar-selected: color-mix(in oklch, black 22%, transparent)");
+    expect(styles).toContain("border-width: 1px");
   });
 
   it("does not leave collapsed controls in the keyboard flow", () => {

@@ -5,6 +5,8 @@ mod connections;
 mod db;
 mod debug_overlay;
 mod error;
+#[cfg(target_os = "macos")]
+mod macos_window;
 mod memory;
 mod mobile_pairing;
 mod mobile_push;
@@ -18,7 +20,6 @@ mod whisper_state;
 mod window_state_recovery;
 
 use crate::commands::db_commands::execute_sql;
-use crate::debug_overlay::{debug_log, debug_overlay_enable, DebugOverlayState};
 use crate::commands::dictation_commands::{
     download_whisper_model, get_whisper_models_status, native_dictation_audio_level,
     preload_whisper_model, release_tts_engine, release_whisper_model, select_whisper_model,
@@ -26,6 +27,7 @@ use crate::commands::dictation_commands::{
     stop_native_dictation_recording, transcribe_audio, transcribe_native_dictation_partial,
 };
 use crate::connections::secrets::{KeyringSecretStore, SecretStore};
+use crate::debug_overlay::{debug_log, debug_overlay_enable, DebugOverlayState};
 use crate::mobile_pairing::{
     mobile_pairing_start, mobile_pairing_status, mobile_pairing_stop, MobilePairingState,
 };
@@ -234,9 +236,7 @@ pub fn run() {
                     _ => {}
                 });
                 #[cfg(target_os = "macos")]
-                {
-                    let _ = _window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
-                }
+                macos_window::configure(&_window);
                 #[cfg(target_os = "windows")]
                 apply_native_rounded_corners(&_window);
                 #[cfg(target_os = "linux")]

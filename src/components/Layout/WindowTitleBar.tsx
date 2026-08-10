@@ -12,9 +12,13 @@ function WindowTitleBar() {
 
   return (
     <header
+      data-window-titlebar
       data-tauri-drag-region
       className="fixed inset-x-0 top-0 z-[var(--z-titlebar)] flex h-9 min-h-9 shrink-0 select-none items-center rounded-none bg-sidebar"
-      style={{ paddingLeft: IS_MAC ? 80 : 8, paddingRight: IS_MAC ? 8 : 0 }}
+      style={{
+        paddingLeft: IS_MAC ? "var(--macos-titlebar-leading-inset)" : 8,
+        paddingRight: IS_MAC ? 8 : 0,
+      }}
     >
       <PolyUiBrand />
       <div

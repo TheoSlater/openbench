@@ -5,6 +5,8 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
+/* Design: quiet native Mac utility — material sidebar, opaque chat canvas, restrained surfaces. */
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -879,5 +881,267 @@ html.reduce-motion .poly-shimmer {
     }
   html {
     @apply font-sans;
+    }
+}
+
+/*
+ * macOS native material
+ *
+ * window-vibrancy installs Liquid Glass on macOS 26 and semantic sidebar
+ * vibrancy on older systems behind the full WebView. The WebView is
+ * transparent only where the sidebar/titlebar DOM is transparent; the opaque
+ * inset and chat panel mask the native effect everywhere else. This keeps the
+ * native view resize-safe without introducing a second native sidebar-width
+ * controller.
+ */
+html[data-native-vibrancy="true"] {
+    --macos-titlebar-leading-inset: 80px;
+    --macos-webview-background: transparent;
+    /* A light adaptive tint gives the material a normal app colour without
+       hiding the native desktop-responsive glass underneath it. */
+    --macos-sidebar-background: color-mix(in oklch, var(--sidebar) 24%, transparent);
+    --macos-chat-background: color-mix(in oklch, var(--background) 92%, transparent);
+    --macos-sidebar-hover: color-mix(in oklch, var(--foreground) 7%, transparent);
+    --macos-sidebar-selected: color-mix(in oklch, var(--foreground) 11%, transparent);
+    --macos-sidebar-divider: color-mix(in oklch, var(--foreground) 13%, transparent);
+    /* index.html seeds an inline theme background for the first paint. The
+       native material must win once the macOS capability is known. */
+    background: var(--macos-webview-background) !important;
+}
+
+html[data-native-vibrancy="true"] body,
+html[data-native-vibrancy="true"] #root,
+html[data-native-vibrancy="true"] .app-root-shell,
+html[data-native-vibrancy="true"] .app-content {
+    background: var(--macos-webview-background);
+}
+
+html[data-native-vibrancy="true"] body {
+    overflow: hidden;
+}
+
+html[data-native-vibrancy="true"] .app-root-shell {
+    /* The native titlebar overlays this layout on macOS. */
+    padding-top: 0;
+}
+
+html[data-native-vibrancy="true"] [data-window-titlebar] {
+    /* The layout surfaces below provide the one shared tint. Keeping this
+       structural drag layer transparent avoids darkening the traffic-light
+       area by compositing a second copy over the sidebar. */
+    background: transparent;
+}
+
+html[data-native-vibrancy="true"] [data-slot="sidebar-wrapper"] {
+    background: transparent;
+}
+
+html[data-native-vibrancy="true"]
+    [data-slot="sidebar"]:not([data-mobile="true"])
+    [data-slot="sidebar-inner"] {
+    /* This is the single web tint over the native material for the sidebar
+       and titlebar. WindowTitleBar itself stays structural/transparent. */
+    background: var(--macos-sidebar-background);
+}
+
+html[data-native-vibrancy="true"] .macos-sidebar-safe-area {
+    height: var(--titlebar-height);
+    min-height: var(--titlebar-height);
+    flex: 0 0 var(--titlebar-height);
+    padding: 0;
+}
+
+html[data-native-vibrancy="true"] [data-slot="sidebar-inset"] {
+    /* Keep the material visible around the rounded chat-canvas corner and
+       underneath the lightly translucent conversation surface. */
+    background: var(--macos-sidebar-background);
+}
+
+html[data-native-vibrancy="true"] [data-slot="sidebar-inset"] > [data-chat-panel] {
+    /* The opaque conversation canvas starts below the glass titlebar. The
+       ChatPanel owns the one intentional content/header corner; the native
+       window owns the outer window silhouette. */
+    margin-top: var(--titlebar-height);
+}
+
+html[data-native-vibrancy="true"] [data-chat-panel] {
+    background: transparent;
+}
+
+html[data-native-vibrancy="true"] [data-chat-workspace] {
+    /* A restrained 8% native material reveal keeps the chat calm without
+       turning messages or the conversation canvas into glass cards. */
+    background: var(--macos-chat-background);
+}
+
+html[data-native-vibrancy="true"] [data-sidebar="sidebar"] [data-sidebar="menu-button"] {
+    border-color: transparent;
+}
+
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="menu-button"]:hover,
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="footer"] button:hover,
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [class~="hover:bg-muted"]:hover {
+    background-color: var(--macos-sidebar-hover);
+}
+
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="menu-button"][data-active="true"],
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="footer"] button[aria-expanded="true"],
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [class~="bg-muted"] {
+    background-color: var(--macos-sidebar-selected);
+}
+
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="menu-button"]:focus-visible,
+html[data-native-vibrancy="true"]
+    [data-sidebar="sidebar"]
+    [data-sidebar="footer"] button:focus-visible {
+    border-color: color-mix(in oklch, var(--info) 48%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--info) 22%, transparent);
+}
+
+html[data-native-vibrancy="true"] [data-sidebar="sidebar"] [data-sidebar="menu-sub"],
+html[data-native-vibrancy="true"] [data-sidebar="sidebar"] [class~="border-border/60"] {
+    border-color: var(--macos-sidebar-divider);
+}
+
+html[data-platform="macos"] .macos-composer {
+    border-width: 1px;
+    outline: none;
+    border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+    box-shadow:
+        0 1px 2px oklch(0 0 0 / 0.16),
+        0 6px 18px oklch(0 0 0 / 0.1);
+}
+
+html[data-platform="macos"] .macos-composer:hover {
+    border-color: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
+html[data-platform="macos"] .macos-composer:focus-within {
+    border-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+    box-shadow:
+        0 1px 2px oklch(0 0 0 / 0.16),
+        0 6px 18px oklch(0 0 0 / 0.12);
+}
+
+/* In light mode the native material remains the same hierarchy, but the
+   sidebar/titlebar chrome uses white labels and glyphs for the macOS utility
+   treatment requested by the app. Use the platform attribute here rather
+   than the effect capability flag so the chrome stays readable during the
+   capability/bootstrap transition as well. */
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"],
+html[data-platform="macos"]:not(.dark)
+    [data-window-titlebar] {
+    --macos-sidebar-hover: color-mix(in oklch, white 9%, transparent);
+    --macos-sidebar-selected: color-mix(in oklch, black 22%, transparent);
+    --macos-sidebar-divider: color-mix(in oklch, white 18%, transparent);
+    --foreground: oklch(1 0 0 / 0.96);
+    --muted-foreground: oklch(1 0 0 / 0.72);
+    --sidebar-foreground: oklch(1 0 0 / 0.96);
+    --sidebar-accent-foreground: oklch(1 0 0 / 0.96);
+    --primary-foreground: oklch(1 0 0 / 0.96);
+    color: oklch(1 0 0 / 0.96);
+}
+
+/* The selected conversation must stay a translucent dark-chrome row in
+   light mode. The stock light theme's sidebar-accent is nearly white, which
+   becomes unreadable once the chrome labels are intentionally white. */
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"],
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [data-sidebar="menu-button"]:hover,
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [data-sidebar="footer"] button:hover,
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [class~="hover:bg-muted"]:hover {
+    background-color: var(--macos-sidebar-selected) !important;
+}
+
+/* Base UI may serialize the active state as a boolean data attribute. Match
+   both forms so the light theme's opaque sidebar-accent cannot leak through. */
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active] {
+    background-color: var(--macos-sidebar-selected) !important;
+    color: oklch(1 0 0 / 0.96) !important;
+}
+
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] * {
+    color: oklch(1 0 0 / 0.96) !important;
+}
+
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [class*="text-sidebar-foreground"],
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [class*="text-muted-foreground"],
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] [class*="text-foreground"],
+html[data-platform="macos"]:not(.dark)
+    [data-window-titlebar] [class*="text-muted-foreground"],
+html[data-platform="macos"]:not(.dark)
+    [data-window-titlebar] [class*="text-foreground"] {
+    color: oklch(1 0 0 / 0.96) !important;
+    text-shadow: 0 1px 2px oklch(0 0 0 / 0.22);
+}
+
+html[data-platform="macos"]:not(.dark)
+    [data-sidebar="sidebar"] svg,
+html[data-platform="macos"]:not(.dark)
+    [data-window-titlebar] svg {
+    color: oklch(1 0 0 / 0.96) !important;
+    filter: drop-shadow(0 1px 1px oklch(0 0 0 / 0.2));
+}
+
+html[data-platform="macos"] .macos-empty-state__group {
+    position: absolute;
+    inset-inline: 1.5rem;
+    top: 42%;
+    margin-inline: auto;
+    transform: translateY(-50%);
+}
+
+/* Respect the app setting and the macOS Reduce Transparency preference. */
+html[data-native-vibrancy="true"].reduce-transparency {
+    --macos-webview-background: var(--background);
+    --macos-sidebar-background: var(--sidebar);
+    --macos-chat-background: var(--background);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    html[data-native-vibrancy="true"] {
+        --macos-webview-background: var(--background);
+        --macos-sidebar-background: var(--sidebar);
+        --macos-chat-background: var(--background);
+    }
+}
+
+@media (prefers-contrast: more) {
+    html[data-native-vibrancy="true"] {
+        --macos-webview-background: var(--background);
+        --macos-sidebar-background: var(--sidebar);
+        --macos-chat-background: var(--background);
+        --macos-sidebar-hover: color-mix(in oklch, var(--foreground) 12%, transparent);
+        --macos-sidebar-selected: color-mix(in oklch, var(--foreground) 17%, transparent);
+        --macos-sidebar-divider: var(--sidebar-border);
+    }
+
+    html[data-native-vibrancy="true"]
+        [data-sidebar="sidebar"]
+        [data-sidebar="menu-button"][data-active="true"] {
+        border: 1px solid var(--sidebar-border);
     }
 }

@@ -431,7 +431,7 @@ export const ChatInput = memo(function ChatInput({
 
         <Box
           className={cn(
-            "chat-file-drop-target w-full rounded-3xl border bg-popover px-4 py-2.5 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
+            "chat-file-drop-target macos-composer w-full rounded-3xl border bg-popover px-4 py-2.5 shadow-sm transition-colors duration-[var(--dur-fast)] ease-[var(--ease-soft)]",
             isTemporary
               ? "border-dashed border-border"
               : "border-border/70 hover:border-border focus-within:border-border",
