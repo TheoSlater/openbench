@@ -586,67 +586,6 @@ async fn infer_runtime(
     })
 }
 
-/// Resolve a legacy `default_model` id against the migrated schema.
-///
-/// The stored id is `Provider:model` or `Provider:configId:model`, with the
-/// model percent-encoded. Unlike the frontend parser this accepts all four
-/// legacy provider names — the frontend one rejects `AnthropicNative` and
-/// `GeminiNative`, which is why those defaults never applied.
-///
-/// Returns `None` when the value cannot be resolved; the caller clears the key
-/// rather than retrying it forever.
-pub async fn resolve_legacy_model_choice(
-    pool: &SqlitePool,
-    account_id: &str,
-    stored: &str,
-) -> Result<Option<RuntimeRef>, String> {
-    let stored = stored.trim();
-    if stored.is_empty() {
-        return Ok(None);
-    }
-
-    let Some((provider_name, rest)) = stored.split_once(':') else {
-        return Ok(None);
-    };
-    // `Provider:configId:model` — the middle segment is a legacy row id we no
-    // longer have, so it is parsed only to be stepped over.
-    let model_part = match rest.split_once(':') {
-        Some((maybe_id, tail)) if maybe_id.parse::<i64>().is_ok() => tail,
-        _ => rest,
-    };
-    let model = percent_decode(model_part);
-
-    let connections = repository::list_connections(pool, account_id).await?;
-    let matched = match message_provider_to_provider(provider_name) {
-        Some(provider) => connections
-            .iter()
-            .find(|connection| connection.provider == provider),
-        None if provider_name == "OpenAICompatible" => connections.iter().find(|connection| {
-            matches!(
-                connection.provider,
-                Provider::Openai
-                    | Provider::Openrouter
-                    | Provider::Lmstudio
-                    | Provider::OpenaiCompatible
-            )
-        }),
-        None => None,
-    };
-
-    Ok(matched.map(|connection| RuntimeRef::ChatModel {
-        connection_id: connection.id.clone(),
-        model_id: model,
-    }))
-}
-
-/// Minimal `decodeURIComponent` inverse for the legacy model-choice id.
-fn percent_decode(value: &str) -> String {
-    percent_encoding::percent_decode_str(value)
-        .decode_utf8()
-        .map(std::borrow::Cow::into_owned)
-        .unwrap_or_else(|_| value.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -727,9 +666,4 @@ mod tests {
         assert_eq!(legacy_row_to_provider("PolyAgent", None, None, None), None);
     }
 
-    #[test]
-    fn percent_decoding_matches_the_frontend_encoding() {
-        assert_eq!(percent_decode("gpt-4o"), "gpt-4o");
-        assert_eq!(percent_decode("llama3.2%3A3b"), "llama3.2:3b");
-    }
 }

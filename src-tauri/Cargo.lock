@@ -3841,7 +3841,6 @@ dependencies = [
  "libc",
  "log",
  "ort",
- "percent-encoding",
  "portable-pty",
  "raw-window-handle",
  "reqwest 0.12.28",

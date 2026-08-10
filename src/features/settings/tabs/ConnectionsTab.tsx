@@ -16,8 +16,8 @@ import { CLAUDE_AGENT, CODEX_AGENT } from "@/features/coding-agents/setupCopy";
 import { connectionsClient } from "@/features/connections/client";
 import { groupConnections, safeEndpointSummary } from "@/features/connections/presentation";
 import { cardStatus } from "@/features/connections/status";
-import { useConnectionsStore } from "@/features/connections/store";
 import { getCurrentProviderAccountId } from "@/features/providers";
+import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 import type { Connection } from "@/generated/bindings/Connection";
 import type { ConnectionModel } from "@/generated/bindings/ConnectionModel";
 import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";
@@ -43,20 +43,24 @@ function ConnectionEditor({
   initial,
   onOpenChange,
   onSaved,
+  models,
+  loadingModels,
+  onRefreshModels,
   persisted = false,
 }: {
   open: boolean;
   initial: Connection;
   onOpenChange: (open: boolean) => void;
   onSaved: () => Promise<void>;
+  models?: ConnectionModel[];
+  loadingModels?: boolean;
+  onRefreshModels?: () => Promise<void>;
   persisted?: boolean;
 }) {
   const [connection, setConnection] = useState(initial);
   const credentialRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
-  const [models, setModels] = useState<ConnectionModel[]>([]);
   const [modelId, setModelId] = useState("");
-  const [loadingModels, setLoadingModels] = useState(false);
   const notify = useNotify();
 
   useEffect(() => {
@@ -64,9 +68,6 @@ function ConnectionEditor({
       setConnection(initial);
       if (credentialRef.current) credentialRef.current.value = "";
       setModelId("");
-      if (persisted) {
-        void connectionsClient.models(initial.id).then(setModels).catch(() => setModels([]));
-      }
     }
   }, [initial, open, persisted]);
 
@@ -87,13 +88,10 @@ function ConnectionEditor({
   };
 
   const refreshModels = async () => {
-    setLoadingModels(true);
     try {
-      setModels(await connectionsClient.refreshModels(initial.id));
+      await onRefreshModels?.();
     } catch (error) {
       notify.error("Model refresh failed", String(error));
-    } finally {
-      setLoadingModels(false);
     }
   };
 
@@ -102,7 +100,7 @@ function ConnectionEditor({
     if (!remoteId) return;
     try {
       await connectionsClient.saveManualModel(initial.id, remoteId);
-      setModels(await connectionsClient.models(initial.id));
+      await onRefreshModels?.();
       setModelId("");
     } catch (error) {
       notify.error("Model could not be added", String(error));
@@ -169,7 +167,7 @@ function ConnectionEditor({
                 </Button>
               </div>
               <div className="max-h-28 overflow-y-auto rounded-md border p-2 text-xs text-muted-foreground">
-                {models.length
+                {models?.length
                   ? models.map((model) => (
                     <div key={model.remote_id} className="py-1">
                       <span className="truncate">{model.display_name ?? model.remote_id}</span>
@@ -213,15 +211,15 @@ function ConnectionEditor({
 
 function ProviderConnectionCard({
   summary,
-  accountId,
 }: {
   summary: ConnectionSummary;
-  accountId: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
   const notify = useNotify();
-  const { load, remove } = useConnectionsStore((state) => state.actions);
+  const models = useRuntimeCatalogStore((state) => state.modelsByConnection[summary.connection.id] ?? []);
+  const refreshing = useRuntimeCatalogStore((state) => state.refreshingConnectionIds.has(summary.connection.id));
+  const { refresh, refreshConnection, removeConnection } = useRuntimeCatalogStore((state) => state.actions);
   const { connection, health } = summary;
   const status = !connection.enabled
     ? "disabled"
@@ -239,7 +237,7 @@ function ProviderConnectionCard({
     } catch (error) {
       notify.error("Connection failed", String(error));
     } finally {
-      await load(accountId);
+      await refresh();
       setTesting(false);
     }
   };
@@ -280,7 +278,7 @@ function ProviderConnectionCard({
             size="icon-sm"
             variant="ghost"
             aria-label={`Remove ${connection.display_name}`}
-            onClick={() => void remove(accountId, connection.id)}
+            onClick={() => void removeConnection(connection.id)}
           >
             <Trash2 />
           </Button>
@@ -290,7 +288,10 @@ function ProviderConnectionCard({
         open={editing}
         initial={connection}
         onOpenChange={setEditing}
-        onSaved={() => load(accountId)}
+        onSaved={refresh}
+        models={models}
+        loadingModels={refreshing}
+        onRefreshModels={() => refreshConnection(connection.id)}
         persisted
       />
     </Card>
@@ -300,11 +301,9 @@ function ProviderConnectionCard({
 function ConnectionSection({
   title,
   items,
-  accountId,
 }: {
   title: string;
   items: ConnectionSummary[];
-  accountId: string;
 }) {
   if (!items.length) return null;
   return (
@@ -312,7 +311,7 @@ function ConnectionSection({
       <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
       <div className="grid gap-2 xl:grid-cols-2">
         {items.map((item) => (
-          <ProviderConnectionCard key={item.connection.id} summary={item} accountId={accountId} />
+          <ProviderConnectionCard key={item.connection.id} summary={item} />
         ))}
       </div>
     </section>
@@ -321,20 +320,20 @@ function ConnectionSection({
 
 export function ConnectionsTab() {
   const accountId = getCurrentProviderAccountId();
-  const { summaries, loading, error, actions } = useConnectionsStore(
+  const { connections, status, error, actions } = useRuntimeCatalogStore(
     useShallow((state) => ({
-      summaries: state.summaries,
-      loading: state.loading,
+      connections: state.connections,
+      status: state.status,
       error: state.error,
       actions: state.actions,
     })),
   );
   const [adding, setAdding] = useState<Connection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const grouped = useMemo(() => groupConnections(summaries), [summaries]);
+  const grouped = useMemo(() => groupConnections(connections), [connections]);
 
   useEffect(() => {
-    if (accountId) void actions.load(accountId);
+    if (accountId) void actions.start(accountId);
   }, [accountId, actions]);
 
   const beginAdd = (provider: Provider) => {
@@ -348,7 +347,7 @@ export function ConnectionsTab() {
       base_url: preset.endpoint || null,
       secret_ref: null,
       extra_headers: null,
-      position: summaries.length,
+      position: connections.length,
     });
     setPickerOpen(false);
   };
@@ -361,14 +360,8 @@ export function ConnectionsTab() {
           <p className="text-sm text-muted-foreground">Local CLI agents use your existing sign-in and workspace permissions.</p>
         </div>
         <div className="grid gap-3 xl:grid-cols-2">
-          <CodingAgentSetup
-            agent={CODEX_AGENT}
-            logo="⬡"
-          />
-          <CodingAgentSetup
-            agent={CLAUDE_AGENT}
-            logo="✳"
-          />
+          <CodingAgentSetup agent={CODEX_AGENT} />
+          <CodingAgentSetup agent={CLAUDE_AGENT} />
         </div>
       </section>
 
@@ -385,7 +378,7 @@ export function ConnectionsTab() {
         </Button>
       </div>
 
-      {loading && !summaries.length ? (
+      {status === "loading" && !connections.length ? (
         <div className="grid gap-2 xl:grid-cols-2">
           <Skeleton className="h-32" />
           <Skeleton className="h-32" />
@@ -397,26 +390,26 @@ export function ConnectionsTab() {
           <AlertTitle>Connections unavailable</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>{error}</span>
-            <Button size="sm" variant="outline" onClick={() => void actions.load(accountId)}>Retry</Button>
+            <Button size="sm" variant="outline" onClick={() => void actions.refresh()}>Retry</Button>
           </AlertDescription>
         </Alert>
       ) : null}
-      {!loading && !error && !summaries.length ? (
+      {status !== "loading" && !error && !connections.length ? (
         <p className="text-sm text-muted-foreground">
           Add a cloud, local, or custom model connection.
         </p>
       ) : null}
 
-      <ConnectionSection title="Cloud providers" items={grouped.cloud} accountId={accountId} />
-      <ConnectionSection title="Local providers" items={grouped.local} accountId={accountId} />
-      <ConnectionSection title="Custom endpoints" items={grouped.custom} accountId={accountId} />
+      <ConnectionSection title="Cloud providers" items={grouped.cloud} />
+      <ConnectionSection title="Local providers" items={grouped.local} />
+      <ConnectionSection title="Custom endpoints" items={grouped.custom} />
 
       {adding ? (
         <ConnectionEditor
           open
           initial={adding}
           onOpenChange={(open) => !open && setAdding(null)}
-          onSaved={() => actions.load(accountId)}
+          onSaved={actions.refresh}
         />
       ) : null}
 

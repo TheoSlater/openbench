@@ -14,7 +14,7 @@ import {
   type MobileDefaultModel,
   useMobileConnectionStatus,
 } from "@/lib/mobile/relay-bridge";
-import { readDefaultRuntime } from "@/lib/runtime/legacy-default-model";
+import { readDefaultRuntime } from "@/lib/runtime/default-runtime";
 
 type MobilePairingInfo = {
   url: string;

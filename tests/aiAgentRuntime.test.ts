@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { MockLanguageModelV4 } from "ai/test";
 import type { UIMessageChunk } from "ai";
 import { ApprovalBroker } from "../sidecar/src/approvals";
-import { closeAgentProviders, streamAgent } from "../sidecar/src/agents";
+import { closeAgentProviders, listAgentModels, streamAgent } from "../sidecar/src/agents";
 import type { AgentCommand } from "../sidecar/src/protocol";
 
 const fakeCli = fileURLToPath(new URL("./fixtures/fake-agent-cli.mjs", import.meta.url));
@@ -45,6 +45,13 @@ const textFrom = (chunks: UIMessageChunk[]) => chunks
 afterEach(closeAgentProviders);
 
 describe("coding agent runtime", () => {
+  it("uses Claude Code's own default instead of inventing a model catalog", async () => {
+    await expect(listAgentModels({
+      kind: "claude-code",
+      executablePath: "definitely-not-a-real-claude-executable",
+    })).resolves.toEqual({ models: [] });
+  });
+
   it("streams through AI SDK UI parts and persists the provider session id", async () => {
     const close = vi.fn(async () => undefined);
     const model = new MockLanguageModelV4({

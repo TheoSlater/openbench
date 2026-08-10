@@ -220,42 +220,6 @@ export type AgentModelsResult = {
   defaultId?: string;
 };
 
-const CLAUDE_MODEL_FALLBACK: AgentModelEntry[] = [
-  { id: "sonnet", name: "Claude Sonnet" },
-  { id: "opus", name: "Claude Opus" },
-  { id: "haiku", name: "Claude Haiku" },
-  { id: "fable", name: "Claude Fable" },
-];
-
-async function claudeModels(path?: string): Promise<AgentModelsResult> {
-  const executable = path ?? "claude";
-  const models: AgentModelEntry[] = [];
-  try {
-    const { spawnSync } = await import("node:child_process");
-    const ran = spawnSync(executable, ["models"], {
-      timeout: 15_000,
-      encoding: "utf8",
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    const text = `${ran.stdout ?? ""}${ran.stderr ?? ""}`;
-    const seen = new Set<string>();
-    for (const line of text.split(/\r?\n/)) {
-      const token = line.trim().replace(/\u001b\[[0-9;]*m/g, "").split(/\s+/)[0];
-      if (!token || !/^[\w.\-/:]+$/.test(token) || token.length > 64) continue;
-      if (seen.has(token)) continue;
-      seen.add(token);
-      models.push({ id: token });
-    }
-  } catch {
-    // CLI missing or too old to list models — fall through to the aliases.
-  }
-  const merged = [...models, ...CLAUDE_MODEL_FALLBACK];
-  const deduped = merged.filter((entry, index) =>
-    merged.findIndex((other) => other.id === entry.id) === index,
-  );
-  return { models: deduped, defaultId: "sonnet" };
-}
-
 async function codexModels(path?: string): Promise<AgentModelsResult> {
   const provider = await codexProvider(path);
   const listed = await provider.listModels();
@@ -274,7 +238,7 @@ export async function listAgentModels(
   agent: AgentModelsCommand["agent"],
 ): Promise<AgentModelsResult> {
   return agent.kind === "claude-code"
-    ? claudeModels(agent.executablePath)
+    ? { models: [] }
     : codexModels(agent.executablePath);
 }
 

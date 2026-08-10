@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Box } from "@/components/ui/Box";
 import { useShallow } from "zustand/react/shallow";
 import { ChatArea } from "@/features/chat/components/ChatArea";
@@ -7,7 +7,6 @@ import { EmptyState } from "@/features/chat/components/EmptyState";
 import { Header } from "@/features/chat/components/Header";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { NEW_CHAT_DRAFT_KEY, useChatStore } from "@/store/chatStore";
-import type { ModelChoice } from "@/lib/models/model-choice";
 import { materializeAttachments, releaseImageAttachment } from "@/lib/image-upload/attachments";
 import { useFolderStore } from "@/store/folderStore";
 import { FolderHome } from "@/features/folders/FolderHome";
@@ -15,9 +14,8 @@ import { useViewStore, getViewComponent } from "@/lib/view-registry";
 import { useConfirmStore } from "@/store/confirmStore";
 import { connectionsClient } from "@/features/connections/client";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
-import { runtimeLabel } from "@/features/runtime/runtime-options";
-import { useConnectionsStore } from "@/features/connections/store";
-import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/providers";
+import { runtimeIsAvailable, runtimeLabel } from "@/features/runtime/runtime-options";
+import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 
 const EMPTY_ATTACHMENTS: never[] = [];
 
@@ -46,28 +44,20 @@ export default function ChatWorkspace({
     ? `${systemPromptContent}\n${activeFolder.systemPrompt}`
     : systemPromptContent;
   const selectedRuntime = useRuntimeStore((state) => state.selected);
-  const summaries = useConnectionsStore((state) => state.summaries);
-  const loadConnections = useConnectionsStore((state) => state.actions.load);
-  const selectedModelChoices = useMemo<ModelChoice[]>(() => {
-    if (selectedRuntime?.kind !== "chat-model") return [];
-    const connection = summaries.find(
-      (item) => item.connection.id === selectedRuntime.connection_id,
-    )?.connection;
-    if (!connection) return [];
-    return [{
-      model: selectedRuntime.model_id,
-      provider: toLegacyProviderType(connection.provider),
-    }];
-  }, [selectedRuntime, summaries]);
-  const chat = useChatStream(selectedModelChoices, effectiveSystemPrompt, voiceModeOpen);
-  const selectedModels = selectedModelChoices.map((choice) => choice.model);
+  const runtimeAvailable = useRuntimeCatalogStore((state) => runtimeIsAvailable(
+    selectedRuntime,
+    state.connections,
+    state.modelsByConnection,
+    state.agents,
+  ));
+  const chat = useChatStream(effectiveSystemPrompt, voiceModeOpen);
+  const selectedModels = selectedRuntime?.kind === "chat-model" ? [selectedRuntime.model_id] : [];
   const selectRuntime = useRuntimeStore((state) => state.actions.select);
   const messages = chat.messages;
   const isStreaming = chat.isStreaming;
   const stopStreaming = chat.stopStreaming;
   const bottomRef = chat.bottomRef;
   const hasMessages = chat.hasMessages;
-  const runtimeAvailable = selectedRuntime?.kind === "chat-model" || selectedRuntime?.kind === "coding-agent";
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const chatKey = activeConversationId ?? NEW_CHAT_DRAFT_KEY;
   const currentAttachments = useChatStore(
@@ -79,11 +69,6 @@ export default function ChatWorkspace({
     deleteMessagesAfter,
     clearAttachments,
   } = useChatStore((state) => state.actions);
-
-  useEffect(() => {
-    const accountId = getCurrentProviderAccountId();
-    if (accountId) void loadConnections(accountId);
-  }, [loadConnections]);
 
   const handleToggleTemporary = useCallback(() => {
     if (isTemporary) {

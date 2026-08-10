@@ -3,8 +3,6 @@ import type { RuntimeOption } from "@/features/runtime/runtime-options";
 import {
   filterRuntimeOptions,
   groupRuntimeOptions,
-  isExternalOption,
-  isLocalOption,
   moveRuntimeHighlight,
   runtimeLabel,
 } from "@/features/runtime/runtime-options";
@@ -46,11 +44,11 @@ describe("runtime selector options", () => {
     ]);
   });
 
-  it("keeps coding agents before recent, cloud, and local models", () => {
+  it("keeps recent runtimes before agents, cloud, and local models", () => {
     const recent = new Set(["model:b:qwen"]);
     expect(groupRuntimeOptions(options, recent).map(([name]) => name)).toEqual([
-      "Coding agents",
       "Recent models",
+      "Coding agents",
       "Cloud models",
     ]);
   });
@@ -60,14 +58,6 @@ describe("runtime selector options", () => {
       available: false,
       runtime: null,
     });
-  });
-
-  it("treats only cloud chat models as external, not agents or local models", () => {
-    expect(options.map(isExternalOption)).toEqual([false, true, false]);
-  });
-
-  it("treats only Ollama/LM Studio chat models as local, not agents or cloud models", () => {
-    expect(options.map(isLocalOption)).toEqual([false, false, true]);
   });
 
   it("wraps keyboard navigation", () => {

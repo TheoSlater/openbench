@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Which coding agent an installation drives.
+/// Which local coding agent runs a conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
@@ -27,15 +27,6 @@ impl AgentKind {
         match self {
             AgentKind::Codex => "codex",
             AgentKind::ClaudeCode => "claude-code",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "codex" => Some(AgentKind::Codex),
-            "claude-code" => Some(AgentKind::ClaudeCode),
-            _ => None,
         }
     }
 }
@@ -269,11 +260,4 @@ mod tests {
         assert_eq!(RuntimeKind::parse("nope"), None);
     }
 
-    #[test]
-    fn agent_kind_strings_round_trip() {
-        for kind in [AgentKind::Codex, AgentKind::ClaudeCode] {
-            assert_eq!(AgentKind::parse(kind.as_str()), Some(kind));
-        }
-        assert_eq!(AgentKind::parse("gemini-cli"), None);
-    }
 }

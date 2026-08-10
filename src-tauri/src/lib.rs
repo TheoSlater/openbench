@@ -255,7 +255,6 @@ pub fn run() {
             auth::auth_update_status,
             auth::auth_update_profile,
             auth::auth_change_password,
-            commands::connection_commands::resolve_legacy_default_model,
             commands::connection_commands::validate_connection,
             commands::connection_commands::refresh_connection_models,
             commands::connection_commands::save_manual_connection_model,
