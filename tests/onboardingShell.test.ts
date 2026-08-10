@@ -8,7 +8,9 @@ describe("onboarding shell boundaries", () => {
   it("locks navigation and makes exiting steps inert", () => {
     expect(shell).toContain("transitioning || closing");
     expect(shell).toContain("inert={!isPresent}");
-    expect(shell).toContain("motionDuration(\"step\"");
+    expect(shell).toContain('motionDuration(isPresent ? "step" : "stepExit"');
+    expect(shell).toContain('ease: isPresent ? onboardingMotion.ease.enter : onboardingMotion.ease.exit');
+    expect(shell).toContain("overflow-hidden px-4 sm:px-8");
   });
 
   it("persists completion before handing control back to the app", () => {

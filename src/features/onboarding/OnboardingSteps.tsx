@@ -4,24 +4,8 @@ import {
   motion,
 } from "motion/react";
 import {
-  Bot,
-  Check,
   ChevronDown,
-  CircleAlert,
-  CircleCheck,
-  Cloud,
-  Code2,
-  Cpu,
-  FolderOpen,
-  ImagePlus,
   LoaderCircle,
-  Monitor,
-  Moon,
-  Shield,
-  Sparkles,
-  Sun,
-  Terminal,
-  Trash2,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -58,22 +42,20 @@ type IntroProps = {
   title: string;
   description: string;
   headingRef: RefObject<HTMLHeadingElement | null>;
-  before?: ReactNode;
   children?: ReactNode;
 };
 
-export function StepIntro({ title, description, headingRef, before, children }: IntroProps) {
+export function StepIntro({ title, description, headingRef, children }: IntroProps) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col items-center text-center">
-      {before}
+    <div className="mx-auto flex w-full max-w-xl flex-col items-start text-left">
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className="text-balance font-heading text-[clamp(2rem,3.4vw,3rem)] font-medium leading-[1.05] tracking-[-0.035em] text-foreground outline-none"
+        className="text-balance font-heading text-[clamp(1.9rem,3vw,2.7rem)] font-medium leading-[1.08] tracking-[-0.03em] text-foreground outline-none"
       >
         {title}
       </h1>
-      <p className="mt-4 max-w-xl text-balance text-[clamp(1rem,1.7vw,1.18rem)] leading-relaxed text-muted-foreground">
+      <p className="mt-3 max-w-lg text-balance text-base leading-relaxed text-muted-foreground">
         {description}
       </p>
       {children}
@@ -81,56 +63,13 @@ export function StepIntro({ title, description, headingRef, before, children }: 
   );
 }
 
-function PolyMark({ animated = false }: { animated?: boolean }) {
-  return (
-    <motion.div
-      initial={animated ? { opacity: 0, scale: onboardingMotion.scale.subtle } : false}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{
-        duration: motionDuration("standard", false),
-        delay: animated ? onboardingMotion.delay.logo : 0,
-        ease: onboardingMotion.ease.enter,
-      }}
-      className="relative grid size-20 place-items-center rounded-2xl border border-border bg-card"
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 80 80" className="size-12 text-foreground" fill="none">
-        <path d="M24 20 40 12l16 8v18L40 46 24 38V20Z" stroke="currentColor" strokeWidth="3" />
-        <path d="m24 38 16 8 16-8v18L40 68l-16-12V38Z" stroke="currentColor" strokeWidth="3" opacity=".42" />
-        <path d="m40 12 16 8-16 8-16-8 16-8Z" fill="currentColor" opacity=".12" />
-        <circle cx="40" cy="38" r="5" fill="currentColor" />
-      </svg>
-    </motion.div>
-  );
-}
-
 export function WelcomeStep({ headingRef }: { headingRef: RefObject<HTMLHeadingElement | null> }) {
   return (
     <StepIntro
-      title="Your AI workspace"
-      description="Private, flexible, and running on your machine."
+      title="Set up PolyUI"
+      description="Private by default. A few quick choices, then you’re ready to chat."
       headingRef={headingRef}
-      before={
-        <div className="mb-8">
-          <PolyMark animated />
-        </div>
-      }
-    >
-      <motion.div
-        initial={{ opacity: 0, y: onboardingMotion.distance.small }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{
-          duration: motionDuration("standard", false),
-          delay: onboardingMotion.delay.heading,
-          ease: onboardingMotion.ease.enter,
-        }}
-        className="mt-8 flex flex-col items-center gap-5"
-      >
-        <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-          No account required. Your conversations stay on this device.
-        </p>
-      </motion.div>
-    </StepIntro>
+    />
   );
 }
 
@@ -200,12 +139,11 @@ export function ProfileStep({
 
   return (
     <StepIntro
-      title="Make PolyUI yours"
+      title="Your name"
       description="Choose how you appear in conversations."
       headingRef={headingRef}
     >
-      <p className="mt-3 text-sm text-muted-foreground">Your profile stays on this device.</p>
-      <div className="mt-8 grid w-full max-w-2xl gap-6 rounded-2xl border border-border bg-card p-5 text-left sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center sm:p-6">
+      <div className="mt-8 grid w-full gap-6 border-y border-border/60 py-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
         <div className="flex flex-col items-center gap-3">
           <ProfilePreview
             profile={profile}
@@ -232,7 +170,6 @@ export function ProfileStep({
             }}
           />
           <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()}>
-            <ImagePlus data-icon="inline-start" />
             Choose image
           </Button>
           {profile.avatarUrl ? (
@@ -245,7 +182,6 @@ export function ProfileStep({
                 setProfile({ ...profile, avatarUrl: null });
               }}
             >
-              <Trash2 data-icon="inline-start" />
               Remove
             </Button>
           ) : null}
@@ -263,9 +199,7 @@ export function ProfileStep({
               setProfile({ ...profile, displayName: event.target.value });
             }}
           />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Leave it empty to appear as You. Spaces and Unicode are fine.
-          </p>
+          <p className="text-xs leading-relaxed text-muted-foreground">Optional. Leave blank to use “You”.</p>
           <AnimatePresence initial={false}>
             {imageError ? (
               <motion.p
@@ -300,7 +234,6 @@ type ProviderCardProps = {
   subtitle: string;
   status: ProviderStatus;
   detail?: string;
-  icon: ReactNode;
   expanded: boolean;
   onToggle: () => void;
   children?: ReactNode;
@@ -318,9 +251,12 @@ const statusText: Record<ProviderStatus, string> = {
 
 function ProviderStatusIcon({ status }: { status: ProviderStatus }) {
   if (status === "checking") return <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />;
-  if (status === "ready") return <CircleCheck className="size-4 text-success" aria-hidden="true" />;
-  if (status === "unavailable") return <CircleAlert className="size-4 text-warning" aria-hidden="true" />;
-  return <CircleAlert className="size-4 text-muted-foreground" aria-hidden="true" />;
+  const color = status === "ready"
+    ? "bg-success"
+    : status === "unavailable"
+      ? "bg-warning"
+      : "bg-muted-foreground/60";
+  return <span className={`size-1.5 shrink-0 rounded-full ${color}`} aria-hidden="true" />;
 }
 
 function ProviderCard({
@@ -328,34 +264,27 @@ function ProviderCard({
   subtitle,
   status,
   detail,
-  icon,
   expanded,
   onToggle,
   children,
 }: ProviderCardProps) {
   return (
-    <motion.article
-      layout
-      className="overflow-hidden rounded-2xl border border-border bg-card text-left transition-[border-color,background-color] duration-(--dur-fast) hover:border-foreground/20 hover:bg-muted/20"
-    >
+    <div className="border-b border-border/60 last:border-b-0">
       <button
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
-        className="flex min-h-[118px] w-full items-start gap-4 p-4 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+        className="flex min-h-20 w-full items-center gap-4 py-4 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-foreground">
-          {icon}
-        </span>
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="font-medium text-foreground">{title}</span>
           <span className="text-sm leading-relaxed text-muted-foreground">{subtitle}</span>
-          <span className="mt-auto flex min-h-6 items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span className="mt-1 flex min-h-5 items-center gap-2 text-xs font-medium text-muted-foreground">
             <ProviderStatusIcon status={status} />
             <AnimatePresence initial={false} mode="wait">
               <motion.span
                 key={status}
-                className="inline-flex min-w-[7.5rem]"
+                className="inline-flex"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -381,11 +310,11 @@ function ProviderCard({
             transition={{ duration: motionDuration("expansion", false), ease: onboardingMotion.ease.enter }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border p-4 text-left">{children}</div>
+            <div className="border-t border-border/60 pb-4 pt-4 text-left">{children}</div>
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </motion.article>
+    </div>
   );
 }
 
@@ -641,11 +570,9 @@ function agentStatusView(status: AgentCliStatus | "error" | undefined): Provider
 
 export function ProviderStep({
   headingRef,
-  onUsableChange,
   onSummaryChange,
 }: {
   headingRef: RefObject<HTMLHeadingElement | null>;
-  onUsableChange: (usable: boolean) => void;
   onSummaryChange: (summary: ProviderSummaryItem[]) => void;
 }) {
   const accountId = getCurrentProviderAccountId();
@@ -714,7 +641,6 @@ export function ProviderStep({
         subtitle: "Run local models",
         status: ollamaStatus,
         detail: connectionReady(ollama) ? `${ollama?.enabled_model_count} models` : undefined,
-        icon: <Cpu className="size-5" />,
       },
       ...AGENT_CONFIGS.map((agent) => {
         const status = agents[agent.kind];
@@ -724,7 +650,6 @@ export function ProviderStep({
           subtitle: agent.kind === "claude-code" ? "Use Claude as a coding agent" : "Use Codex as a coding agent",
           status: agentStatusView(status),
           detail: status && status !== "error" ? status.version : undefined,
-          icon: agent.kind === "claude-code" ? <Sparkles className="size-5" /> : <Code2 className="size-5" />,
         };
       }),
       {
@@ -733,13 +658,11 @@ export function ProviderStep({
         subtitle: "Connect OpenAI, Anthropic, OpenRouter, or a compatible API",
         status: apiStatus,
         detail: connectionReady(apiConnection) ? apiConnection?.connection.display_name : undefined,
-        icon: <Cloud className="size-5" />,
       },
     ];
   }, [agents, apiConnection, connectionError, loading, ollama]);
 
   useEffect(() => {
-    onUsableChange(cards.some((card) => card.status === "ready"));
     onSummaryChange(
       cards
         .filter((card) => card.status === "ready")
@@ -748,7 +671,7 @@ export function ProviderStep({
           detail: card.id === "ollama" ? card.detail ?? "Connected" : card.id === "api" ? "Connected" : "Detected",
         })),
     );
-  }, [cards, onSummaryChange, onUsableChange]);
+  }, [cards, onSummaryChange]);
 
   useEffect(() => {
     const meaningfulStatus = cards
@@ -783,11 +706,11 @@ export function ProviderStep({
 
   return (
     <StepIntro
-      title="Choose how PolyUI should think"
-      description="Connect local models, coding agents, or an API provider."
+      title="Connect a model"
+      description="Use a local model, coding agent, or API provider."
       headingRef={headingRef}
     >
-      <div className="mt-8 grid w-full max-w-3xl gap-3 sm:grid-cols-2">
+      <div className="mt-8 w-full max-w-xl border-y border-border/60">
         {cards.map((card) => (
           <ProviderCard
             key={card.id}
@@ -795,7 +718,6 @@ export function ProviderStep({
             subtitle={card.subtitle}
             status={card.status}
             detail={card.detail}
-            icon={card.icon}
             expanded={expanded === card.id}
             onToggle={() => setExpanded((current) => current === card.id ? null : card.id)}
           >
@@ -812,34 +734,30 @@ export function ProviderStep({
           </ProviderCard>
         ))}
       </div>
-      <div className="mt-5 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Shield className="size-3.5" aria-hidden="true" />
-        <span>Provider failures stay isolated. You can set anything up later.</span>
-        {refreshing ? <LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden="true" /> : null}
+      <div className="mt-4 text-xs text-muted-foreground">
+        Optional — you can set this up later.
+        {refreshing ? <LoaderCircle className="ml-2 inline-block size-3.5 align-[-2px] motion-safe:animate-spin" aria-hidden="true" /> : null}
       </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">{statusAnnouncement}</p>
     </StepIntro>
   );
 }
 
-const capabilityOptions: Array<{ id: CapabilityMode; title: string; description: string; icon: ReactNode }> = [
+const capabilityOptions: Array<{ id: CapabilityMode; title: string; description: string }> = [
   {
     id: "chat-only",
     title: "Chat only",
     description: "Models can respond without accessing files or commands.",
-    icon: <Bot className="size-5" />,
   },
   {
     id: "workspace",
     title: "Workspace access",
     description: "Models can read and edit files inside folders you approve.",
-    icon: <FolderOpen className="size-5" />,
   },
   {
     id: "agent-tools",
     title: "Agent tools",
     description: "Models can use the sandboxed terminal and complete multi-step work.",
-    icon: <Terminal className="size-5" />,
   },
 ];
 
@@ -847,14 +765,12 @@ function ChoiceCard({
   group,
   title,
   description,
-  icon,
   selected,
   onClick,
 }: {
   group: string;
   title: string;
   description: string;
-  icon: ReactNode;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -865,18 +781,20 @@ function ChoiceCard({
       aria-checked={selected}
       layout
       onClick={onClick}
-      className="relative flex min-h-[124px] w-full flex-col items-start gap-3 overflow-hidden rounded-2xl border border-border bg-card p-4 text-left outline-none transition-[border-color,background-color] duration-(--dur-fast) hover:border-foreground/20 hover:bg-muted/20 focus-visible:ring-3 focus-visible:ring-ring/30"
+      className="relative flex w-full items-start gap-3 border-b border-border/60 px-1 py-4 text-left outline-none transition-colors last:border-b-0 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
     >
       {selected ? (
         <motion.span
           layoutId={`${group}-selection`}
-          className="pointer-events-none absolute inset-0 rounded-2xl border border-primary/40 bg-primary/5"
+          className="pointer-events-none absolute inset-y-0 left-0 w-px bg-foreground"
           transition={{ type: "spring", bounce: 0, duration: onboardingMotion.duration.standard }}
         />
       ) : null}
-      <span className="relative flex w-full items-center justify-between gap-3">
-        <span className="grid size-9 place-items-center rounded-xl bg-muted">{icon}</span>
-        {selected ? <Check className="size-4 text-primary" aria-hidden="true" /> : null}
+      <span
+        className={`relative mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border ${selected ? "border-foreground" : "border-muted-foreground/50"}`}
+        aria-hidden="true"
+      >
+        {selected ? <span className="size-2 rounded-full bg-foreground" /> : null}
       </span>
       <span className="relative flex flex-col gap-1">
         <span className="font-medium">{title}</span>
@@ -897,12 +815,12 @@ export function CapabilitiesStep({
 }) {
   return (
     <StepIntro
-      title="Choose what models can access"
-      description="You stay in control of files, commands, and agent tools."
+      title="Choose access"
+      description="Start safely. You can change this later."
       headingRef={headingRef}
     >
       <LayoutGroup id="onboarding-capabilities">
-        <div className="mt-9 grid w-full max-w-3xl gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Model access level">
+        <div className="mt-6 flex w-full max-w-xl flex-col" role="radiogroup" aria-label="Model access level">
           {capabilityOptions.map((option) => (
             <ChoiceCard
               key={option.id}
@@ -914,8 +832,8 @@ export function CapabilitiesStep({
           ))}
         </div>
       </LayoutGroup>
-      <p className="mt-5 max-w-xl text-xs leading-relaxed text-muted-foreground">
-        Workspace access stays inside folders you approve. Agent tools use PolyUI’s isolated sandbox and still ask before sensitive actions. You can change this for individual conversations.
+      <p className="mt-4 max-w-xl text-xs leading-relaxed text-muted-foreground">
+        Workspace access stays inside folders you approve. Agent tools use an isolated sandbox.
       </p>
     </StepIntro>
   );
@@ -929,11 +847,11 @@ const appearanceOptions: Array<{ id: ThemeMode; title: string; description: stri
 
 function AppearancePreview() {
   return (
-    <div className="mt-4 w-full max-w-xl rounded-2xl border border-border bg-card p-3 text-left">
-      <div className="border-b border-border px-3 pb-3">
+    <div className="mt-5 w-full max-w-xl border-y border-border/60 py-4 text-left">
+      <div className="border-b border-border/60 px-1 pb-3">
         <span className="text-xs font-medium text-muted-foreground">Conversation preview</span>
       </div>
-      <div className="grid gap-2 p-3 sm:grid-cols-[64px_minmax(0,1fr)]">
+      <div className="grid gap-2 px-1 pt-3 sm:grid-cols-[64px_minmax(0,1fr)]">
         <div className="hidden rounded-xl bg-muted sm:block" />
         <div className="flex flex-col gap-2">
           <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground">Good morning. What are we making?</div>
@@ -956,19 +874,18 @@ export function AppearanceStep({
 }) {
   return (
     <StepIntro
-      title="Make PolyUI yours"
-      description="Choose a starting appearance. Everything can be changed later in Settings."
+      title="Choose a look"
+      description="You can change this later in Settings."
       headingRef={headingRef}
     >
       <LayoutGroup id="onboarding-appearance">
-        <div className="mt-6 grid w-full max-w-xl gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Appearance">
+        <div className="mt-6 flex w-full max-w-xl flex-col" role="radiogroup" aria-label="Appearance">
           {appearanceOptions.map((option) => (
             <ChoiceCard
               key={option.id}
               group="appearance"
               title={option.title}
               description={option.description}
-              icon={option.id === "system" ? <Monitor className="size-4" /> : option.id === "light" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               selected={appearance === option.id}
               onClick={() => setAppearance(option.id)}
             />
@@ -997,12 +914,12 @@ export function ReadyStep({
   const appearanceLabel = appearanceOptions.find((item) => item.id === appearance)?.title ?? "System";
   return (
     <StepIntro
-      title="PolyUI is ready"
-      description="Start a conversation or adjust anything later in Settings."
+      title="You’re ready"
+      description="Your setup is saved on this device."
       headingRef={headingRef}
     >
-      <div className="mt-6 flex w-full max-w-xl flex-col gap-3 rounded-2xl border border-border bg-card p-4 text-left sm:p-5">
-        <div className="flex items-center gap-3">
+      <div className="mt-6 flex w-full max-w-xl flex-col border-y border-border/60 py-4 text-left">
+        <div className="flex items-center gap-3 px-1 pb-4">
           <Avatar className="size-11">
             {profile.avatarUrl ? <AvatarImage src={profile.avatarUrl} alt={profileLabel(profile.displayName)} /> : null}
             <AvatarFallback seed={profile.displayName}>{profileInitials(profile.displayName)}</AvatarFallback>
@@ -1012,7 +929,7 @@ export function ReadyStep({
             <p className="text-sm text-muted-foreground">Local profile</p>
           </div>
         </div>
-        <div className="grid gap-2 border-t border-border/60 pt-3 sm:grid-cols-2">
+        <div className="grid border-t border-border/60 sm:grid-cols-2">
           {providers.map((provider) => (
             <SummaryItem key={provider.label} label={provider.label} detail={provider.detail} />
           ))}
@@ -1026,12 +943,9 @@ export function ReadyStep({
 
 function SummaryItem({ label, detail }: { label: string; detail: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-muted/45 px-3 py-2">
-      <CircleCheck className="size-4 shrink-0 text-success" aria-hidden="true" />
-      <span className="min-w-0 truncate text-sm">
-        <span className="text-muted-foreground">{label}: </span>
-        <span className="font-medium">{detail}</span>
-      </span>
+    <div className="flex min-w-0 items-baseline justify-between gap-4 border-b border-border/60 px-1 py-2 last:border-b-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right text-sm font-medium">{detail}</span>
     </div>
   );
 }
