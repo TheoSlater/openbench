@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import type { UIMessageChunk } from "ai";
 import { streamChat } from "../sidecar/src/runtime";
@@ -48,6 +48,31 @@ async function collect(stream: ReadableStream<UIMessageChunk>) {
 }
 
 describe("AI sidecar runtime", () => {
+  it("returns to the input loop before model discovery settles", async () => {
+    let finishDiscovery: (() => void) | undefined;
+    const server = new RuntimeServer({
+      write: () => undefined,
+      listModels: async () => new Promise((resolve) => {
+        finishDiscovery = () => resolve([]);
+      }),
+    });
+
+    const dispatch = server.handle({
+      type: "list-models",
+      requestId: "catalog-a",
+      connection: { id: "connection-a", provider: "openai" },
+    });
+    await vi.waitFor(() => expect(finishDiscovery).toBeTypeOf("function"));
+    const returned = await Promise.race([
+      dispatch.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 25)),
+    ]);
+
+    finishDiscovery?.();
+    await dispatch;
+    expect(returned).toBe(true);
+  });
+
   it("converts text, reasoning, usage, and finish into AI SDK UI chunks", async () => {
     const chunks = await collect(await streamChat(
       command(),

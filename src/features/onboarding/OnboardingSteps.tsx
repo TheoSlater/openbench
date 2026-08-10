@@ -19,10 +19,9 @@ import type { Connection } from "@/generated/bindings/Connection";
 import type { ConnectionSummary } from "@/generated/bindings/ConnectionSummary";
 import type { Provider } from "@/generated/bindings/Provider";
 import { connectionsClient } from "@/features/connections/client";
-import { useConnectionsStore } from "@/features/connections/store";
 import { getCurrentProviderAccountId } from "@/features/providers";
-import { agentStatus, type AgentCliStatus } from "@/features/coding-agents/client";
 import { CLAUDE_AGENT, CODEX_AGENT, type AgentConfig } from "@/features/coding-agents/setupCopy";
+import { useRuntimeCatalogStore, type AgentCatalogEntry } from "@/features/runtime/catalog-store";
 import { motionDuration, onboardingMotion } from "./motion";
 import {
   profileInitials,
@@ -525,9 +524,10 @@ function AgentSetup({ agent, onRetry }: { agent: AgentConfig; onRetry: () => voi
   );
 }
 
-function agentStatusView(status: AgentCliStatus | "error" | undefined): ProviderStatus {
-  if (!status) return "checking";
-  if (status === "error") return "unavailable";
+function agentStatusView(entry: AgentCatalogEntry): ProviderStatus {
+  if (!entry.status && ["idle", "loading"].includes(entry.statusState)) return "checking";
+  if (!entry.status) return "unavailable";
+  const status = entry.status;
   if (!status.installed) return "not-installed";
   if (!status.authenticated) return "sign-in-required";
   return "ready";
@@ -541,50 +541,33 @@ export function ProviderStep({
   onSummaryChange: (summary: ProviderSummaryItem[]) => void;
 }) {
   const accountId = getCurrentProviderAccountId();
-  const { summaries, loading, error: connectionError, actions } = useConnectionsStore(
+  const { connections, catalogStatus, connectionError, agents, refreshing, actions } = useRuntimeCatalogStore(
     useShallow((state) => ({
-      summaries: state.summaries,
-      loading: state.loading,
-      error: state.error,
+      connections: state.connections,
+      catalogStatus: state.status,
+      connectionError: state.error,
+      agents: state.agents,
+      refreshing: state.refreshingConnectionIds.size > 0
+        || Object.values(state.agents).some((agent) => agent.statusState === "loading"),
       actions: state.actions,
     })),
   );
-  const [agents, setAgents] = useState<Record<AgentConfig["kind"], AgentCliStatus | "error" | undefined>>({
-    codex: undefined,
-    "claude-code": undefined,
-  });
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [statusAnnouncement, setStatusAnnouncement] = useState("");
   const previousMeaningfulStatus = useRef<string | null>(null);
-  const ollama = summaries.find((item) => item.connection.provider === "ollama");
-  const apiConnection = summaries.find((item) =>
+  const ollama = connections.find((item) => item.connection.provider === "ollama");
+  const apiConnection = connections.find((item) =>
     ["openai", "anthropic", "openrouter", "openai-compatible"].includes(item.connection.provider),
   );
-  const refreshAgents = async () => {
-    setRefreshing(true);
-    const results = await Promise.all(
-      AGENT_CONFIGS.map(async (agent) => {
-        try {
-          return [agent.kind, await agentStatus(agent.kind)] as const;
-        } catch {
-          return [agent.kind, "error" as const] as const;
-        }
-      }),
-    );
-    setAgents((current) => ({ ...current, ...Object.fromEntries(results) }));
-    setRefreshing(false);
-  };
-
   useEffect(() => {
-    if (accountId) void actions.load(accountId);
-    void refreshAgents();
+    if (accountId) void actions.start(accountId);
     // Detection should start once when the step opens; later health changes
     // update the cards without restarting the step transition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId]);
 
   const cards = useMemo(() => {
+    const loading = catalogStatus === "loading";
     const ollamaStatus: ProviderStatus = loading
       ? "checking"
       : connectionError
@@ -608,13 +591,13 @@ export function ProviderStep({
         detail: connectionReady(ollama) ? `${ollama?.enabled_model_count} models` : undefined,
       },
       ...AGENT_CONFIGS.map((agent) => {
-        const status = agents[agent.kind];
+        const entry = agents[agent.kind];
         return {
           id: agent.kind,
           title: agent.displayName,
           subtitle: agent.kind === "claude-code" ? "Use Claude as a coding agent" : "Use Codex as a coding agent",
-          status: agentStatusView(status),
-          detail: status && status !== "error" ? status.version : undefined,
+          status: agentStatusView(entry),
+          detail: entry.status?.version,
         };
       }),
       {
@@ -625,7 +608,7 @@ export function ProviderStep({
         detail: connectionReady(apiConnection) ? apiConnection?.connection.display_name : undefined,
       },
     ];
-  }, [agents, apiConnection, connectionError, loading, ollama]);
+  }, [agents, apiConnection, catalogStatus, connectionError, ollama]);
 
   useEffect(() => {
     onSummaryChange(
@@ -666,7 +649,7 @@ export function ProviderStep({
   }, [expanded]);
 
   const refreshConnections = async () => {
-    if (accountId) await actions.load(accountId);
+    if (accountId) await actions.refresh();
   };
 
   return (
@@ -693,7 +676,7 @@ export function ProviderStep({
             ) : (
               <AgentSetup
                 agent={AGENT_CONFIGS.find((agent) => agent.kind === card.id) ?? CODEX_AGENT}
-                onRetry={() => void refreshAgents()}
+                onRetry={() => void actions.refreshAgent(card.id as AgentConfig["kind"])}
               />
             )}
           </ProviderCard>

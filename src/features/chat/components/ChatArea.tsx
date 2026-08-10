@@ -15,11 +15,8 @@ import { Box } from "@/components/ui/Box";
 import { CircularProgress } from "@/components/ui/spinner";
 import { Typography } from "@/components/ui/Typography";
 import { useChatStore } from "@/store/chatStore";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { StickToBottom, useStickToBottom } from "use-stick-to-bottom";
 import { ScrollButton } from "@/components/ui/scroll-button";
-import { PRETEXT_FONTS, PRETEXT_LINE_HEIGHTS, measureTextHeight } from "@/lib/utils/pretext";
-import { getMotionPolicy } from "@/lib/performance/policy";
 
 interface ChatAreaProps {
   messages: ChatMessage[];
@@ -33,35 +30,6 @@ interface MessageTurn {
   userMessage: ChatMessage | null;
   assistantMessages: ChatMessage[];
   startIndex: number;
-}
-
-const ESTIMATED_TURN_HEIGHT = 220;
-
-function estimateMessageHeight(message: ChatMessage, width: number) {
-  const content = `${message.content || ""}\n${message.thinking || ""}`;
-  if (!content.trim()) return 72;
-  const measured = measureTextHeight(
-    content,
-    message.role === "user" ? PRETEXT_FONTS.userMessage : PRETEXT_FONTS.message,
-    width,
-    message.role === "user"
-      ? PRETEXT_LINE_HEIGHTS.userMessage
-      : PRETEXT_LINE_HEIGHTS.message,
-    { fallbackLineHeightPx: 24 },
-  );
-  const chrome = message.role === "user" ? 48 : 72;
-  return Math.min(5000, Math.max(96, Math.ceil(measured + chrome)));
-}
-
-function estimateTurnHeight(turn: MessageTurn, width: number) {
-  const userHeight = turn.userMessage
-    ? estimateMessageHeight(turn.userMessage, width)
-    : 0;
-  const assistantHeight = Math.max(
-    0,
-    ...turn.assistantMessages.map((message) => estimateMessageHeight(message, width)),
-  );
-  return Math.max(ESTIMATED_TURN_HEIGHT, userHeight + assistantHeight + 32);
 }
 
 const TurnItem = memo(function TurnItem({
@@ -162,7 +130,6 @@ export const ChatArea = memo(function ChatArea({
   const scrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useStickToBottom({ initial: "smooth", resize: "smooth" });
-  const [viewportWidth, setViewportWidth] = useState(768);
   const scrollAnchorRef = useRef<{
     scrollHeight: number;
     scrollTop: number;
@@ -279,37 +246,6 @@ export const ChatArea = memo(function ChatArea({
     return () => observer.disconnect();
   }, [hasMoreMessages, handleLoadMore]);
 
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-
-    // Committing the width on every ResizeObserver callback made the sidebar
-    // collapse animation drag the whole chat panel with it: each frame
-    // re-rendered this component, recomputed estimateTurnHeight across every
-    // turn in the conversation, and invalidated the virtualizer's sizes.
-    // The width only feeds *estimated* heights for unmeasured rows, so it is
-    // enough to commit once the resize has settled.
-    let settle: ReturnType<typeof setTimeout> | undefined;
-    const commit = () => {
-      setViewportWidth((current) =>
-        Math.abs(current - element.clientWidth) < 1 ? current : element.clientWidth,
-      );
-    };
-    const onResize = () => {
-      clearTimeout(settle);
-      settle = setTimeout(commit, getMotionPolicy().transitionDurationMs);
-    };
-
-    const observer = new ResizeObserver(onResize);
-    observer.observe(element);
-    commit();
-
-    return () => {
-      clearTimeout(settle);
-      observer.disconnect();
-    };
-  }, []);
-
   const turns = useMemo(() => {
     const result: MessageTurn[] = [];
     let currentTurn: MessageTurn | null = null;
@@ -344,29 +280,6 @@ export const ChatArea = memo(function ChatArea({
     return result;
   }, [messages]);
 
-  const motionPolicy = useMemo(() => getMotionPolicy(), []);
-  const estimateWidth = Math.min(768, Math.max(320, viewportWidth - 48));
-  const estimatedTurnHeights = useMemo(
-    () => turns.map((turn) => estimateTurnHeight(turn, estimateWidth)),
-    [estimateWidth, turns],
-  );
-  const rowVirtualizer = useVirtualizer({
-    count: turns.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => estimatedTurnHeights[index] ?? ESTIMATED_TURN_HEIGHT,
-    overscan: motionPolicy.virtualOverscan,
-  });
-  const virtualRows = rowVirtualizer.getVirtualItems();
-
-  // Turns are appended in place when a new message lands, but each row's
-  // translateY is computed from sizes that may be an estimate or stale for one
-  // frame. Re-measuring synchronously before paint keeps a freshly appended
-  // turn from briefly overlapping the previous one (most visible with tall
-  // agent replies, whose plan/tool parts the estimator cannot predict).
-  useLayoutEffect(() => {
-    if (turns.length) rowVirtualizer.measure();
-  }, [turns, rowVirtualizer]);
-
   return (
     // StickToBottom only supplies context here — it reuses the instance above
     // rather than binding its own refs, so the scroll element stays ours.
@@ -378,8 +291,7 @@ export const ChatArea = memo(function ChatArea({
         ref={setScrollRef}
         role="log"
         // No aria-live here. With `aria-relevant="additions text"` a screen
-        // reader read out every streamed token, and because the list is
-        // virtualized it re-announced old turns as rows recycled on scroll.
+        // reader read out every streamed token.
         // Completion is announced once, from the region below.
         aria-busy={isResponding}
         // Block layout, deliberately not `flex`. As a flex row with a definite
@@ -419,14 +331,8 @@ export const ChatArea = memo(function ChatArea({
           {hasMoreMessages && <CircularProgress size={20} color="inherit" />}
         </Box>
 
-        <Box
-          className="relative w-full"
-          style={{ height: rowVirtualizer.getTotalSize() }}
-        >
-        {virtualRows.map((virtualRow) => {
-          const turnIndex = virtualRow.index;
-          const turn = turns[turnIndex];
-          if (!turn) return null;
+        <Box className="flex w-full flex-col gap-4">
+        {turns.map((turn, turnIndex) => {
           const isNewest = turnIndex === turns.length - 1;
           return (
             <Box
@@ -435,10 +341,7 @@ export const ChatArea = memo(function ChatArea({
                 turn.assistantMessages[0]?.id ||
                 `turn-${turnIndex}`
               }
-              data-index={virtualRow.index}
-              ref={rowVirtualizer.measureElement}
-              className="absolute left-0 top-0 w-full pb-4"
-              style={{ transform: `translateY(${virtualRow.start}px)` }}
+              className="w-full"
             >
               <TurnItem
                 turn={turn}

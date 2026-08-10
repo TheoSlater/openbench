@@ -1213,81 +1213,6 @@ async fn an_unresolved_conversation_can_be_answered() {
     );
 }
 
-#[tokio::test]
-async fn legacy_default_model_resolves_for_every_provider_name() {
-    let pool = legacy_database().await;
-    apply_rework_schema(&pool).await;
-    let store = InMemorySecretStore::new();
-
-    insert_provider(
-        &pool,
-        "acct",
-        "AnthropicNative",
-        true,
-        None,
-        Some("sk-a"),
-        None,
-        None,
-        None,
-    )
-    .await;
-    insert_provider(
-        &pool,
-        "acct",
-        "OllamaLocal",
-        true,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await;
-    migrate(&pool, &store).await;
-
-    // The frontend parser rejects AnthropicNative outright, which is why this
-    // default never applied before the rework.
-    let resolved = rework_migration::resolve_legacy_model_choice(
-        &pool,
-        "acct",
-        "AnthropicNative:claude-opus-5",
-    )
-    .await
-    .unwrap()
-    .expect("resolved");
-    match resolved {
-        RuntimeRef::ChatModel { model_id, .. } => assert_eq!(model_id, "claude-opus-5"),
-        other => panic!("expected chat model, got {other:?}"),
-    }
-
-    // `Provider:configId:model`, with the model percent-encoded.
-    let with_config_id =
-        rework_migration::resolve_legacy_model_choice(&pool, "acct", "OllamaLocal:7:llama3.2%3A3b")
-            .await
-            .unwrap()
-            .expect("resolved");
-    match with_config_id {
-        RuntimeRef::ChatModel { model_id, .. } => assert_eq!(model_id, "llama3.2:3b"),
-        other => panic!("expected chat model, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn an_unresolvable_legacy_default_returns_none_rather_than_a_guess() {
-    let pool = legacy_database().await;
-    apply_rework_schema(&pool).await;
-
-    for stored in ["", "   ", "no-separator", "GeminiNative:gemini-3-pro"] {
-        assert_eq!(
-            rework_migration::resolve_legacy_model_choice(&pool, "acct", stored)
-                .await
-                .unwrap(),
-            None,
-            "{stored}"
-        );
-    }
-}
-
 /// Everything the new schema holds, as one string. Used to assert that no
 /// credential material landed anywhere.
 async fn dump_new_tables(pool: &SqlitePool) -> String {
@@ -1454,32 +1379,9 @@ async fn a_conversation_with_no_runtime_reads_as_none() {
 }
 
 #[tokio::test]
-async fn installations_and_workspaces_round_trip() {
+async fn workspaces_round_trip() {
     let pool = legacy_database().await;
     apply_rework_schema(&pool).await;
-
-    let installation = crate::connections::AgentInstallation {
-        id: "inst-1".into(),
-        account_id: "acct".into(),
-        agent_kind: crate::runtime::AgentKind::ClaudeCode,
-        display_name: "Claude Code".into(),
-        executable_path: Some("/usr/local/bin/claude".into()),
-        path_source: crate::connections::PathSource::PathLookup,
-        launch_args: vec!["--cli".into()],
-        detected_versions: Some(r#"{"adapter":"0.63.0","node":"22.14.0"}"#.into()),
-        last_verification: crate::connections::VerificationResult::Ok,
-        last_verification_detail: None,
-        last_verified_at: Some("2026-07-27T00:00:00Z".into()),
-    };
-    repository::upsert_installation(&pool, &installation)
-        .await
-        .unwrap();
-    repository::upsert_installation(&pool, &installation)
-        .await
-        .unwrap();
-
-    let stored = repository::list_installations(&pool, "acct").await.unwrap();
-    assert_eq!(stored, vec![installation]);
 
     let workspace = crate::connections::Workspace {
         id: "ws-1".into(),

@@ -1,4 +1,4 @@
-//! Connections, models, coding-agent installations, and workspaces.
+//! Connections, models, and workspaces.
 //!
 //! A *provider* describes API behavior (how to talk to Anthropic, how to talk
 //! to an OpenAI-compatible endpoint). A *connection* is one set of credentials
@@ -247,107 +247,6 @@ pub struct ConnectionModel {
     pub last_seen_at: Option<String>,
 }
 
-/// How an installation's executable path was arrived at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export)]
-pub enum PathSource {
-    /// Found on `PATH`.
-    PathLookup,
-    /// Found at a platform-conventional install location.
-    KnownLocation,
-    /// Supplied by the user.
-    UserOverride,
-    /// Not resolved yet.
-    Unresolved,
-}
-
-impl PathSource {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            PathSource::PathLookup => "path-lookup",
-            PathSource::KnownLocation => "known-location",
-            PathSource::UserOverride => "user-override",
-            PathSource::Unresolved => "unresolved",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "path-lookup" => Some(PathSource::PathLookup),
-            "known-location" => Some(PathSource::KnownLocation),
-            "user-override" => Some(PathSource::UserOverride),
-            "unresolved" => Some(PathSource::Unresolved),
-            _ => None,
-        }
-    }
-}
-
-/// Outcome of the last time an installation was checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export)]
-pub enum VerificationResult {
-    /// Usable.
-    Ok,
-    /// The executable is not where the record says.
-    Missing,
-    /// Present but a prerequisite is unmet (for example Node older than 22).
-    Incompatible,
-    /// Checked and failed for a reason that is not one of the above.
-    Failed,
-    /// Never checked.
-    Never,
-}
-
-impl VerificationResult {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            VerificationResult::Ok => "ok",
-            VerificationResult::Missing => "missing",
-            VerificationResult::Incompatible => "incompatible",
-            VerificationResult::Failed => "failed",
-            VerificationResult::Never => "never",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "ok" => Some(VerificationResult::Ok),
-            "missing" => Some(VerificationResult::Missing),
-            "incompatible" => Some(VerificationResult::Incompatible),
-            "failed" => Some(VerificationResult::Failed),
-            "never" => Some(VerificationResult::Never),
-            _ => None,
-        }
-    }
-}
-
-/// A detected or user-configured coding-agent install.
-///
-/// Detection logic lands in checkpoint 3; this is storage and types only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct AgentInstallation {
-    pub id: String,
-    pub account_id: String,
-    pub agent_kind: crate::runtime::AgentKind,
-    pub display_name: String,
-    pub executable_path: Option<String>,
-    pub path_source: PathSource,
-    /// Launch arguments as an array. Never a shell string.
-    pub launch_args: Vec<String>,
-    /// JSON map of component name to version, e.g. `{"adapter":"…","node":"…"}`.
-    pub detected_versions: Option<String>,
-    pub last_verification: VerificationResult,
-    pub last_verification_detail: Option<String>,
-    pub last_verified_at: Option<String>,
-}
-
 /// Whether a workspace directory is currently usable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -452,23 +351,6 @@ mod tests {
             DiscoverySource::Migrated,
         ] {
             assert_eq!(DiscoverySource::parse(value.as_str()), Some(value));
-        }
-        for value in [
-            PathSource::PathLookup,
-            PathSource::KnownLocation,
-            PathSource::UserOverride,
-            PathSource::Unresolved,
-        ] {
-            assert_eq!(PathSource::parse(value.as_str()), Some(value));
-        }
-        for value in [
-            VerificationResult::Ok,
-            VerificationResult::Missing,
-            VerificationResult::Incompatible,
-            VerificationResult::Failed,
-            VerificationResult::Never,
-        ] {
-            assert_eq!(VerificationResult::parse(value.as_str()), Some(value));
         }
         for value in [
             WorkspaceAvailability::Available,

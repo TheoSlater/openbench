@@ -93,21 +93,22 @@ export class RuntimeServer {
         });
         return;
       case "list-models":
-        await this.withRequest(command.requestId, [command.connection.secret], async (signal) => {
+        this.startRequest(command.requestId, [command.connection.secret], async (signal) => {
           const result = await this.discoverModels(command.connection, ((input, init) =>
             fetch(input, { ...init, signal: init?.signal ?? signal })) as typeof fetch);
           this.deps.write({ type: "result", requestId: command.requestId, result });
         });
         return;
       case "agent-models":
-        await this.withRequest(command.requestId, [], async () => {
+        this.startRequest(command.requestId, [], async () => {
           const result = await this.discoverAgentModels(command.agent);
           this.deps.write({ type: "result", requestId: command.requestId, result });
         });
         return;
       case "validate":
-        await this.withRequest(command.requestId, [command.connection.secret], async () => {
-          const models = await this.discoverModels(command.connection);
+        this.startRequest(command.requestId, [command.connection.secret], async (signal) => {
+          const models = await this.discoverModels(command.connection, ((input, init) =>
+            fetch(input, { ...init, signal: init?.signal ?? signal })) as typeof fetch);
           this.deps.write({
             type: "result",
             requestId: command.requestId,
@@ -116,7 +117,7 @@ export class RuntimeServer {
         });
         return;
       case "generate":
-        await this.withRequest(command.requestId, [command.connection.secret], async (signal) => {
+        this.startRequest(command.requestId, [command.connection.secret], async (signal) => {
           const model: LanguageModel = await this.makeModel(command.connection);
           const result = await generate(
             model,
@@ -205,25 +206,27 @@ export class RuntimeServer {
     })();
   }
 
-  private async withRequest(
+  private startRequest(
     requestId: string,
     secrets: Array<string | undefined>,
     work: (signal: AbortSignal) => Promise<void>,
-  ): Promise<void> {
+  ): void {
     if (this.active.has(requestId)) throw new Error(`Duplicate request id: ${requestId}`);
     const controller = new AbortController();
     this.active.set(requestId, controller);
-    try {
-      await work(controller.signal);
-    } catch (error) {
-      this.deps.write({
-        type: "error",
-        requestId,
-        error: error instanceof Error ? error : new Error(String(error)),
-      }, secrets.filter((secret): secret is string => Boolean(secret)));
-    } finally {
-      this.active.delete(requestId);
-    }
+    void (async () => {
+      try {
+        await work(controller.signal);
+      } catch (error) {
+        this.deps.write({
+          type: "error",
+          requestId,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }, secrets.filter((secret): secret is string => Boolean(secret)));
+      } finally {
+        this.active.delete(requestId);
+      }
+    })();
   }
 }
 

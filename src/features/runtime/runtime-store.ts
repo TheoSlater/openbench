@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
 import { runtimeLabel } from "@/features/runtime/runtime-options";
-import { readDefaultRuntime } from "@/lib/runtime/legacy-default-model";
+import { readDefaultRuntime } from "@/lib/runtime/default-runtime";
 
 type RuntimeState = {
   selected: RuntimeRef | null;

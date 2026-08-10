@@ -1,11 +1,8 @@
 //! Tauri surface for the runtime rework data layer.
 //!
-//! Checkpoint 2 exposes only what a caller actually uses today. The connection,
-//! model, installation, and workspace read/write commands land with the UI in
-//! checkpoint 7 rather than being stubbed out here.
+//! Connection, model, and workspace read/write commands.
 
 use crate::connections::ConnectionValidation;
-use crate::db::rework_migration;
 use crate::runtime::RuntimeRef;
 use crate::AppState;
 
@@ -63,27 +60,6 @@ fn validation_for(models: &[crate::connections::ConnectionModel]) -> ConnectionV
         ready: true,
         message: format!("Connected. {} model(s) available.", models.len()),
     }
-}
-
-/// Resolve a legacy `localStorage["default_model"]` value against the migrated
-/// schema.
-///
-/// Returns `None` when the stored value names a provider or endpoint that no
-/// longer exists, which tells the frontend to clear the key instead of retrying
-/// it on every launch — the pre-rework behavior, where an unresolvable default
-/// was silently ignored forever.
-#[tauri::command]
-pub async fn resolve_legacy_default_model(
-    state: tauri::State<'_, AppState>,
-    account_id: Option<String>,
-    stored: String,
-) -> Result<Option<RuntimeRef>, String> {
-    rework_migration::resolve_legacy_model_choice(
-        &state.db,
-        account_id.as_deref().unwrap_or_default(),
-        &stored,
-    )
-    .await
 }
 
 async fn authorized_connection(

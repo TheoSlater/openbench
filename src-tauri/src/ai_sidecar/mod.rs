@@ -13,6 +13,12 @@ use tokio::sync::{broadcast, oneshot, Mutex};
 
 type Pending = oneshot::Sender<Result<serde_json::Value, String>>;
 
+#[derive(Debug, PartialEq, Eq)]
+enum WaitError {
+    TimedOut,
+    Stopped,
+}
+
 struct State {
     process: Option<SidecarProcess>,
     generation: u64,
@@ -70,10 +76,21 @@ impl AiSidecar {
             self.pending.lock().await.remove(request_id);
             return Err(error);
         }
-        tokio::time::timeout(std::time::Duration::from_secs(30), receiver)
-            .await
-            .map_err(|_| "AI runtime request timed out".to_string())?
-            .map_err(|_| "AI runtime stopped before replying".to_string())?
+        match wait_for_response(
+            &self.pending,
+            request_id,
+            receiver,
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(WaitError::Stopped) => Err("AI runtime stopped before replying".into()),
+            Err(WaitError::TimedOut) => {
+                let _ = self.cancel(request_id).await;
+                Err("AI runtime request timed out".into())
+            }
+        }
     }
 
     /// Fire-and-forget relay for one-way messages (e.g. PTY output routed back
@@ -186,6 +203,22 @@ impl AiSidecar {
             }
         });
         Ok(())
+    }
+}
+
+async fn wait_for_response(
+    pending: &Mutex<HashMap<String, Pending>>,
+    request_id: &str,
+    receiver: oneshot::Receiver<Result<serde_json::Value, String>>,
+    timeout: std::time::Duration,
+) -> Result<Result<serde_json::Value, String>, WaitError> {
+    match tokio::time::timeout(timeout, receiver).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(_)) => Err(WaitError::Stopped),
+        Err(_) => {
+            pending.lock().await.remove(request_id);
+            Err(WaitError::TimedOut)
+        }
     }
 }
 

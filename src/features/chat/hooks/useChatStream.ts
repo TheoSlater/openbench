@@ -19,12 +19,12 @@ import { isFeatureAIActive } from "@/lib/featureRegistry";
 import { defaultPreprocessor } from "@/lib/chat/message-preprocessor";
 import { triggerTitleGeneration, type TitleStore } from "@/lib/chat/title-generation";
 import { getRepository } from "@/lib/repositories";
-import { getCurrentProviderAccountId } from "@/features/providers";
+import { getCurrentProviderAccountId, toLegacyProviderType } from "@/features/providers";
 import { notifyMemoryUpdated } from "@/features/memory/useConversationMemoryCount";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
-import { agentName, runtimeLabel } from "@/features/runtime/runtime-options";
-import type { ModelChoice } from "@/lib/models/model-choice";
+import { agentName, runtimeIsAvailable, runtimeLabel } from "@/features/runtime/runtime-options";
+import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 import { fromUIMessage, toUIMessage, filterPartsForRuntime, type PolyUIMessage } from "@/lib/ai/messages";
 import {
   closeReasonings,
@@ -48,10 +48,6 @@ const titleStore: TitleStore = {
 };
 
 const pendingMemoryUpdates = new Map<string, string[]>();
-
-function validModelChoices(choices: ModelChoice[]): ModelChoice[] {
-  return choices.filter((item) => Boolean(item.model && item.provider));
-}
 
 async function extractUserMessageMemory(
   conversationId: string,
@@ -97,7 +93,6 @@ type Timing = {
 };
 
 export function useChatStream(
-  modelChoices: ModelChoice[],
   systemPrompt = "",
   voiceMode = false,
 ) {
@@ -124,7 +119,6 @@ export function useChatStream(
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeConversationIdRef = useRef(activeConversationId);
   const processingQueueRef = useRef(false);
-  const modelChoicesRef = useRef(modelChoices);
   const voiceModeRef = useRef(voiceMode);
   const processNextInQueueRef = useRef<
     ((conversationId?: string) => Promise<void>) | undefined
@@ -136,9 +130,6 @@ export function useChatStream(
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
-  useEffect(() => {
-    modelChoicesRef.current = modelChoices;
-  }, [modelChoices]);
   voiceModeRef.current = voiceMode;
 
   const finishJob = useCallback((job: ChatJob) => {
@@ -276,7 +267,6 @@ export function useChatStream(
 
   const startStream = useCallback(async (
     conversationId: string,
-    models: ModelChoice[],
   ) => {
     if (!conversationId) return;
     const runtime = useRuntimeStore.getState().selected;
@@ -284,7 +274,11 @@ export function useChatStream(
       notify.error("Chat unavailable", "Choose a model connection first");
       return;
     }
-    if (runtime.kind === "chat-model" && !models.length) return;
+    const catalog = useRuntimeCatalogStore.getState();
+    if (!runtimeIsAvailable(runtime, catalog.connections, catalog.modelsByConnection, catalog.agents)) {
+      notify.error("Chat unavailable", "The selected model is not available. Refresh your connections.");
+      return;
+    }
     const store = useChatStore.getState();
     const source = conversationId === store.activeConversationId
       ? store.messages.filter((message) => message.conversationId === conversationId)
@@ -305,59 +299,56 @@ export function useChatStream(
       webSearchEnabled,
     );
     const capabilityMode = useSettingsStore.getState().capabilityMode;
-    const targets = runtime.kind === "coding-agent"
-      ? [{
-        model: runtime.model_id ?? agentName(runtime.agent_kind),
-        provider: undefined,
-      }]
-      : models;
-    const created = targets.map(({ model, provider }): ChatJob => {
-      const requestId = crypto.randomUUID();
-      const messageId = crypto.randomUUID();
-      settled.current.delete(requestId);
-      timings.current.set(requestId, {
-        startedAt: Date.now(),
-        reasonings: createReasoningTimings(),
-      });
-      setStreamingMessage(messageId, {
-        id: messageId,
-        conversationId,
-        role: "assistant",
-        content: "",
-        model,
-        provider,
-        createdAt: new Date().toISOString(),
-        status: "streaming",
-        isStreaming: true,
-      });
-      return {
-        requestId,
-        messageId,
-        conversationId,
-        connectionId: runtime.kind === "chat-model" ? runtime.connection_id : undefined,
-        agent: runtime.kind === "coding-agent" ? {
-          kind: runtime.agent_kind,
-          workspaceId: runtime.workspace_id,
-          installationId: runtime.installation_id,
-          accessMode: useRuntimeStore.getState().accessMode,
-          sessionId: runtime.agent_session_id ?? undefined,
-          modelId: runtime.model_id ?? undefined,
-        } : undefined,
-        model,
-        provider,
-        messages: uiMessages,
-        instructions,
-        reasoning: voiceModeRef.current ? "none" : undefined,
-        webSearchProvider:
-          runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
-        // Null is the legacy value: preserve existing users' terminal access
-        // until they explicitly choose an onboarding capability level.
-        terminalEnabled: runtime.kind === "chat-model" && capabilityMode !== "chat-only",
-        token: getSessionToken,
-      };
+    const model = runtime.kind === "coding-agent"
+      ? runtime.model_id ?? agentName(runtime.agent_kind)
+      : runtime.model_id;
+    const connection = runtime.kind === "chat-model"
+      ? catalog.connections.find(({ connection }) => connection.id === runtime.connection_id)?.connection
+      : undefined;
+    const provider = connection ? toLegacyProviderType(connection.provider) : undefined;
+    const requestId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    settled.current.delete(requestId);
+    timings.current.set(requestId, {
+      startedAt: Date.now(),
+      reasonings: createReasoningTimings(),
     });
+    setStreamingMessage(messageId, {
+      id: messageId,
+      conversationId,
+      role: "assistant",
+      content: "",
+      model,
+      provider,
+      createdAt: new Date().toISOString(),
+      status: "streaming",
+      isStreaming: true,
+    });
+    const created: ChatJob = {
+      requestId,
+      messageId,
+      conversationId,
+      connectionId: runtime.kind === "chat-model" ? runtime.connection_id : undefined,
+      agent: runtime.kind === "coding-agent" ? {
+        kind: runtime.agent_kind,
+        workspaceId: runtime.workspace_id,
+        installationId: runtime.installation_id,
+        accessMode: useRuntimeStore.getState().accessMode,
+        sessionId: runtime.agent_session_id ?? undefined,
+        modelId: runtime.model_id ?? undefined,
+      } : undefined,
+      model,
+      provider,
+      messages: uiMessages,
+      instructions,
+      reasoning: voiceModeRef.current ? "none" : undefined,
+      webSearchProvider:
+        runtime.kind === "chat-model" && webSearchEnabled ? webSearch.provider : undefined,
+      terminalEnabled: runtime.kind === "chat-model" && capabilityMode !== "chat-only",
+      token: getSessionToken,
+    };
     setStreamingConversationId(conversationId);
-    setJobs((current) => [...current, ...created]);
+    setJobs((current) => [...current, created]);
   }, [notify, setStreamingConversationId, setStreamingMessage, systemPrompt]);
 
   const processNextInQueue = useCallback(async (completedConversationId?: string) => {
@@ -369,9 +360,13 @@ export function useChatStream(
     if (!next) return;
     processingQueueRef.current = true;
     try {
-      const models = validModelChoices(modelChoicesRef.current);
       const runtime = useRuntimeStore.getState().selected;
-      if (!models.length && runtime?.kind !== "coding-agent") return;
+      const catalog = useRuntimeCatalogStore.getState();
+      if (
+        !runtime ||
+        runtime.kind === "unresolved" ||
+        !runtimeIsAvailable(runtime, catalog.connections, catalog.modelsByConnection, catalog.agents)
+      ) return;
       store.actions.dequeueMessage(next.id);
       const user = await addMessage({
         id: crypto.randomUUID(),
@@ -380,8 +375,9 @@ export function useChatStream(
         content: next.content,
         attachments: next.attachments,
       });
-      void extractUserMessageMemory(next.conversationId, user.id, models[0]?.model);
-      await startStream(next.conversationId, models);
+      const model = runtime.kind === "chat-model" ? runtime.model_id : runtime.model_id ?? agentName(runtime.agent_kind);
+      void extractUserMessageMemory(next.conversationId, user.id, model);
+      await startStream(next.conversationId);
     } finally {
       processingQueueRef.current = false;
     }
@@ -392,11 +388,13 @@ export function useChatStream(
     content: string,
     attachments?: Attachment[],
   ) => {
-    const models = validModelChoices(modelChoices);
     const runtime = useRuntimeStore.getState().selected;
+    const catalog = useRuntimeCatalogStore.getState();
     if (
       (!content.trim() && !attachments?.length) ||
-      (!models.length && runtime?.kind !== "coding-agent")
+      !runtime ||
+      runtime.kind === "unresolved" ||
+      !runtimeIsAvailable(runtime, catalog.connections, catalog.modelsByConnection, catalog.agents)
     ) return;
     const conversationId =
       useChatStore.getState().activeConversationId ?? activeConversationId;
@@ -418,9 +416,10 @@ export function useChatStream(
       content: processed,
       attachments,
     });
-    void extractUserMessageMemory(conversationId, user.id, models[0]?.model);
-    await startStream(conversationId, models);
-  }, [activeConversationId, addMessage, modelChoices, notify, startStream]);
+    const model = runtime.kind === "chat-model" ? runtime.model_id : runtime.model_id ?? agentName(runtime.agent_kind);
+    void extractUserMessageMemory(conversationId, user.id, model);
+    await startStream(conversationId);
+  }, [activeConversationId, addMessage, startStream]);
 
   const stopStreaming = useCallback(async () => {
     if (!jobsRef.current.length) return;
@@ -429,15 +428,16 @@ export function useChatStream(
   }, [clearQueue]);
 
   const regenerateMessage = useCallback((conversationId: string) => {
-    const models = validModelChoices(modelChoices);
     const runtime = useRuntimeStore.getState().selected;
+    const catalog = useRuntimeCatalogStore.getState();
     if (
       jobsRef.current.length ||
-      (!models.length && runtime?.kind !== "coding-agent") ||
+      !runtime ||
+      !runtimeIsAvailable(runtime, catalog.connections, catalog.modelsByConnection, catalog.agents) ||
       !conversationId
     ) return;
-    void startStream(conversationId, models);
-  }, [modelChoices, startStream]);
+    void startStream(conversationId);
+  }, [startStream]);
 
   const messageQueue = useChatStore((state) => state.messageQueue);
   const queuedCount = useMemo(

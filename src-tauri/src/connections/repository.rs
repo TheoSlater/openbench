@@ -1,4 +1,4 @@
-//! SQLite access for connections, models, installations, and workspaces.
+//! SQLite access for connections, models, and workspaces.
 //!
 //! Thin and explicit: `sqlx::query` with `Row::get`, matching the style already
 //! used in `db::connection`. The enum columns are stored as their `as_str`
@@ -7,11 +7,10 @@
 
 use super::secrets::SecretRef;
 use super::{
-    AgentInstallation, Connection, ConnectionHealth, ConnectionHealthStatus, ConnectionModel,
-    ConnectionSummary, DiscoverySource, PathSource, Provider, VerificationResult, Workspace,
-    WorkspaceAvailability,
+    Connection, ConnectionHealth, ConnectionHealthStatus, ConnectionModel, ConnectionSummary,
+    DiscoverySource, Provider, Workspace, WorkspaceAvailability,
 };
-use crate::runtime::{AgentKind, RuntimeRef};
+use crate::runtime::RuntimeRef;
 use sqlx::{Row, SqlitePool};
 
 type Result<T> = std::result::Result<T, String>;
@@ -49,28 +48,6 @@ fn model_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ConnectionModel> {
         discovery_source: DiscoverySource::parse(&source_raw)
             .ok_or_else(|| format!("unknown discovery source: {source_raw}"))?,
         last_seen_at: row.get("last_seen_at"),
-    })
-}
-
-fn installation_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<AgentInstallation> {
-    let kind_raw: String = row.get("agent_kind");
-    let path_source_raw: String = row.get("path_source");
-    let verification_raw: String = row.get("last_verification");
-    Ok(AgentInstallation {
-        id: row.get("id"),
-        account_id: row.get("account_id"),
-        agent_kind: AgentKind::parse(&kind_raw)
-            .ok_or_else(|| format!("unknown agent kind: {kind_raw}"))?,
-        display_name: row.get("display_name"),
-        executable_path: row.get("executable_path"),
-        path_source: PathSource::parse(&path_source_raw)
-            .ok_or_else(|| format!("unknown path source: {path_source_raw}"))?,
-        launch_args: parse_json_array(&row.get::<String, _>("launch_args")),
-        detected_versions: row.get("detected_versions"),
-        last_verification: VerificationResult::parse(&verification_raw)
-            .ok_or_else(|| format!("unknown verification result: {verification_raw}"))?,
-        last_verification_detail: row.get("last_verification_detail"),
-        last_verified_at: row.get("last_verified_at"),
     })
 }
 
@@ -446,62 +423,6 @@ pub async fn model_exists(pool: &SqlitePool, connection_id: &str, model_id: &str
         .await?
         .iter()
         .any(|model| model.aliases.iter().any(|alias| alias == model_id)))
-}
-
-pub async fn upsert_installation(
-    pool: &SqlitePool,
-    installation: &AgentInstallation,
-) -> Result<()> {
-    sqlx::query(
-        r"
-        INSERT INTO agent_installations
-            (id, account_id, agent_kind, display_name, executable_path, path_source,
-             launch_args, detected_versions, last_verification,
-             last_verification_detail, last_verified_at, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                datetime('now'), datetime('now'))
-        ON CONFLICT (id) DO UPDATE SET
-            display_name             = excluded.display_name,
-            executable_path          = excluded.executable_path,
-            path_source              = excluded.path_source,
-            launch_args              = excluded.launch_args,
-            detected_versions        = excluded.detected_versions,
-            last_verification        = excluded.last_verification,
-            last_verification_detail = excluded.last_verification_detail,
-            last_verified_at         = excluded.last_verified_at,
-            updated_at               = datetime('now')
-        ",
-    )
-    .bind(&installation.id)
-    .bind(&installation.account_id)
-    .bind(installation.agent_kind.as_str())
-    .bind(&installation.display_name)
-    .bind(&installation.executable_path)
-    .bind(installation.path_source.as_str())
-    .bind(serde_json::to_string(&installation.launch_args).unwrap_or_else(|_| "[]".into()))
-    .bind(&installation.detected_versions)
-    .bind(installation.last_verification.as_str())
-    .bind(&installation.last_verification_detail)
-    .bind(&installation.last_verified_at)
-    .execute(pool)
-    .await
-    .map(|_| ())
-    .map_err(|error| error.to_string())
-}
-
-pub async fn list_installations(
-    pool: &SqlitePool,
-    account_id: &str,
-) -> Result<Vec<AgentInstallation>> {
-    let rows = sqlx::query(
-        "SELECT * FROM agent_installations WHERE account_id = ?1 ORDER BY agent_kind ASC, id ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| error.to_string())?;
-
-    rows.iter().map(installation_from_row).collect()
 }
 
 pub async fn upsert_workspace(pool: &SqlitePool, workspace: &Workspace) -> Result<String> {

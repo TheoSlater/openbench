@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useOllama } from "@/features/ollama";
 import { Box } from "@/components/ui/Box";
 import { Typography } from "@/components/ui/Typography";
 import { TooltipLabel as Tooltip } from "@/components/ui/tooltip-label";
@@ -11,9 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CircularProgress } from "@/components/ui/spinner";
 import {
-  AlertCircle,
   ScrollText,
   Check,
   Brain,
@@ -32,7 +29,7 @@ import { useConversationMemoryCount } from "@/features/memory/useConversationMem
 import { showViewportDrawer, useViewportStore } from "@/features/viewport/viewportStore";
 import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import { runtimeLabel } from "@/features/runtime/runtime-options";
-import { isDefaultRuntime, writeDefaultRuntime } from "@/lib/runtime/legacy-default-model";
+import { isDefaultRuntime, writeDefaultRuntime } from "@/lib/runtime/default-runtime";
 import { useNotify } from "@/hooks/useNotify";
 
 
@@ -54,7 +51,6 @@ export const Header = memo(function Header({
       actions: state.actions,
     })),
   );
-  const ollama = useOllama();
   const notify = useNotify();
   const { selectedRuntime, selectedLabel, accessMode, setAccessMode } = useRuntimeStore(useShallow((state) => ({
     selectedRuntime: state.selected,
@@ -175,22 +171,6 @@ export const Header = memo(function Header({
               <Brain size={16} />
               <Typography variant="caption">{memoryCount}</Typography>
             </IconButton>
-          </Tooltip>
-        )}
-        {ollama.state !== "online" && (
-          <Tooltip placement="bottom" title={ollama.state === "reconnecting" ? "Reconnecting to providers..." : "Providers offline"}>
-            <Box className="inline-flex items-center gap-1.5 text-muted-foreground">
-              {ollama.state === "reconnecting" ? (
-                <CircularProgress size={12} color="inherit" />
-              ) : (
-                <Box as="span" className="flex size-4 items-center justify-center">
-                  <AlertCircle size={14} />
-                </Box>
-              )}
-              <Typography variant="caption">
-                {ollama.state === "reconnecting" ? "Reconnecting" : "Offline"}
-              </Typography>
-            </Box>
           </Tooltip>
         )}
         <Tooltip

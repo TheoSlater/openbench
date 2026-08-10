@@ -1,11 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { SystemPrompt } from "@/store/modelStore";
-import type { RuntimeRef } from "@/generated/bindings/RuntimeRef";
-import { useRuntimeStore } from "@/features/runtime/runtime-store";
 import { getCurrentProviderAccountId } from "@/features/providers";
 import { useAuthStore } from "@/store/authStore";
 import { useModelStore } from "@/store/modelStore";
-import { useOllamaStore } from "@/features/ollama/monitor";
+import { useRuntimeCatalogStore } from "@/features/runtime/catalog-store";
 import { initStoreCoordinator } from "@/store/coordinator";
 import { initRepository } from "@/lib/repositories";
 import { startUpdateChecker } from "@/store/updateStore";
@@ -72,27 +69,6 @@ function startSystemPromptPersistence() {
   );
 }
 
-/**
- * One-shot: resolve the pre-rework `default_model` string into a RuntimeRef.
- *
- * Deferred rather than blocking startup, and failure-tolerant — the legacy key
- * is left in place, so the existing chat path is unaffected either way.
- */
-async function migrateDefaultRuntime() {
-  try {
-    const { migrateLegacyDefaultModel } = await import("@/lib/runtime/legacy-default-model");
-    const runtime = await migrateLegacyDefaultModel((stored) =>
-      invoke<RuntimeRef | null>("resolve_legacy_default_model", {
-        accountId: getCurrentProviderAccountId(),
-        stored,
-      }),
-    );
-    if (runtime) useRuntimeStore.getState().actions.select(runtime, "");
-  } catch (error) {
-    console.warn("[startup] default runtime migration skipped", error);
-  }
-}
-
 async function preloadVisibleAppChunks() {
   startupPhase("preload visible chunks start");
   await Promise.all([
@@ -147,6 +123,8 @@ async function initializeStores() {
   }
   const auth = useAuthStore.getState();
   if (!auth.user && !auth.isGuest) auth.actions.skipAuth();
+  const accountId = getCurrentProviderAccountId();
+  if (accountId) void useRuntimeCatalogStore.getState().actions.start(accountId);
   startupPhase("initialize stores complete");
 }
 
@@ -156,16 +134,9 @@ async function initializeDeferredStartupWork() {
   startupPhase("notification permission start");
   void requestNotificationPermission();
 
-  startupPhase("ollama monitor start");
-  useOllamaStore.getState().actions.start();
-
   startupPhase("update checker init start");
   startUpdateChecker();
   startupPhase("update checker init complete");
-
-  startupPhase("legacy default model migration start");
-  void migrateDefaultRuntime();
-  startupPhase("legacy default model migration queued");
 
   startupPhase("idle manager init start");
   const { idleManager, registerDefaultIdleHandlers } = await import("@/lib/idle");

@@ -32,6 +32,18 @@ fn executable(name: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+fn agent_command(kind: &str) -> Result<(&'static str, &'static [&'static str]), String> {
+    match kind {
+        "codex" => Ok(("codex", &["login", "status"])),
+        "claude-code" => Ok(("claude", &["auth", "status"])),
+        _ => Err("Unknown coding agent".into()),
+    }
+}
+
+pub(crate) fn resolve_agent_executable(kind: &str) -> Result<Option<PathBuf>, String> {
+    agent_command(kind).map(|(name, _)| executable(name))
+}
+
 async fn output(path: &Path, args: &[&str]) -> Option<std::process::Output> {
     tokio::time::timeout(
         Duration::from_secs(10),
@@ -44,12 +56,8 @@ async fn output(path: &Path, args: &[&str]) -> Option<std::process::Output> {
 
 #[tauri::command]
 pub async fn agent_cli_status(kind: String) -> Result<AgentCliStatus, String> {
-    let (name, auth_args) = match kind.as_str() {
-        "codex" => ("codex", &["login", "status"][..]),
-        "claude-code" => ("claude", &["auth", "status"][..]),
-        _ => return Err("Unknown coding agent".into()),
-    };
-    let Some(path) = executable(name) else {
+    let (_, auth_args) = agent_command(&kind)?;
+    let Some(path) = resolve_agent_executable(&kind)? else {
         return Ok(AgentCliStatus {
             installed: false,
             authenticated: false,
@@ -57,14 +65,13 @@ pub async fn agent_cli_status(kind: String) -> Result<AgentCliStatus, String> {
             version: None,
         });
     };
-    let version = output(&path, &["--version"])
-        .await
+    let (version_output, auth_output) =
+        tokio::join!(output(&path, &["--version"]), output(&path, auth_args),);
+    let version = version_output
         .filter(|value| value.status.success())
         .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
         .filter(|value| !value.is_empty());
-    let authenticated = output(&path, auth_args)
-        .await
-        .is_some_and(|value| value.status.success());
+    let authenticated = auth_output.is_some_and(|value| value.status.success());
     Ok(AgentCliStatus {
         installed: true,
         authenticated,
@@ -80,5 +87,18 @@ mod tests {
     #[tokio::test]
     async fn rejects_unknown_agent() {
         assert!(agent_cli_status("other".into()).await.is_err());
+    }
+
+    #[test]
+    fn resolves_each_agent_from_one_canonical_command() {
+        assert_eq!(
+            agent_command("codex").unwrap(),
+            ("codex", &["login", "status"][..])
+        );
+        assert_eq!(
+            agent_command("claude-code").unwrap(),
+            ("claude", &["auth", "status"][..]),
+        );
+        assert!(resolve_agent_executable("other").is_err());
     }
 }

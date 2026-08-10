@@ -132,13 +132,8 @@ pub async fn ai_runtime_start(
         if !matches!(agent.access_mode.as_str(), "read-only" | "workspace-write") {
             return Err("Unknown workspace access mode".into());
         }
-        // The CLI may live outside PATH (~/.bun/bin, ~/.local/bin, ...). Resolve
-        // it the same way the setup cards do, so the sidecar does not fail to
-        // spawn an agent the UI claims is ready.
-        let executable = crate::commands::agent_commands::agent_cli_status(agent.kind.clone())
-            .await
-            .ok()
-            .and_then(|status| status.executable);
+        let executable = crate::commands::agent_commands::resolve_agent_executable(&agent.kind)?
+            .ok_or_else(|| format!("{} CLI is not installed", agent.kind))?;
         serde_json::json!({
             "type": "agent",
             "agent": {
@@ -208,10 +203,8 @@ pub async fn ai_runtime_agent_models(
     if !matches!(kind.as_str(), "claude-code" | "codex") {
         return Err("Unknown coding agent".into());
     }
-    let status = crate::commands::agent_commands::agent_cli_status(kind.clone()).await?;
-    if !status.installed || !status.authenticated {
-        return Err(format!("{kind} is not ready"));
-    }
+    let executable = crate::commands::agent_commands::resolve_agent_executable(&kind)?
+        .ok_or_else(|| format!("{kind} CLI is not installed"))?;
     state
         .ai
         .request(
@@ -221,7 +214,7 @@ pub async fn ai_runtime_agent_models(
                 "requestId": request_id,
                 "agent": {
                     "kind": kind,
-                    "executablePath": status.executable,
+                    "executablePath": executable,
                 },
             }),
         )

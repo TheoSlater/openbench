@@ -33,6 +33,11 @@ describe("chat auto-scroll", () => {
     expect(scrollContainerClasses()).toContain("overflow-y-auto");
   });
 
+  it("keeps dynamically growing turns in native document flow", () => {
+    expect(source).not.toContain("useVirtualizer");
+    expect(source).not.toContain("translateY(");
+  });
+
   it("scrolls down when a new user message arrives, wherever you were", () => {
     // Sending is explicit, so it overrides an escaped stick lock. Keyed on the
     // newest user message so streaming assistant tokens never trigger it.
