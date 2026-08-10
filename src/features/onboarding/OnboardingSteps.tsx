@@ -1,6 +1,5 @@
 import {
   AnimatePresence,
-  LayoutGroup,
   motion,
 } from "motion/react";
 import {
@@ -10,7 +9,6 @@ import {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useShallow } from "zustand/react/shallow";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,79 +45,58 @@ type IntroProps = {
 
 export function StepIntro({ title, description, headingRef, children }: IntroProps) {
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-start text-left">
-      <h1
-        ref={headingRef}
-        tabIndex={-1}
-        className="text-balance font-heading text-[clamp(1.9rem,3vw,2.7rem)] font-medium leading-[1.08] tracking-[-0.03em] text-foreground outline-none"
-      >
-        {title}
-      </h1>
-      <p className="mt-3 max-w-lg text-balance text-base leading-relaxed text-muted-foreground">
-        {description}
-      </p>
-      {children}
+    <div className="mx-auto grid w-full max-w-2xl items-start text-left xl:max-w-5xl xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] xl:items-center xl:gap-16">
+      <div className="max-w-xl">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-balance font-heading text-[clamp(2rem,4vw,3rem)] font-medium leading-[1.06] tracking-[-0.035em] text-foreground outline-none"
+        >
+          {title}
+        </h1>
+        <p className="mt-3 max-w-[64ch] text-pretty text-base leading-7 text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      {children ? <div className="mt-8 w-full xl:mt-0">{children}</div> : null}
     </div>
   );
 }
 
-export function WelcomeStep({ headingRef }: { headingRef: RefObject<HTMLHeadingElement | null> }) {
-  return (
-    <StepIntro
-      title="Set up PolyUI"
-      description="Private by default. A few quick choices, then you’re ready to chat."
-      headingRef={headingRef}
-    />
-  );
-}
-
-function ProfilePreview({
-  profile,
-  name,
-  onImageError,
-}: {
-  profile: LocalProfile;
-  name: string;
-  onImageError: () => void;
-}) {
+function ProfilePreview({ profile, name }: { profile: LocalProfile; name: string }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const label = profileLabel(name);
-  const showImage = Boolean(profile.avatarUrl) && !imageFailed;
 
   useEffect(() => setImageFailed(false), [profile.avatarUrl]);
 
   return (
-    <motion.div layout className="relative size-24 shrink-0 rounded-full ring-1 ring-border">
+    <div className="relative size-22 shrink-0 overflow-hidden rounded-full bg-primary ring-1 ring-border">
       <AnimatePresence initial={false} mode="wait">
-        {showImage ? (
+        {profile.avatarUrl && !imageFailed ? (
           <motion.img
             key={profile.avatarUrl}
-            src={profile.avatarUrl ?? undefined}
-            alt={label}
-            onError={() => {
-              setImageFailed(true);
-              onImageError();
-            }}
+            src={profile.avatarUrl}
+            alt={profileLabel(name)}
+            onError={() => setImageFailed(true)}
             initial={{ opacity: 0, scale: onboardingMotion.scale.subtle }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: onboardingMotion.scale.subtle }}
             transition={{ duration: motionDuration("standard", false), ease: onboardingMotion.ease.standard }}
-            className="absolute inset-0 size-full rounded-full object-cover"
+            className="absolute inset-0 size-full object-cover"
           />
         ) : (
-          <motion.div
+          <motion.span
             key="initials"
             initial={{ opacity: 0, scale: onboardingMotion.scale.subtle }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: onboardingMotion.scale.subtle }}
             transition={{ duration: motionDuration("standard", false), ease: onboardingMotion.ease.standard }}
-            className="absolute inset-0 grid place-items-center rounded-full bg-primary text-2xl font-medium text-primary-foreground"
+            className="absolute inset-0 grid place-items-center text-xl font-medium text-primary-foreground"
           >
             {profileInitials(name)}
-          </motion.div>
+          </motion.span>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
@@ -137,19 +114,26 @@ export function ProfileStep({
   const [imageError, setImageError] = useState("");
   const fallbackName = profile.displayName || user?.fullName || "";
 
+  const chooseImage = (file: File) => {
+    void readProfileImage(file)
+      .then((avatarUrl) => {
+        setImageError("");
+        setProfile({ ...profile, avatarUrl });
+      })
+      .catch((error: unknown) => {
+        setImageError(error instanceof Error ? error.message : "Image could not be used.");
+      });
+  };
+
   return (
     <StepIntro
-      title="Your name"
-      description="Choose how you appear in conversations."
+      title="Create your profile"
+      description="Add a local name and image for your conversations. Nothing here leaves this device."
       headingRef={headingRef}
     >
-      <div className="mt-8 grid w-full gap-6 border-y border-border/60 py-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+      <div className="grid w-full gap-6 rounded-2xl bg-muted/45 p-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center sm:p-6">
         <div className="flex flex-col items-center gap-3">
-          <ProfilePreview
-            profile={profile}
-            name={fallbackName}
-            onImageError={() => setImageError("This image could not be displayed. Choose another one or remove it.")}
-          />
+          <ProfilePreview profile={profile} name={fallbackName} />
           <input
             ref={inputRef}
             type="file"
@@ -158,33 +142,27 @@ export function ProfileStep({
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (!file) return;
-              void readProfileImage(file)
-                .then((avatarUrl) => {
-                  setImageError("");
-                  setProfile({ ...profile, avatarUrl });
-                })
-                .catch((error: unknown) => {
-                  setImageError(error instanceof Error ? error.message : "Image could not be used.");
-                });
+              if (file) chooseImage(file);
             }}
           />
-          <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()}>
-            Choose image
-          </Button>
-          {profile.avatarUrl ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setImageError("");
-                setProfile({ ...profile, avatarUrl: null });
-              }}
-            >
-              Remove
+          <div className="flex items-center gap-1">
+            <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()}>
+              Choose image
             </Button>
-          ) : null}
+            {profile.avatarUrl ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setImageError("");
+                  setProfile({ ...profile, avatarUrl: null });
+                }}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
         </div>
         <div className="flex min-w-0 flex-col gap-2">
           <Label htmlFor="onboarding-display-name">Display name</Label>
@@ -199,21 +177,8 @@ export function ProfileStep({
               setProfile({ ...profile, displayName: event.target.value });
             }}
           />
-          <p className="text-xs leading-relaxed text-muted-foreground">Optional. Leave blank to use “You”.</p>
-          <AnimatePresence initial={false}>
-            {imageError ? (
-              <motion.p
-                initial={{ opacity: 0, y: -onboardingMotion.distance.small }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -onboardingMotion.distance.small }}
-                transition={{ duration: motionDuration("standard", false), ease: onboardingMotion.ease.standard }}
-                className="text-sm text-destructive"
-                role="alert"
-              >
-                {imageError}
-              </motion.p>
-            ) : null}
-          </AnimatePresence>
+          <p className="text-xs leading-5 text-muted-foreground">Optional. Leave blank to use “You”.</p>
+          {imageError ? <p className="text-sm text-destructive" role="alert">{imageError}</p> : null}
         </div>
       </div>
     </StepIntro>
@@ -269,17 +234,17 @@ function ProviderCard({
   children,
 }: ProviderCardProps) {
   return (
-    <div className="border-b border-border/60 last:border-b-0">
+    <div className={`rounded-xl transition-colors ${expanded ? "bg-background" : "hover:bg-background/70"}`}>
       <button
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
-        className="flex min-h-20 w-full items-center gap-4 py-4 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+        className="flex min-h-17 w-full items-center gap-4 rounded-xl px-4 py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="font-medium text-foreground">{title}</span>
-          <span className="text-sm leading-relaxed text-muted-foreground">{subtitle}</span>
-          <span className="mt-1 flex min-h-5 items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="text-sm leading-6 text-muted-foreground">{subtitle}</span>
+            <span className="flex min-h-5 items-center gap-2 text-xs font-medium text-muted-foreground">
             <ProviderStatusIcon status={status} />
             <AnimatePresence initial={false} mode="wait">
               <motion.span
@@ -310,7 +275,7 @@ function ProviderCard({
             transition={{ duration: motionDuration("expansion", false), ease: onboardingMotion.ease.enter }}
             className="overflow-hidden"
           >
-            <div className="border-t border-border/60 pb-4 pt-4 text-left">{children}</div>
+            <div className="border-t border-border/60 px-4 pb-4 pt-4 text-left">{children}</div>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -706,11 +671,11 @@ export function ProviderStep({
 
   return (
     <StepIntro
-      title="Connect a model"
-      description="Use a local model, coding agent, or API provider."
+      title="Connect your model"
+      description="PolyUI works with local models, coding agents, and API providers. Choose one now, or continue and connect later."
       headingRef={headingRef}
     >
-      <div className="mt-8 w-full max-w-xl border-y border-border/60">
+      <div className="w-full rounded-2xl bg-muted/45 p-2">
         {cards.map((card) => (
           <ProviderCard
             key={card.id}
@@ -734,8 +699,8 @@ export function ProviderStep({
           </ProviderCard>
         ))}
       </div>
-      <div className="mt-4 text-xs text-muted-foreground">
-        Optional — you can set this up later.
+      <div className="mt-4 text-xs leading-5 text-muted-foreground">
+        Provider credentials stay in your operating system credential store.
         {refreshing ? <LoaderCircle className="ml-2 inline-block size-3.5 align-[-2px] motion-safe:animate-spin" aria-hidden="true" /> : null}
       </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">{statusAnnouncement}</p>
@@ -762,149 +727,121 @@ const capabilityOptions: Array<{ id: CapabilityMode; title: string; description:
 ];
 
 function ChoiceCard({
-  group,
   title,
   description,
   selected,
   onClick,
 }: {
-  group: string;
   title: string;
   description: string;
   selected: boolean;
   onClick: () => void;
 }) {
   return (
-    <motion.button
+    <button
       type="button"
       role="radio"
       aria-checked={selected}
-      layout
       onClick={onClick}
-      className="relative flex w-full items-start gap-3 border-b border-border/60 px-1 py-4 text-left outline-none transition-colors last:border-b-0 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+      className="flex w-full items-start gap-3 rounded-xl px-4 py-3 text-left outline-none transition-colors hover:bg-background/70 focus-visible:ring-3 focus-visible:ring-ring/30"
     >
-      {selected ? (
-        <motion.span
-          layoutId={`${group}-selection`}
-          className="pointer-events-none absolute inset-y-0 left-0 w-px bg-foreground"
-          transition={{ type: "spring", bounce: 0, duration: onboardingMotion.duration.standard }}
-        />
-      ) : null}
       <span
-        className={`relative mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border ${selected ? "border-foreground" : "border-muted-foreground/50"}`}
+        className={`relative mt-1 grid size-4 shrink-0 place-items-center rounded-full border transition-colors ${selected ? "border-foreground" : "border-muted-foreground/50"}`}
         aria-hidden="true"
       >
-        {selected ? <span className="size-2 rounded-full bg-foreground" /> : null}
+        <motion.span
+          className="size-2 rounded-full bg-foreground"
+          initial={false}
+          animate={{ opacity: selected ? 1 : 0, scale: selected ? 1 : 0.5 }}
+          transition={{ duration: onboardingMotion.duration.fast, ease: onboardingMotion.ease.standard }}
+        />
       </span>
-      <span className="relative flex flex-col gap-1">
+      <span className="flex flex-col gap-0.5">
         <span className="font-medium">{title}</span>
-        <span className="text-sm leading-relaxed text-muted-foreground">{description}</span>
+        <span className="text-sm leading-6 text-muted-foreground">{description}</span>
       </span>
-    </motion.button>
+    </button>
   );
 }
 
-export function CapabilitiesStep({
-  capability,
-  setCapability,
-  headingRef,
-}: {
-  capability: CapabilityMode;
-  setCapability: (mode: CapabilityMode) => void;
-  headingRef: RefObject<HTMLHeadingElement | null>;
-}) {
-  return (
-    <StepIntro
-      title="Choose access"
-      description="Start safely. You can change this later."
-      headingRef={headingRef}
-    >
-      <LayoutGroup id="onboarding-capabilities">
-        <div className="mt-6 flex w-full max-w-xl flex-col" role="radiogroup" aria-label="Model access level">
-          {capabilityOptions.map((option) => (
-            <ChoiceCard
-              key={option.id}
-              group="capability"
-              {...option}
-              selected={capability === option.id}
-              onClick={() => setCapability(option.id)}
-            />
-          ))}
-        </div>
-      </LayoutGroup>
-      <p className="mt-4 max-w-xl text-xs leading-relaxed text-muted-foreground">
-        Workspace access stays inside folders you approve. Agent tools use an isolated sandbox.
-      </p>
-    </StepIntro>
-  );
-}
-
-const appearanceOptions: Array<{ id: ThemeMode; title: string; description: string }> = [
-  { id: "system", title: "System", description: "Follow your operating system." },
-  { id: "light", title: "Light", description: "A bright, quiet workspace." },
-  { id: "dark", title: "Dark", description: "A focused low-light workspace." },
+const appearanceOptions: Array<{ id: ThemeMode; title: string }> = [
+  { id: "system", title: "System" },
+  { id: "light", title: "Light" },
+  { id: "dark", title: "Dark" },
 ];
 
-function AppearancePreview() {
-  return (
-    <div className="mt-5 w-full max-w-xl border-y border-border/60 py-4 text-left">
-      <div className="border-b border-border/60 px-1 pb-3">
-        <span className="text-xs font-medium text-muted-foreground">Conversation preview</span>
-      </div>
-      <div className="grid gap-2 px-1 pt-3 sm:grid-cols-[64px_minmax(0,1fr)]">
-        <div className="hidden rounded-xl bg-muted sm:block" />
-        <div className="flex flex-col gap-2">
-          <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground">Good morning. What are we making?</div>
-          <div className="ml-auto max-w-[74%] rounded-2xl rounded-br-md bg-primary px-3 py-1.5 text-xs text-primary-foreground">A calm place to think.</div>
-          <div className="h-7 rounded-2xl border border-border/70 bg-background/60" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function AppearanceStep({
+export function PreferencesStep({
+  capability,
+  setCapability,
   appearance,
   setAppearance,
   headingRef,
 }: {
+  capability: CapabilityMode;
+  setCapability: (mode: CapabilityMode) => void;
   appearance: ThemeMode;
   setAppearance: (mode: ThemeMode) => void;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   return (
     <StepIntro
-      title="Choose a look"
-      description="You can change this later in Settings."
+      title="Make it yours"
+      description="Choose how much access models receive and the appearance that feels right."
       headingRef={headingRef}
     >
-      <LayoutGroup id="onboarding-appearance">
-        <div className="mt-6 flex w-full max-w-xl flex-col" role="radiogroup" aria-label="Appearance">
-          {appearanceOptions.map((option) => (
+      <div className="w-full">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-medium">Model access</h2>
+          <span className="text-xs text-muted-foreground">Change anytime</span>
+        </div>
+        <div className="mt-3 flex flex-col rounded-2xl bg-muted/45 p-2" role="radiogroup" aria-label="Model access level">
+          {capabilityOptions.map((option) => (
             <ChoiceCard
               key={option.id}
-              group="appearance"
-              title={option.title}
-              description={option.description}
-              selected={appearance === option.id}
-              onClick={() => setAppearance(option.id)}
+              {...option}
+              selected={capability === option.id}
+              onClick={() => setCapability(option.id)}
             />
           ))}
         </div>
-      </LayoutGroup>
-      <AppearancePreview />
+      </div>
+
+      <div className="mt-7 w-full">
+        <h2 className="text-sm font-medium">Appearance</h2>
+        <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-muted/45 p-1" role="radiogroup" aria-label="Appearance">
+          {appearanceOptions.map((option) => {
+            const selected = appearance === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setAppearance(option.id)}
+                className={`h-10 rounded-xl px-3 text-sm font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/30 ${selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {option.title}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="mt-4 text-xs leading-5 text-muted-foreground">
+        Workspace access stays inside folders you approve. Agent tools use an isolated sandbox.
+      </p>
     </StepIntro>
   );
 }
 
 export function ReadyStep({
-  profile,
+  profileName,
   capability,
   appearance,
   providers,
   headingRef,
 }: {
-  profile: LocalProfile;
+  profileName: string;
   capability: CapabilityMode;
   appearance: ThemeMode;
   providers: ProviderSummaryItem[];
@@ -914,28 +851,17 @@ export function ReadyStep({
   const appearanceLabel = appearanceOptions.find((item) => item.id === appearance)?.title ?? "System";
   return (
     <StepIntro
-      title="You’re ready"
-      description="Your setup is saved on this device."
+      title="Ready when you are"
+      description="Your preferences are saved on this device. Start a chat, or adjust anything later in Settings."
       headingRef={headingRef}
     >
-      <div className="mt-6 flex w-full max-w-xl flex-col border-y border-border/60 py-4 text-left">
-        <div className="flex items-center gap-3 px-1 pb-4">
-          <Avatar className="size-11">
-            {profile.avatarUrl ? <AvatarImage src={profile.avatarUrl} alt={profileLabel(profile.displayName)} /> : null}
-            <AvatarFallback seed={profile.displayName}>{profileInitials(profile.displayName)}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="font-medium">{profileLabel(profile.displayName)}</p>
-            <p className="text-sm text-muted-foreground">Local profile</p>
-          </div>
-        </div>
-        <div className="grid border-t border-border/60 sm:grid-cols-2">
-          {providers.map((provider) => (
+      <div className="flex w-full flex-col rounded-2xl bg-muted/45 p-2 text-left">
+          <SummaryItem label="Profile" detail={profileName} />
+          {providers.length > 0 ? providers.map((provider) => (
             <SummaryItem key={provider.label} label={provider.label} detail={provider.detail} />
-          ))}
-          <SummaryItem label="Permissions" detail={capabilityLabel} />
+          )) : <SummaryItem label="Model" detail="Set up later" />}
+          <SummaryItem label="Access" detail={capabilityLabel} />
           <SummaryItem label="Appearance" detail={appearanceLabel} />
-        </div>
       </div>
     </StepIntro>
   );
@@ -943,7 +869,7 @@ export function ReadyStep({
 
 function SummaryItem({ label, detail }: { label: string; detail: string }) {
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-4 border-b border-border/60 px-1 py-2 last:border-b-0">
+    <div className="flex min-w-0 items-baseline justify-between gap-4 rounded-xl px-4 py-3">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right text-sm font-medium">{detail}</span>
     </div>

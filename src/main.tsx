@@ -159,7 +159,7 @@ function Root() {
             {startupError ? (
               <StartupErrorScreen message={startupError} />
             ) : isAppReady ? (
-              <div className="app-content zoom-content animate-fade-in">
+              <div className="app-content relative zoom-content animate-fade-in">
                 <App />
               </div>
             ) : null}

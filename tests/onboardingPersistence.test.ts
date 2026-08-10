@@ -32,13 +32,13 @@ describe("onboarding persistence", () => {
   });
 
   it("only marks onboarding complete at the final action", () => {
-    confirmOnboardingStep(4);
+    confirmOnboardingStep(1);
     expect(readOnboardingRecord()?.completed).toBe(false);
     completeOnboarding();
     expect(readOnboardingRecord()).toMatchObject({
       completed: true,
-      lastCompletedStep: 5,
-      confirmedSteps: [0, 1, 2, 3, 4, 5],
+      lastCompletedStep: 3,
+      confirmedSteps: [0, 1, 2, 3],
     });
     expect(nextOnboardingStep(readOnboardingRecord())).toBe(0);
   });

@@ -31,23 +31,19 @@ import {
 } from "./persistence";
 import { motionDuration, onboardingMotion } from "./motion";
 import {
-  AppearanceStep,
-  CapabilitiesStep,
+  PreferencesStep,
   ProfileStep,
   ProviderStep,
   ReadyStep,
   type ProviderSummaryItem,
-  WelcomeStep,
 } from "./OnboardingSteps";
-import { normalizeDisplayName } from "./profile";
+import { normalizeDisplayName, profileLabel } from "./profile";
 
 const STEP_LABELS = [
-  "Welcome",
+  "Connect",
   "Profile",
-  "Model",
-  "Access",
-  "Appearance",
-  "Done",
+  "Preferences",
+  "Ready",
 ] as const;
 
 const STEP_DISTANCE = onboardingMotion.distance.step;
@@ -69,10 +65,8 @@ function initialProfile(): LocalProfile {
   const settings = useSettingsStore.getState();
   const user = useAuthStore.getState().user;
   return {
-    displayName: settings.profileConfigured
-      ? settings.profile.displayName
-      : user?.fullName ?? "",
-    avatarUrl: settings.profileConfigured ? settings.profile.avatarUrl : null,
+    displayName: settings.profileConfigured ? settings.profile.displayName : user?.fullName ?? "",
+    avatarUrl: settings.profileConfigured ? settings.profile.avatarUrl : user?.avatarUrl ?? null,
   };
 }
 
@@ -89,11 +83,13 @@ const stepVariants = {
   enter: (direction: number) => ({
     opacity: 0,
     x: direction > 0 ? STEP_DISTANCE : -STEP_DISTANCE,
+    filter: "blur(2px)",
   }),
-  center: { opacity: 1, x: 0 },
+  center: { opacity: 1, x: 0, filter: "blur(0px)" },
   exit: (direction: number) => ({
     opacity: 0,
     x: direction > 0 ? -STEP_EXIT_DISTANCE : STEP_EXIT_DISTANCE,
+    filter: "blur(1.5px)",
   }),
 };
 
@@ -102,7 +98,7 @@ function StepProgress({ step }: { step: StepIndex }) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-2xl items-center gap-4"
+      className="mx-auto flex w-full max-w-5xl items-center gap-3 sm:gap-5"
       role="progressbar"
       aria-label="Onboarding progress"
       aria-valuemin={1}
@@ -110,22 +106,21 @@ function StepProgress({ step }: { step: StepIndex }) {
       aria-valuenow={step + 1}
       aria-valuetext={label}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>Setup</span>
-          <span>{step + 1} of {STEP_LABELS.length}</span>
-        </div>
-        <div className="mt-2 h-px overflow-hidden bg-border">
-          <motion.span
-            className="block h-px bg-foreground"
-            initial={false}
-            animate={{ width: `${((step + 1) / STEP_LABELS.length) * 100}%` }}
-            transition={{ duration: onboardingMotion.duration.standard, ease: onboardingMotion.ease.standard }}
-          />
-        </div>
+      <span className="shrink-0 text-sm font-medium tracking-[-0.01em]">PolyUI</span>
+      <div className="flex min-w-0 flex-1 gap-1.5" aria-hidden="true">
+        {STEP_LABELS.map((label, index) => (
+          <span key={label} className="h-0.5 min-w-6 flex-1 overflow-hidden rounded-full bg-border/80">
+            <motion.span
+              className="block size-full origin-left rounded-full bg-foreground"
+              initial={false}
+              animate={{ scaleX: index <= step ? 1 : 0 }}
+              transition={{ duration: onboardingMotion.duration.standard, ease: onboardingMotion.ease.standard }}
+            />
+          </span>
+        ))}
       </div>
-      <span className="hidden shrink-0 text-sm font-medium text-foreground sm:block">
-        {STEP_LABELS[step]}
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {step + 1} / {STEP_LABELS.length}
       </span>
       <span className="sr-only" aria-live="polite">
         {label}
@@ -165,27 +160,19 @@ function StepContent({
 }) {
   switch (step) {
     case 0:
-      return <WelcomeStep headingRef={headingRef} />;
-    case 1:
-      return <ProfileStep profile={profile} setProfile={setProfile} headingRef={headingRef} />;
-    case 2:
       return (
         <ProviderStep
           headingRef={headingRef}
           onSummaryChange={onSummaryChange}
         />
       );
-    case 3:
+    case 1:
+      return <ProfileStep profile={profile} setProfile={setProfile} headingRef={headingRef} />;
+    case 2:
       return (
-        <CapabilitiesStep
+        <PreferencesStep
           capability={capability}
           setCapability={setCapability}
-          headingRef={headingRef}
-        />
-      );
-    case 4:
-      return (
-        <AppearanceStep
           appearance={appearance}
           setAppearance={setAppearance}
           headingRef={headingRef}
@@ -194,7 +181,7 @@ function StepContent({
     default:
       return (
         <ReadyStep
-          profile={profile}
+          profileName={profileLabel(profile.displayName)}
           capability={capability}
           appearance={appearance}
           providers={providers}
@@ -246,9 +233,9 @@ function AnimatedStep({
       }}
       aria-hidden={!isPresent}
       inert={!isPresent}
-      className="onboarding-step absolute inset-0 flex min-h-full w-full items-start overflow-y-auto overscroll-contain py-4"
+      className="onboarding-step absolute inset-0 flex min-h-full w-full items-start overflow-y-auto overscroll-contain [will-change:transform,opacity,filter]"
     >
-      <div className="my-auto flex w-full items-start justify-start py-4">
+      <div className="my-auto flex w-full items-start justify-start py-6 sm:py-10">
         <StepContent
           step={step}
           headingRef={headingRef}
@@ -365,7 +352,7 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
       transitionTimer.current = window.setTimeout(() => {
         setTransitioning(false);
         headingRef.current?.focus();
-      }, motionDuration("step", reducedMotion) * 1000 + 20);
+      }, (motionDuration("stepExit", reducedMotion) + motionDuration("step", reducedMotion)) * 1000 + 20);
     },
     [closing, reducedMotion, step, transitioning],
   );
@@ -401,15 +388,10 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
       return;
     }
     if (step === 2) {
-      if (persist(() => undefined, 2)) moveTo(3);
-      return;
-    }
-    if (step === 3) {
-      if (persist(() => settingsActions.setCapabilityMode(capability), 3)) moveTo(4);
-      return;
-    }
-    if (step === 4) {
-      if (persist(() => setMode(appearance), 4)) moveTo(5);
+      if (persist(() => {
+        settingsActions.setCapabilityMode(capability);
+        setMode(appearance);
+      }, 2)) moveTo(3);
       return;
     }
     finish("chat");
@@ -417,12 +399,12 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
 
   const skipCurrent = useCallback(() => {
     if (transitioning || closing) return;
-    if (step === 1) {
-      if (saveProfile()) moveTo(2);
+    if (step === 0) {
+      if (persist(() => undefined, 0)) moveTo(1);
       return;
     }
-    if (step === 2) {
-      if (persist(() => undefined, 2)) moveTo(3);
+    if (step === 1) {
+      if (saveProfile()) moveTo(2);
     }
   }, [closing, moveTo, persist, saveProfile, step, transitioning]);
 
@@ -446,8 +428,8 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
 
   if (!open && !closing) return null;
 
-  const primaryLabel = step === 0 ? "Get started" : step === 5 ? "Start chatting" : "Continue";
-  const secondaryLabel = step === 1 ? "Skip for now" : step === 2 ? "Set up later" : step === 5 ? "Open settings" : null;
+  const primaryLabel = step === 3 ? "Start chatting" : "Continue";
+  const secondaryLabel = step === 0 ? "Set up later" : step === 1 ? "Skip for now" : step === 3 ? "Open settings" : null;
   return (
     <MotionConfig reducedMotion={reducedMotion ? "always" : "never"}>
       <motion.div
@@ -455,19 +437,21 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
         role="region"
         aria-label="PolyUI onboarding"
         onKeyDown={onKeyDown}
-        animate={closing ? { opacity: 0, y: -4 } : { opacity: 1, y: 0 }}
+        animate={closing
+          ? { opacity: 0, scale: 0.985, filter: "blur(5px)" }
+          : { opacity: 1, scale: 1, filter: "blur(0px)" }}
         transition={{
           duration: closing ? motionDuration("final", reducedMotion) : motionDuration("entrance", reducedMotion),
-          ease: closing ? onboardingMotion.ease.exit : onboardingMotion.ease.enter,
+          ease: closing ? onboardingMotion.ease.standard : onboardingMotion.ease.enter,
         }}
       >
-        <header className="relative z-10 flex min-h-[72px] shrink-0 items-center border-b border-border/60 px-6 py-4 sm:px-8">
+        <header className="relative z-10 flex min-h-18 shrink-0 items-center border-b border-border/50 px-4 py-4 sm:px-8">
           <StepProgress step={step} />
         </header>
 
         <div className="relative z-10 min-h-0 flex-1 overflow-hidden px-4 sm:px-8">
-          <div className="relative mx-auto flex min-h-full w-full max-w-2xl items-center justify-center py-8 sm:py-10">
-            <AnimatePresence initial={false} custom={direction} mode="sync">
+          <div className="relative mx-auto flex min-h-full w-full max-w-5xl items-center justify-center">
+            <AnimatePresence initial={false} custom={direction} mode="wait">
               <AnimatedStep
                 key={step}
                 step={step}
@@ -487,9 +471,9 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
           </div>
         </div>
 
-        <footer className="relative z-10 flex min-h-[88px] shrink-0 items-center border-t border-border/60 px-4 py-4 sm:px-8">
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-            <div className="min-h-5 text-center">
+        <footer className="relative z-10 flex min-h-22 shrink-0 items-center border-t border-border/50 px-4 py-4 sm:px-8">
+          <div className="relative mx-auto w-full max-w-5xl">
+            <div className="pointer-events-none absolute inset-x-0 bottom-full mb-3 text-center">
               <AnimatePresence initial={false} mode="wait">
                 {error ? (
                   <motion.p
@@ -506,7 +490,7 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
                 ) : null}
               </AnimatePresence>
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-h-11 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {step > 0 ? (
                 <Button
                   type="button"
@@ -517,14 +501,15 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
                 >
                   Back
                 </Button>
-              ) : <span aria-hidden="true" />}
-              <div className="flex min-w-0 flex-1 justify-end gap-2">
+              ) : <span className="hidden sm:block" aria-hidden="true" />}
+              <div className="flex w-full min-w-0 flex-1 justify-end gap-2 sm:w-auto">
                 {secondaryLabel ? (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={step === 5 ? () => finish("settings") : skipCurrent}
+                    className="min-w-0 flex-1 sm:flex-none"
+                    onClick={step === 3 ? () => finish("settings") : skipCurrent}
                     disabled={transitioning || closing}
                   >
                     {secondaryLabel}
@@ -533,7 +518,7 @@ export function OnboardingShell({ open, onFinished }: OnboardingShellProps) {
                 <Button
                   type="button"
                   size="lg"
-                  className="min-w-0 flex-1 sm:min-w-32 sm:flex-none"
+                  className="h-11 min-w-0 flex-1 px-5 sm:min-w-36 sm:flex-none"
                   onClick={goNext}
                   disabled={transitioning || closing}
                 >

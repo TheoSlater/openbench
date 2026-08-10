@@ -1,17 +1,16 @@
 import { backupCorruptStorageItem } from "@/lib/utils/startupDiagnostics";
 
 export const ONBOARDING_STORAGE_KEY = "polyui:onboarding";
-export const ONBOARDING_VERSION = 1;
-export const ONBOARDING_LAST_STEP = 5;
+export const ONBOARDING_VERSION = 3;
 
 export const ONBOARDING_STEPS = [
-  "welcome",
-  "profile",
   "provider",
-  "capabilities",
-  "appearance",
+  "profile",
+  "preferences",
   "ready",
 ] as const;
+
+export const ONBOARDING_LAST_STEP = ONBOARDING_STEPS.length - 1;
 
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
